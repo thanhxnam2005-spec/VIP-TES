@@ -38,8 +38,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabase";
-import { type User } from "@supabase/supabase-js";
+
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -58,9 +57,7 @@ export function NovelImportWizard() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auth & VIP state
-  // Wizard state hidden logic
-  const [authLoading, setAuthLoading] = useState(true);
+  // Wizard state
 
   // Wizard state
   const fullTextRef = useRef("");
@@ -90,12 +87,7 @@ export function NovelImportWizard() {
 
   const stepIndex = STEPS.findIndex((s) => s.key === step);
 
-  // Check auth and VIP status
-  useEffect(() => {
-    setAuthLoading(false);
-  }, []);
 
-  const isVip = true;
 
   // ── File Upload ─────────────────────────────────────────
 
@@ -289,20 +281,6 @@ export function NovelImportWizard() {
 
   // ── Render ──────────────────────────────────────────────
 
-  if (authLoading) {
-    return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="mx-auto mb-4 size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted-foreground">Đang tải...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
 
   return (

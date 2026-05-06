@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
       "recharts",
       "motion",
       "date-fns",
-      "@supabase/auth-ui-react",
+
       "cmdk",
     ],
   },

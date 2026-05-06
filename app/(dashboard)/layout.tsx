@@ -34,8 +34,7 @@ import { PageContextSync } from "@/components/chat/page-context-sync";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { type User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+
 import { ScraperOverlay } from "@/components/scraper/scraper-overlay";
 
 // Lazy load heavy panel components for faster initial render
@@ -78,10 +77,6 @@ export default function DashboardLayout({
   const nameDictSetNovelId = useNameDictPanel((s) => s.setNovelId);
   const toggleNameDict = () => nameDictToggle(currentNovelId);
 
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(false);
-  const isAdmin = true;
-  const isVip = true;
 
   // Keep name dict panel's novelId in sync with URL
   useEffect(() => {
@@ -90,26 +85,6 @@ export default function DashboardLayout({
 
 
 
-  const handleLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-  }, []);
-
-  const handleRefreshAuth = useCallback(async () => {
-    if (!supabase) return;
-    setAuthLoading(true);
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error('Refresh auth error:', error);
-      }
-      setUser(session?.user ?? null);
-    } catch (err) {
-      console.error('Refresh auth exception:', err);
-    } finally {
-      setAuthLoading(false);
-    }
-  }, []);
 
   // Global search shortcut: Cmd+K / Ctrl+K
   useEffect(() => {

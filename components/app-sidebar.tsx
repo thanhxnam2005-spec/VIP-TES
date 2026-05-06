@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useNovels } from "@/lib/hooks";
 import { useQTEngineStatus } from "@/lib/hooks/use-qt-engine";
-import { supabase } from "@/lib/supabase";
+
 import {
   BookOpenIcon,
   BrainIcon,

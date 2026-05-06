@@ -72,9 +72,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { type User } from "@supabase/supabase-js";
-import { PasswordGate } from "@/components/password-gate";
+
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -367,65 +365,10 @@ export default function ScraperPage() {
   const router = useRouter();
   const store = useScraperStore();
   const stepIndex = STEPS.findIndex((s) => s.key === store.step);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     store.checkExtension();
-    setAuthLoading(false);
   }, []);
-
-  const isAdmin = true;
-  const isVip = true;
-
-  if (authLoading) {
-    return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-8 flex items-center justify-center">
-        <LoaderIcon className="size-8 animate-spin text-muted-foreground" />
-      </main>
-    );
-  }
-
-  if (!isAdmin && !isVip) {
-    return (
-      <main className="mx-auto w-full max-w-4xl px-6 py-12">
-        <Card className="border-dashed border-2">
-          <CardHeader className="text-center">
-            <div className="mx-auto size-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-4">
-              <ShieldCheckIcon className="size-6" />
-            </div>
-            <CardTitle>Yêu cầu quyền VIP</CardTitle>
-            <CardDescription>
-              Tính năng Import Truyện chỉ dành cho thành viên VIP hoặc Quản trị viên.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-4">
-            <p className="text-sm text-muted-foreground text-center max-w-md">
-              Vui lòng liên hệ quản trị viên để nâng cấp tài khoản của bạn lên VIP để sử dụng tính năng này.
-            </p>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => router.push("/dashboard")}>Quay lại</Button>
-              <Button 
-                onClick={async () => {
-                  setAuthLoading(true);
-                  const { data, error } = await supabase!.auth.refreshSession();
-                  if (error) {
-                    toast.error("Không thể làm mới phiên đăng nhập: " + error.message);
-                  } else {
-                    setUser(data.session?.user ?? null);
-                    toast.success("Đã làm mới quyền truy cập!");
-                  }
-                  setAuthLoading(false);
-                }}
-              >
-                Làm mới quyền
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-8">
