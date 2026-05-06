@@ -1,0 +1,489 @@
+import { AudioCache } from "./audio-cache";
+import { FluentnessAdjuster } from "./fluency-adjuster";
+import { getProvider } from "./providers/registry";
+import type { Sentence, TTSProvider } from "./providers/types";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface PlayerCallbacks {
+  /** Fired when a sentence begins being fetched/prepared. */
+  onSentenceStart?: (index: number) => void;
+  /** Fired when audio actually starts playing (after fetch completes). */
+  onAudioPlay?: () => void;
+  /** Fired when play state changes (playing, paused, stopped). */
+  onPlayStateChange?: (state: PlayState) => void;
+  /** Fired when playback is stopped (by user or internally). */
+  onStop?: () => void;
+  /** Fired after the last sentence finishes. */
+  onFinish?: () => void;
+  /** Fired on any playback / fetch error. */
+  onError?: (error: unknown) => void;
+}
+
+export type PlayState = "idle" | "playing" | "paused" | "stopped";
+
+// ---------------------------------------------------------------------------
+// Player
+// ---------------------------------------------------------------------------
+
+/**
+ * Sentence-by-sentence TTS playback engine.
+ *
+ * Uses a plain `<audio>` element with blob URLs (no AudioContext complexity).
+ * Integrates {@link AudioCache} for deduplication / preloading and
+ * {@link FluentnessAdjuster} for contextual rate/pitch modulation.
+ *
+ * This is a plain TypeScript class — framework-agnostic. The UI layer
+ * communicates via the {@link PlayerCallbacks} interface.
+ */
+export class Player {
+  // -- Dependencies --------------------------------------------------------
+  private provider: TTSProvider | null = null;
+  private cache = new AudioCache();
+  private adjuster = new FluentnessAdjuster();
+
+  // -- Playback state ------------------------------------------------------
+  private audioElement: HTMLAudioElement | null = null;
+  private currentBlobUrl: string | null = null;
+  private sentences: Sentence[] = [];
+  private _currentIndex = 0;
+  private _state: PlayState = "idle";
+  private earlyEndingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // -- Config --------------------------------------------------------------
+  private voiceId: number | string = 0;
+  private rate = 1.0;
+  private pitch = 1.0;
+  private maxPreload = 2;
+  private readonly MAX_RETRIES = 3;
+  private readonly RETRY_BASE_DELAY_MS = 600;
+
+  // -- Concurrency guard ---------------------------------------------------
+  // Incremented on every cancel/jump so in-flight async ops can self-abort.
+  private playbackGeneration = 0;
+
+  // -- Retry state ---------------------------------------------------------
+  private sentenceRetryCount = 0;
+
+  // -- Callbacks -----------------------------------------------------------
+  private callbacks: PlayerCallbacks = {};
+
+  // ========================================================================
+  // Public API
+  // ========================================================================
+
+  /** Current play state. */
+  get state(): PlayState {
+    return this._state;
+  }
+
+  /** Index of the sentence currently playing (or about to play). */
+  get currentIndex(): number {
+    return this._currentIndex;
+  }
+
+  /** Total number of sentences loaded. */
+  get sentenceCount(): number {
+    return this.sentences.length;
+  }
+
+  /** Register event callbacks. */
+  setCallbacks(cb: PlayerCallbacks): void {
+    this.callbacks = cb;
+  }
+
+  // -- Provider / voice / rate / pitch -------------------------------------
+
+  /** Switch the active TTS provider by registered name. Clears the cache. */
+  setProvider(name: string): void {
+    this.provider = getProvider(name);
+    this.cache.clear();
+  }
+
+  /** Set the provider instance directly (useful if already instantiated). */
+  setProviderInstance(provider: TTSProvider): void {
+    this.provider = provider;
+    this.cache.clear();
+  }
+
+  setVoice(voice: number | string): void {
+    this.voiceId = voice;
+    this.provider?.setVoice(voice);
+    this.cache.clear();
+  }
+
+  setRate(rate: number): void {
+    this.rate = Math.max(0.5, Math.min(rate, 5));
+    this.provider?.setRate(this.rate);
+    this.cache.clear();
+  }
+
+  setPitch(pitch: number): void {
+    this.pitch = Math.max(0.5, Math.min(pitch, 2));
+    this.provider?.setPitch(this.pitch);
+    this.cache.clear();
+  }
+
+  /** Set the fluency adjuster effectiveness (0-2). */
+  setFluencyEffectiveness(value: number): void {
+    this.adjuster.effectiveness = Math.max(0, Math.min(value, 2));
+  }
+
+  // -- Transport controls --------------------------------------------------
+
+  /**
+   * Begin sentence-by-sentence playback.
+   *
+   * @param sentences - The full sentence list.
+   * @param startIndex - Index to start from (default 0).
+   */
+  start(sentences: Sentence[], startIndex = 0): void {
+    if (!this.provider) {
+      throw new Error("No TTS provider set. Call setProvider() first.");
+    }
+
+    this.sentences = sentences;
+    this._currentIndex = startIndex;
+    this.sentenceRetryCount = 0;
+    this.setState("playing");
+    this.playCurrentSentence();
+  }
+
+  /** Stop playback and reset to the current index. */
+  stop(): void {
+    this.cancelCurrentPlayback();
+    if (this.provider?.isDirectOnly && "stop" in this.provider) {
+      (this.provider as unknown as { stop(): void }).stop();
+    }
+    this.setState("stopped");
+    this.callbacks.onStop?.();
+  }
+
+  /** Pause the currently playing audio. */
+  pause(): void {
+    if (this._state !== "playing") return;
+    this.audioElement?.pause();
+    if (this.provider?.isDirectOnly && "stop" in this.provider) {
+      (this.provider as unknown as { stop(): void }).stop();
+    }
+    this.clearEarlyEndingTimer();
+    this.setState("paused");
+  }
+
+  /** Resume from a paused state. */
+  resume(): void {
+    if (this._state !== "paused") return;
+    if (this.audioElement && this.audioElement.src) {
+      this.setState("playing");
+      this.audioElement.play().catch((err) => this.handleError(err));
+    } else {
+      // No audio element to resume — restart from current index
+      this.setState("playing");
+      this.playCurrentSentence();
+    }
+  }
+
+  /** Jump to a specific sentence index. Restarts playback if playing. */
+  jumpTo(index: number): void {
+    if (index < 0 || index >= this.sentences.length) return;
+
+    const wasPlaying = this._state === "playing";
+    this.cancelCurrentPlayback();
+    this._currentIndex = index;
+    this.sentenceRetryCount = 0;
+
+    if (wasPlaying) {
+      this.setState("playing");
+      this.playCurrentSentence();
+    } else {
+      this.callbacks.onSentenceStart?.(index);
+    }
+  }
+
+  /** Clean up all resources. Call when unmounting. */
+  destroy(): void {
+    this.cancelCurrentPlayback();
+    this.cache.clear();
+    this.sentences = [];
+    this.provider = null;
+    this._state = "idle";
+  }
+
+  // ========================================================================
+  // Internal playback loop
+  // ========================================================================
+
+  private async playCurrentSentence(): Promise<void> {
+    if (this._state !== "playing") return;
+
+    // Snapshot generation — if it changes while we're awaiting, this
+    // invocation is stale and must abort to prevent concurrent playback.
+    const gen = this.playbackGeneration;
+    const stale = () => gen !== this.playbackGeneration;
+
+    const sentence = this.sentences[this._currentIndex];
+    if (!sentence) {
+      // Past the end — finished
+      this.setState("stopped");
+      this.callbacks.onFinish?.();
+      return;
+    }
+
+    this.callbacks.onSentenceStart?.(this._currentIndex);
+
+    // Direct-only providers (e.g. BrowserTTS) handle playback internally
+    if (this.provider!.isDirectOnly && "speakDirect" in this.provider!) {
+      try {
+        this.callbacks.onAudioPlay?.();
+        const adjusted = this.adjuster.getAdjustmentFor(sentence.originalText, {
+          voice: this.voiceId,
+          rate: this.rate,
+          pitch: this.pitch,
+        });
+        await (
+          this.provider as unknown as {
+            speakDirect(text: string, options?: unknown): Promise<void>;
+          }
+        ).speakDirect(sentence.text, adjusted);
+        if (stale() || this._state !== "playing") return;
+        this.advanceToNext();
+      } catch (err) {
+        if (!stale()) this.handleError(err);
+      }
+      return;
+    }
+
+    // Fetch-and-play path with retry + exponential backoff
+    for (let attempt = 0; attempt <= this.MAX_RETRIES; attempt++) {
+      if (stale() || this._state !== "playing") return;
+
+      if (attempt > 0) {
+        const adjusted = this.adjuster.getAdjustmentFor(sentence.originalText, {
+          voice: this.voiceId,
+          rate: this.rate,
+          pitch: this.pitch,
+        });
+        this.cache.invalidate(
+          sentence.text,
+          this.voiceId,
+          adjusted.rate ?? this.rate,
+          adjusted.pitch ?? this.pitch,
+        );
+        await this.delay(this.RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1));
+        if (stale() || this._state !== "playing") return;
+        console.warn(
+          `[TTS Player] Retrying sentence ${this._currentIndex} (attempt ${attempt}/${this.MAX_RETRIES})`,
+        );
+      }
+
+      try {
+        this.preloadAhead();
+        const blob = await this.fetchAudioForSentence(sentence);
+        if (stale() || this._state !== "playing") return;
+        await this.playBlob(blob, sentence);
+        if (stale()) return;
+        this.sentenceRetryCount = 0;
+        return;
+      } catch (err) {
+        if (stale()) return;
+        if (attempt < this.MAX_RETRIES) continue;
+
+        // All retries exhausted — skip sentence instead of halting playback
+        console.error(
+          `[TTS Player] Sentence ${this._currentIndex} failed after ${this.MAX_RETRIES} retries, skipping.`,
+          err,
+        );
+        this.sentenceRetryCount = 0;
+        if (this._state === "playing") {
+          this.advanceToNext();
+        }
+      }
+    }
+  }
+
+  /**
+   * Fetch (or retrieve from cache) audio for a single sentence,
+   * applying fluency adjustments.
+   */
+  private fetchAudioForSentence(sentence: Sentence): Promise<Blob> {
+    const provider = this.provider!;
+    const adjusted = this.adjuster.getAdjustmentFor(sentence.originalText, {
+      voice: this.voiceId,
+      rate: this.rate,
+      pitch: this.pitch,
+    });
+
+    const effectiveRate = adjusted.rate ?? this.rate;
+    const effectivePitch = adjusted.pitch ?? this.pitch;
+
+    return this.cache.getOrFetch(
+      sentence.text,
+      this.voiceId,
+      effectiveRate,
+      effectivePitch,
+      () => provider.fetchAudio(sentence.text, adjusted),
+    );
+  }
+
+  /**
+   * Play an audio blob through the `<audio>` element and wait for it to
+   * finish (or be cut short by `getCutTime`).
+   */
+  private playBlob(blob: Blob, sentence: Sentence): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      this.revokeBlobUrl();
+
+      const url = URL.createObjectURL(blob);
+      this.currentBlobUrl = url;
+
+      const audio = new Audio(url);
+      this.audioElement = audio;
+
+      // Apply provider-specific playback options
+      const playbackOpts = this.provider?.getPlaybackOptions?.();
+      if (playbackOpts) {
+        if (playbackOpts.playbackRate != null) {
+          audio.playbackRate = playbackOpts.playbackRate;
+        }
+        if (playbackOpts.preservesPitch != null) {
+          audio.preservesPitch = playbackOpts.preservesPitch;
+        }
+      }
+
+      const onEnded = () => {
+        cleanup();
+        this.advanceToNext();
+        resolve();
+      };
+
+      const onError = (e: Event) => {
+        cleanup();
+        reject(
+          new Error(
+            `Audio playback error: ${(e as ErrorEvent).message ?? "unknown"}`,
+          ),
+        );
+      };
+
+      const cleanup = () => {
+        this.clearEarlyEndingTimer();
+        audio.removeEventListener("ended", onEnded);
+        audio.removeEventListener("error", onError);
+      };
+
+      audio.addEventListener("ended", onEnded);
+      audio.addEventListener("error", onError);
+
+      audio
+        .play()
+        .then(() => {
+          this.callbacks.onAudioPlay?.();
+          // Set up early ending if the provider supports getCutTime
+          if (this.provider?.getCutTime) {
+            const cutTime = this.provider.getCutTime(sentence.text);
+            const duration = audio.duration;
+            if (cutTime > 0.05 && duration > cutTime) {
+              const playable = (duration - cutTime) * 1000;
+              this.earlyEndingTimer = setTimeout(() => {
+                cleanup();
+                audio.pause();
+                this.advanceToNext();
+                resolve();
+              }, playable);
+            }
+          }
+        })
+        .catch((err) => {
+          cleanup();
+          reject(err);
+        });
+    });
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /** Move index forward and play the next sentence. */
+  private advanceToNext(): void {
+    this.revokeBlobUrl();
+    this._currentIndex++;
+    // Capture generation NOW so that if cancelCurrentPlayback() fires between
+    // here and the setTimeout callback, the stale check will abort this chain.
+    const gen = this.playbackGeneration;
+    // Use setTimeout(0) to avoid deep call stacks on long documents
+    setTimeout(() => {
+      if (gen !== this.playbackGeneration) return;
+      this.playCurrentSentence();
+    }, 0);
+  }
+
+  // ========================================================================
+  // Preloading
+  // ========================================================================
+
+  /**
+   * Preload audio for the next N sentences (default 2) while the current
+   * sentence plays. Errors are swallowed — preloading is best-effort.
+   */
+  private preloadAhead(): void {
+    if (!this.provider || this.maxPreload <= 0) return;
+
+    const start = this._currentIndex + 1;
+    const end = Math.min(start + this.maxPreload, this.sentences.length);
+
+    for (let i = start; i < end; i++) {
+      const sentence = this.sentences[i];
+      if (!sentence) continue;
+      // Fire and forget
+      this.fetchAudioForSentence(sentence).catch(() => {
+        // Preload failure is non-fatal
+      });
+    }
+  }
+
+  // ========================================================================
+  // Helpers
+  // ========================================================================
+
+  private setState(state: PlayState): void {
+    this._state = state;
+    this.callbacks.onPlayStateChange?.(state);
+  }
+
+  private handleError(err: unknown): void {
+    // Don't report errors after user-initiated stop
+    if (this._state === "stopped") return;
+    console.error("[TTS Player]", err);
+    this.cancelCurrentPlayback();
+    this.setState("stopped");
+    this.callbacks.onError?.(err);
+  }
+
+  private cancelCurrentPlayback(): void {
+    this.playbackGeneration++;
+    this.clearEarlyEndingTimer();
+    if (this.audioElement) {
+      this.audioElement.pause();
+      this.audioElement.removeAttribute("src");
+      this.audioElement = null;
+    }
+    this.revokeBlobUrl();
+  }
+
+  private revokeBlobUrl(): void {
+    if (this.currentBlobUrl) {
+      URL.revokeObjectURL(this.currentBlobUrl);
+      this.currentBlobUrl = null;
+    }
+  }
+
+  private clearEarlyEndingTimer(): void {
+    if (this.earlyEndingTimer != null) {
+      clearTimeout(this.earlyEndingTimer);
+      this.earlyEndingTimer = null;
+    }
+  }
+}

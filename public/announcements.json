@@ -1,0 +1,12 @@
+{
+  "announcements": [
+    {
+      "id": "version-0.11.1-07.04.2026",
+      "enabled": true,
+      "type": "info",
+      "content": "v0.11.1 - Trang chủ mới, Scrape truyện từ UUKansu, Cài đặt AI & Cải thiện Auto-Write. [Xem chi tiết](/changelog)",
+      "bgColor": "bg-orange-500/10 dark:bg-orange-500/15",
+      "textColor": "text-orange-700 dark:text-orange-300"
+    }
+  ]
+}

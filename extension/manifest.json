@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Novel Studio Connector (Android)",
+  "version": "0.3.0",
+  "description": "Fetch novel content from external websites for Novel Studio. Optimized for Kiwi Browser on Android.",
+  "permissions": ["tabs", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "externally_connectable": {
+    "matches": [
+      "*://*.vercel.app/*",
+      "*://localhost/*"
+    ]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {}
+}

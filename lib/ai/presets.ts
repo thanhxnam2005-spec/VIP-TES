@@ -1,0 +1,122 @@
+import type { ProviderType } from "@/lib/db";
+
+export interface ProviderPreset {
+  type: ProviderType;
+  label: string;
+  description: string;
+  defaultBaseUrl: string;
+  baseUrlEditable: boolean;
+  apiKeyPlaceholder: string;
+  apiKeyHelpUrl?: string;
+  popularModels: string[];
+  /** Icon key for thesvg package (e.g. "openai" → import from "thesvg/openai") */
+  iconKey: string;
+}
+
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    type: "openai",
+    label: "OpenAI",
+    description: "GPT-4.2, GPT-4.1, o3, o4-mini",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "sk-...",
+    apiKeyHelpUrl: "https://platform.openai.com/api-keys",
+    iconKey: "openai",
+    popularModels: [],
+  },
+  {
+    type: "anthropic",
+    label: "Anthropic",
+    description: "Claude Opus, Sonnet, Haiku",
+    defaultBaseUrl: "https://api.anthropic.com",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "sk-ant-...",
+    apiKeyHelpUrl: "https://console.anthropic.com/settings/keys",
+    iconKey: "anthropic",
+    popularModels: [],
+  },
+  {
+    type: "google",
+    label: "Google AI",
+    description: "Gemini 3.1 Pro, Flash",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "AI...",
+    apiKeyHelpUrl: "https://aistudio.google.com/app/apikey",
+    iconKey: "google",
+    popularModels: [],
+  },
+  {
+    type: "groq",
+    label: "Groq",
+    description: "Suy luận siêu nhanh — Llama, Mixtral",
+    defaultBaseUrl: "https://api.groq.com/openai/v1",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "gsk_...",
+    apiKeyHelpUrl: "https://console.groq.com/keys",
+    iconKey: "groq",
+    popularModels: [],
+  },
+  {
+    type: "mistral",
+    label: "Mistral",
+    description: "Mistral Large, Medium, Small",
+    defaultBaseUrl: "https://api.mistral.ai/v1",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "...",
+    apiKeyHelpUrl: "https://console.mistral.ai/api-keys",
+    iconKey: "mistral",
+    popularModels: [],
+  },
+  {
+    type: "xai",
+    label: "xAI",
+    description: "Grok",
+    defaultBaseUrl: "https://api.x.ai/v1",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "xai-...",
+    apiKeyHelpUrl: "https://console.x.ai/",
+    iconKey: "xai",
+    popularModels: [],
+  },
+  {
+    type: "openrouter",
+    label: "OpenRouter",
+    description: "Truy cập 200+ mô hình qua một API",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    baseUrlEditable: false,
+    apiKeyPlaceholder: "sk-or-...",
+    apiKeyHelpUrl: "https://openrouter.ai/keys",
+    iconKey: "openrouter",
+    popularModels: [],
+  },
+  {
+    type: "openai-compatible",
+    label: "Tùy chỉnh",
+    description:
+      "LM Studio, Ollama, Together, hoặc bất kỳ endpoint tương thích",
+    defaultBaseUrl: "",
+    baseUrlEditable: true,
+    apiKeyPlaceholder: "Khóa API (tùy chọn cho local)",
+    iconKey: "",
+    popularModels: [],
+  },
+];
+
+// System provider preset (not in PROVIDER_PRESETS — not user-creatable)
+const WEBGPU_PRESET: ProviderPreset = {
+  type: "webgpu",
+  label: "WebGPU (Miễn phí)",
+  description: "Chạy AI trực tiếp trên trình duyệt",
+  defaultBaseUrl: "",
+  baseUrlEditable: false,
+  apiKeyPlaceholder: "",
+  iconKey: "webgpu",
+  popularModels: [],
+};
+
+export function getPreset(type: ProviderType): ProviderPreset | undefined {
+  if (type === "webgpu") return WEBGPU_PRESET;
+  return PROVIDER_PRESETS.find((p) => p.type === type);
+}
