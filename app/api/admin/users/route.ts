@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 async function authenticateAdmin(req: Request) {
-  return { status: 200, user: { id: "admin", email: "admin@local" } };
+  return { status: 200, user: { id: "admin", email: "admin@local" }, error: undefined };
 }
 
 export async function GET(req: Request) {
