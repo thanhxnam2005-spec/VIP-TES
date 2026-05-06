@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadIcon, LockKeyholeIcon, SparklesIcon } from "lucide-react";
+import { DownloadIcon, LockKeyholeIcon } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 
 type NovelItem = {
   id: string;
@@ -22,12 +21,8 @@ type NovelItem = {
 type ExportSettingsCardProps = {
   novels: NovelItem[] | undefined;
   selectedNovelIds: string[];
-  includeAI: boolean;
-  includeConversations: boolean;
   exportPassword: string;
   onToggleNovel: (novelId: string, checked: boolean) => void;
-  onIncludeAIChange: (checked: boolean) => void;
-  onIncludeConversationsChange: (checked: boolean) => void;
   onExportPasswordChange: (value: string) => void;
   onExport: () => void;
 };
@@ -35,12 +30,8 @@ type ExportSettingsCardProps = {
 export function ExportSettingsCard({
   novels,
   selectedNovelIds,
-  includeAI,
-  includeConversations,
   exportPassword,
   onToggleNovel,
-  onIncludeAIChange,
-  onIncludeConversationsChange,
   onExportPasswordChange,
   onExport,
 }: ExportSettingsCardProps) {
@@ -77,29 +68,6 @@ export function ExportSettingsCard({
           )}
         </div>
 
-        {selectedNovelIds.length === 0 && (
-          <>
-            <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
-              <div>
-                <Label className="text-sm font-medium">Bao gồm cài đặt AI</Label>
-                <p className="text-sm text-muted-foreground">
-                  Nhà cung cấp, mô hình và cấu hình phân tích.
-                </p>
-              </div>
-              <Switch checked={includeAI} onCheckedChange={onIncludeAIChange} />
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-xl border p-4">
-              <div>
-                <Label className="text-sm font-medium">Bao gồm hội thoại AI</Label>
-                <p className="text-sm text-muted-foreground">Lịch sử trò chuyện với AI.</p>
-              </div>
-              <Switch
-                checked={includeConversations}
-                onCheckedChange={onIncludeConversationsChange}
-              />
-            </div>
-          </>
-        )}
 
         <div className="rounded-xl border p-4">
           <Label className="flex items-center gap-2 text-sm font-medium">
@@ -121,7 +89,7 @@ export function ExportSettingsCard({
         </div>
 
         <Button onClick={onExport} className="w-full sm:w-auto">
-          <SparklesIcon className="mr-2 size-4" />
+          <DownloadIcon className="mr-2 size-4" />
           Xuất dữ liệu
         </Button>
       </CardContent>

@@ -50,7 +50,6 @@ import {
   ExternalLinkIcon,
   PencilIcon,
   ScrollTextIcon,
-  SparklesIcon,
   Trash2Icon,
   FileArchiveIcon,
   BookOpenIcon,
@@ -269,19 +268,6 @@ export default function NovelDetailPage() {
 
             {/* Action buttons */}
             <div className="flex shrink-0 items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="sm"
-                    onClick={() => router.push(`/novels/${id}/auto-write`)}
-                    className="relative bg-linear-to-r from-purple-600 via-pink-600 to-red-600 hover:from-purple-700 hover:via-pink-700 hover:to-red-700 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/50 hover:animate-none"
-                  >
-                    <SparklesIcon className="size-3 mr-1 animate-pulse" />
-                    Viết AI
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Viết truyện tự động</TooltipContent>
-              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button

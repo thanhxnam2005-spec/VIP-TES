@@ -449,9 +449,17 @@ function UrlStep() {
   const [timeout, setTimeout_] = useState(() => getScrapeTimeout() / 1000);
 
   const handleSaveExtId = () => {
-    setExtensionId(extId);
+    if (!extId.trim()) return;
+    setExtensionId(extId.trim());
     checkExtension();
   };
+
+  // Auto-connect when ID is pasted/changed
+  useEffect(() => {
+    if (extId.trim().length === 32) {
+      handleSaveExtId();
+    }
+  }, [extId]);
 
   const handleTimeoutChange = (val: string) => {
     setTimeout_(parseInt(val, 10) || 0);
@@ -794,10 +802,20 @@ function SelectStep() {
     setStep,
     chapterDelay,
     setChapterDelay,
+    url,
+    reset,
   } = useScraperStore();
+
+  const { addJob } = useScraperQueueStore();
+  const novels = useNovels();
 
   const [rangeFrom, setRangeFrom] = useState("");
   const [rangeTo, setRangeTo] = useState("");
+
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [selectedNovelId, setSelectedNovelId] = useState<string>("");
+  const [title, setTitle] = useState(novelInfo?.title || "");
+  const [desc, setDesc] = useState(novelInfo?.description || "");
 
   if (!novelInfo) return null;
 
@@ -812,128 +830,7 @@ function SelectStep() {
     useScraperStore.setState({ selectedChapterUrls: urls });
   };
 
-  const isAllSelected = selectedChapterUrls.size === novelInfo.chapters.length;
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="line-clamp-1">{novelInfo.title}</CardTitle>
-        <CardDescription>
-          {novelInfo.author && <>{novelInfo.author} · </>}
-          {novelInfo.chapters.length} chương ·{" "}
-          <span className="font-medium text-foreground">
-            {selectedChapterUrls.size}
-          </span>{" "}
-          đã chọn
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {novelInfo.description && (
-          <p className="text-sm leading-relaxed text-muted-foreground line-clamp-2">
-            {novelInfo.description}
-          </p>
-        )}
-
-        {/* Controls bar */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={isAllSelected ? deselectAll : selectAll}
-          >
-            {isAllSelected ? (
-              <SquareIcon className="mr-1 size-3" />
-            ) : (
-              <CheckIcon className="mr-1 size-3" />
-            )}
-            {isAllSelected ? "Bỏ chọn" : "Chọn tất cả"}
-          </Button>
-
-          <div className="mx-1 h-4 w-px bg-border" />
-
-          <div className="flex items-center gap-1">
-            <Input
-              type="number"
-              placeholder="Từ"
-              value={rangeFrom}
-              onChange={(e) => setRangeFrom(e.target.value)}
-              className="h-7 w-16 text-xs placeholder:text-xs"
-              min={1}
-            />
-            <span className="text-xs text-muted-foreground">–</span>
-            <Input
-              type="number"
-              placeholder="Đến"
-              value={rangeTo}
-              onChange={(e) => setRangeTo(e.target.value)}
-              className="h-7 w-16 text-xs placeholder:text-xs"
-              min={1}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleSelectRange}
-            >
-              Chọn
-            </Button>
-          </div>
-        </div>
-
-        <VirtualScraperChapterPicker
-          chapters={novelInfo.chapters}
-          selectedChapterUrls={selectedChapterUrls}
-          toggleChapter={toggleChapter}
-        />
-
-        <div className="flex items-center justify-between pt-1">
-          <Button variant="ghost" size="sm" onClick={() => setStep("url")}>
-            Quay lại
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <Label htmlFor="delay-select" className="text-xs text-muted-foreground">
-                Độ trễ (giây):
-              </Label>
-              <Input
-                id="delay-select"
-                type="number"
-                min={0}
-                max={60}
-                value={chapterDelay}
-                onChange={(e) => setChapterDelay(Number(e.target.value))}
-                className="h-8 w-16 text-center text-xs"
-              />
-            </div>
-            <div className="flex gap-2">
-              <BackgroundScrapeDialog />
-              <Button
-                onClick={startScraping}
-                disabled={selectedChapterUrls.size === 0}
-              >
-                Scrape {selectedChapterUrls.size} chương
-                <ArrowRightIcon className="ml-1 size-3.5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function BackgroundScrapeDialog() {
-  const { novelInfo, selectedChapterUrls, url, chapterDelay, reset } = useScraperStore();
-  const { addJob } = useScraperQueueStore();
-  const novels = useNovels();
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"new" | "existing">("new");
-  const [selectedNovelId, setSelectedNovelId] = useState<string>("");
-  const [title, setTitle] = useState(novelInfo?.title || "");
-  const [desc, setDesc] = useState(novelInfo?.description || "");
-
-  const handleStart = async () => {
+  const handleStartBackground = async () => {
     if (mode === "new" && !title.trim()) {
       toast.error("Vui lòng nhập tiêu đề");
       return;
@@ -945,7 +842,6 @@ function BackgroundScrapeDialog() {
 
     let finalNovelId = selectedNovelId;
     
-    // Create novel entry if needed
     if (mode === "new") {
       finalNovelId = crypto.randomUUID();
       const now = new Date();
@@ -964,97 +860,200 @@ function BackgroundScrapeDialog() {
     const selectedChapters = (novelInfo?.chapters || []).filter(ch => selectedChapterUrls.has(ch.url));
     if (selectedChapters.length === 0) return;
 
-    addJob(finalNovelId, mode === "new" ? title : (novels?.find(n => n.id === finalNovelId)?.title || title), url, selectedChapters, chapterDelay * 1000);
+    addJob(
+      finalNovelId, 
+      mode === "new" ? title : (novels?.find(n => n.id === finalNovelId)?.title || title), 
+      url, 
+      selectedChapters, 
+      chapterDelay * 1000
+    );
     
-    toast.success("Đã thêm vào hàng đợi tải nền!");
-    setOpen(false);
-    reset(); // Reset UI for the next novel
+    toast.success("Đã thêm vào thư viện và bắt đầu tải!");
+    reset(); 
   };
 
+  const isAllSelected = selectedChapterUrls.size === novelInfo.chapters.length;
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" disabled={selectedChapterUrls.size === 0}>
-          <DownloadIcon className="mr-1.5 size-3.5" />
-          Tải nền
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Thiết lập tải nền</DialogTitle>
-          <DialogDescription>
-            Truyện sẽ được tải và lưu trực tiếp vào danh sách. Bạn có thể đọc ngay khi chương mới được tải về.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div className="flex rounded-lg bg-muted p-1">
-            <button
-              onClick={() => setMode("new")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                mode === "new"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <PlusIcon className="size-3.5" />
-              Tạo mới
-            </button>
-            <button
-              onClick={() => setMode("existing")}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                mode === "existing"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BookPlusIcon className="size-3.5" />
-              Thêm vào có sẵn
-            </button>
+    <Card className="overflow-hidden">
+      <div className="flex flex-col md:flex-row">
+        {/* Left column: Chapter selection */}
+        <div className="flex-1 p-6 space-y-4 border-r">
+          <div>
+            <CardTitle className="line-clamp-1">{novelInfo.title}</CardTitle>
+            <CardDescription className="mt-1">
+              {novelInfo.author && <>{novelInfo.author} · </>}
+              {novelInfo.chapters.length} chương ·{" "}
+              <span className="font-bold text-primary">
+                {selectedChapterUrls.size}
+              </span>{" "}
+              đã chọn
+            </CardDescription>
           </div>
 
-          {mode === "new" ? (
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Tiêu đề</Label>
-                <Input value={title} onChange={e => setTitle(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Mô tả</Label>
-                <Textarea value={desc} onChange={e => setDesc(e.target.value)} rows={3} className="max-h-32 overflow-y-auto" />
-              </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={isAllSelected ? deselectAll : selectAll}
+            >
+              {isAllSelected ? (
+                <SquareIcon className="mr-1.5 size-3" />
+              ) : (
+                <CheckIcon className="mr-1.5 size-3" />
+              )}
+              {isAllSelected ? "Bỏ chọn" : "Chọn tất cả"}
+            </Button>
+            <div className="mx-1 h-4 w-px bg-border" />
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                placeholder="Từ"
+                value={rangeFrom}
+                onChange={(e) => setRangeFrom(e.target.value)}
+                className="h-7 w-16 text-xs"
+                min={1}
+              />
+              <span className="text-muted-foreground text-xs">đến</span>
+              <Input
+                type="number"
+                placeholder="Đến"
+                value={rangeTo}
+                onChange={(e) => setRangeTo(e.target.value)}
+                className="h-7 w-16 text-xs"
+                min={1}
+              />
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={handleSelectRange}>
+                Chọn
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-1">
-              <Label className="text-xs">Chọn truyện</Label>
-              <Select value={selectedNovelId} onValueChange={setSelectedNovelId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn truyện mục tiêu..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {novels?.map(n => (
-                    <SelectItem key={n.id} value={n.id}>{n.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-            <p>• {selectedChapterUrls.size} chương sẽ được tải.</p>
-            <p>• Mỗi chương tải xong sẽ lưu vào DB ngay lập tức.</p>
-            <p>• Có thể tạm dừng/tiếp tục từ thanh thông báo ở góc màn hình.</p>
           </div>
+
+          <VirtualScraperChapterPicker
+            chapters={novelInfo.chapters}
+            selectedChapterUrls={selectedChapterUrls}
+            toggleChapter={toggleChapter}
+          />
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>Hủy</Button>
-          <Button onClick={handleStart}>Bắt đầu tải nền</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Right column: Target Novel & Start */}
+        <div className="w-full md:w-80 p-6 bg-muted/20 flex flex-col justify-between border-t md:border-t-0">
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Lưu vào thư viện</Label>
+              <div className="flex rounded-lg bg-muted/50 p-1">
+                <button
+                  onClick={() => setMode("new")}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-all",
+                    mode === "new" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <PlusIcon className="size-3.5" />
+                  Mới
+                </button>
+                <button
+                  onClick={() => setMode("existing")}
+                  className={cn(
+                    "flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-all",
+                    mode === "existing" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <BookPlusIcon className="size-3.5" />
+                  Có sẵn
+                </button>
+              </div>
+            </div>
+
+            {mode === "new" ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tiêu đề</Label>
+                  <Input 
+                    value={title} 
+                    onChange={e => setTitle(e.target.value)} 
+                    className="h-9 text-sm"
+                    placeholder="Tên truyện..."
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Mô tả (tùy chọn)</Label>
+                  <Textarea 
+                    value={desc} 
+                    onChange={e => setDesc(e.target.value)} 
+                    rows={3} 
+                    className="text-xs min-h-[80px]"
+                    placeholder="Mô tả ngắn gọn..."
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Chọn truyện đích</Label>
+                <Select value={selectedNovelId} onValueChange={setSelectedNovelId}>
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Chọn truyện..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {novels?.map(n => (
+                      <SelectItem key={n.id} value={n.id}>{n.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5 pt-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="delay-select" className="text-xs">Độ trễ tải (giây):</Label>
+                <span className="text-xs font-bold text-primary">{chapterDelay}s</span>
+              </div>
+              <Input
+                id="delay-select"
+                type="number"
+                min={0}
+                max={60}
+                value={chapterDelay}
+                onChange={(e) => setChapterDelay(Number(e.target.value))}
+                className="h-8 text-center text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8 space-y-2">
+            <Button
+              onClick={handleStartBackground}
+              disabled={selectedChapterUrls.size === 0}
+              className="w-full h-11 text-sm font-bold bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg shadow-green-500/10 active:scale-95 transition-all"
+            >
+              <DownloadIcon className="mr-2 size-4" />
+              Bắt đầu tải về thư viện
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={startScraping}
+              disabled={selectedChapterUrls.size === 0}
+              className="w-full text-[10px] text-muted-foreground hover:text-foreground"
+            >
+              Tải thủ công (Preview trước khi lưu)
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="xs" 
+              onClick={() => setStep("url")}
+              className="w-full text-[10px]"
+            >
+              Quay lại URL
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }
+
 
 
 // ─── Step 2.5: STV Wait ─────────────────────────────────────
@@ -1210,22 +1209,51 @@ function ScrapingStep() {
 
         {error && (
           <div className="space-y-3">
-            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive border border-destructive/20">
-              <div className="flex items-start gap-2">
-                <AlertTriangleIcon className="size-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
+            {error.startsWith("STV_RESUME_REQUIRED|") ? (
+              (() => {
+                const [, title, msg] = error.split("|");
+                return (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-900/50 dark:bg-blue-950/20 shadow-sm">
+                    <div className="flex gap-3">
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400">
+                        <HandIcon className="size-4" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100">Cần bạn hỗ trợ (SangTacViet)</h4>
+                        <p className="text-xs leading-relaxed text-blue-800/80 dark:text-blue-300/80">
+                          {msg}
+                        </p>
+                        <div className="mt-2 flex items-center gap-2 rounded-md bg-blue-100/50 px-2.5 py-1.5 dark:bg-blue-900/30">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 dark:text-blue-400">Chương cần mở:</span>
+                          <span className="text-xs font-bold text-blue-900 dark:text-blue-100 truncate">{title}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive border border-destructive/20">
+                <div className="flex items-start gap-2">
+                  <AlertTriangleIcon className="size-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
               </div>
-            </div>
+            )}
+            
             {scrapedChapters.length > 0 && adapter?.name === "STV" && (
-              <div className="flex justify-center">
+              <div className="flex justify-center pt-1">
                 <Button 
-                  size="sm" 
+                  size="default" 
                   variant="default"
                   onClick={() => useScraperStore.getState().confirmSTVReady()}
-                  className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-sm"
+                  className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-md px-6 py-5 rounded-xl h-auto transition-all hover:scale-[1.02] active:scale-95"
                 >
-                  <RefreshCwIcon className="size-3.5" />
-                  Tiếp tục tải các chương còn lại
+                  <RefreshCwIcon className="size-4 animate-in fade-in spin-in duration-700" />
+                  <div className="flex flex-col items-start leading-none gap-0.5">
+                    <span className="text-sm font-bold">Tiếp tục tải các chương còn lại</span>
+                    <span className="text-[10px] opacity-80 font-normal">Sau khi đã mở chương trên tab STV</span>
+                  </div>
                 </Button>
               </div>
             )}

@@ -25,7 +25,6 @@ import { useQTEngineStatus } from "@/lib/hooks/use-qt-engine";
 
 import {
   BookOpenIcon,
-  BrainIcon,
   DatabaseIcon,
   GitCompareArrowsIcon,
   GlobeIcon,
@@ -37,7 +36,6 @@ import {
   UploadIcon,
   SettingsIcon,
   ChevronRightIcon,
-  LaptopIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -47,19 +45,8 @@ export const navConfig = [
   { title: "Trang chủ", href: "/dashboard", icon: HomeIcon },
   { title: "Thư viện", href: "/library", icon: LibraryIcon },
   { title: "Nhập sách", href: "/import", icon: UploadIcon },
-  { title: "Convert Live", href: "/convert", icon: GitCompareArrowsIcon },
   { title: "Import Truyện", href: "/scraper", icon: GlobeIcon },
   { title: "Nhà cung cấp AI", href: "/settings/providers", icon: ServerIcon },
-  {
-    title: "Cài đặt AI",
-    href: "/settings/ai-settings",
-    icon: BrainIcon,
-  },
-  {
-    title: "Tiện ích & Scripts",
-    href: "/settings/scripts",
-    icon: LaptopIcon,
-  },
   {
     title: "Quản lý dữ liệu",
     href: "/settings/data",
@@ -88,7 +75,7 @@ export function AppSidebar() {
   const pathname = usePathname();
   const novels = useNovels();
   const recentNovels = novels?.slice(0, 5);
-  const isAdmin = true;
+  const isAdmin = false;
 
   const adminNavItem = {
     title: "Quản trị",

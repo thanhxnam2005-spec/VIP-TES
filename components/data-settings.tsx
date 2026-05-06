@@ -262,12 +262,8 @@ export function DataSettings() {
           <ExportSettingsCard
             novels={novels}
             selectedNovelIds={selectedNovelIds}
-            includeAI={includeAI}
-            includeConversations={includeConversations}
             exportPassword={exportPassword}
             onToggleNovel={toggleNovel}
-            onIncludeAIChange={setIncludeAI}
-            onIncludeConversationsChange={setIncludeConversations}
             onExportPasswordChange={setExportPassword}
             onExport={handleExport}
           />

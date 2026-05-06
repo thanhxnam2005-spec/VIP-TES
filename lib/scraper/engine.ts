@@ -83,7 +83,7 @@ export async function scrapeChapters(
     }
 
     const chapter = chapters[i];
-    onProgress?.(i, chapters.length, chapter.title);
+    onProgress?.(i + 1, chapters.length, chapter.title);
 
     // Pause loop
     while (onPauseCheck?.()) {
@@ -177,8 +177,10 @@ export async function scrapeChapters(
     // For STV, stop IMMEDIATELY if content is missing or too short
     if (adapter.name === "STV" && (timedOut || content.content.length < 30)) {
       await extensionStopScrape();
+      const chNumMatch = chapter.title.match(/(\d+)/);
+      const chNum = chNumMatch ? `số ${chNumMatch[0]}` : "";
       throw new Error(
-        `Chương "${chapter.title}" không load được nội dung. Vui lòng mở tab SangTacViet, đảm bảo chương này đã hiện nội dung, sau đó quay lại đây bấm "Tiếp tục".`,
+        `STV_RESUME_REQUIRED|${chapter.title}|Vui lòng mở Tab SangTacViet, vào đúng chương ${chNum} ("${chapter.title}") và đảm bảo nội dung đã hiển thị, sau đó quay lại đây bấm "Tiếp tục".`,
       );
     }
 

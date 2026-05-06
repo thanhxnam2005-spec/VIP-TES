@@ -115,12 +115,22 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
             set((s) => {
               const j = s.jobs[nextJob.id];
               if (!j) return s;
+              // Progress relative to the START of this specific run
+              // But we want to show overall progress.
+              // Since we slice chaptersToScrape as we go, 
+              // 'completed' here is always 1 for the first successful chapter in this batch.
+              // Wait, the progress in the overlay is (job.progress.completed / job.progress.total).
+              // So we should increment job.progress.completed.
               return {
                 jobs: {
                   ...s.jobs,
                   [nextJob.id]: {
                     ...j,
-                    progress: { completed, total, current: currentTitle },
+                    progress: { 
+                      ...j.progress,
+                      completed: j.progress.total - j.chaptersToScrape.length + completed, 
+                      current: currentTitle 
+                    },
                   },
                 },
               };
@@ -185,6 +195,21 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
                 updatedAt: now,
               });
             }
+
+            // Update remaining chapters so we can resume correctly
+            set((s) => {
+              const j = s.jobs[nextJob.id];
+              if (!j) return s;
+              return {
+                jobs: {
+                  ...s.jobs,
+                  [nextJob.id]: {
+                    ...j,
+                    chaptersToScrape: j.chaptersToScrape.slice(1),
+                  }
+                }
+              };
+            });
           },
           nextJob.delayMs,
           () => get().jobs[nextJob.id]?.status === "paused"
@@ -235,9 +260,18 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
   resumeJob: (id) => {
     set((state) => {
       const j = state.jobs[id];
-      if (!j || j.status !== "paused") return state;
-      return { jobs: { ...state.jobs, [id]: { ...j, status: "scraping" } } };
+      if (!j) return state;
+      if (j.status === "paused") {
+        return { jobs: { ...state.jobs, [id]: { ...j, status: "scraping" } } };
+      }
+      if (j.status === "error") {
+        // Clear error and set to pending to re-process
+        return { jobs: { ...state.jobs, [id]: { ...j, status: "pending", error: undefined } } };
+      }
+      return state;
     });
+    // Trigger queue if we resumed from error
+    get().processQueue();
   },
 
   cancelJob: (id) => {

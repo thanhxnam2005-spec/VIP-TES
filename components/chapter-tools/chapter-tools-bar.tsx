@@ -12,12 +12,9 @@ import {
 } from "@/lib/stores/chapter-tools";
 import { cn } from "@/lib/utils";
 import {
-  ClipboardCheckIcon,
   GitCompareArrowsIcon,
-  LanguagesIcon,
   LoaderIcon,
   ReplaceAllIcon,
-  SparklesIcon,
 } from "lucide-react";
 
 const TOOLS: {
@@ -26,9 +23,6 @@ const TOOLS: {
   label: string;
 }[] = [
   { mode: "convert", icon: GitCompareArrowsIcon, label: "Convert STV" },
-  { mode: "translate", icon: LanguagesIcon, label: "Dịch AI" },
-  { mode: "review", icon: ClipboardCheckIcon, label: "Đánh giá chương" },
-  { mode: "edit", icon: SparklesIcon, label: "Chỉnh sửa chương" },
   { mode: "replace", icon: ReplaceAllIcon, label: "Thay thế" },
 ];
 

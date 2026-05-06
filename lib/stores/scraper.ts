@@ -305,7 +305,7 @@ export const useScraperStore = create<ScraperState>()(
       },
 
       confirmSTVReady: async () => {
-        let { novelInfo, selectedChapterUrls, adapter, url } = get();
+        let { novelInfo, selectedChapterUrls, adapter, url, scrapedChapters } = get();
         if (!novelInfo) return;
 
         if (!adapter) {
@@ -314,27 +314,38 @@ export const useScraperStore = create<ScraperState>()(
         }
         if (!adapter) return;
 
-        const selectedChapters = novelInfo.chapters.filter((ch: ChapterLink) =>
+        const allSelected = novelInfo.chapters.filter((ch: ChapterLink) =>
           selectedChapterUrls.has(ch.url),
         );
-        if (selectedChapters.length === 0) return;
+        
+        // Resume from where we left off
+        // Note: scrapedChapters contains successfully parsed chapters from previous run
+        const pendingChapters = allSelected.slice(scrapedChapters.length);
+        
+        if (pendingChapters.length === 0) {
+          set({ step: "preview" });
+          return;
+        }
 
         const abortController = new AbortController();
         set({
           step: "scraping",
           isLoading: true,
           error: null,
-          scrapedChapters: [],
-          progress: { completed: 0, total: selectedChapters.length, current: "" },
+          // DO NOT clear scrapedChapters here, we are resuming
+          progress: { completed: scrapedChapters.length, total: allSelected.length, current: "" },
           abortController,
         });
 
         try {
           await scrapeChapters(
-            selectedChapters,
+            pendingChapters,
             adapter,
             (completed, total, currentTitle) => {
-              set({ progress: { completed, total, current: currentTitle } });
+              // total here is pendingChapters.length
+              // We want to show progress relative to allSelected
+              const overallCompleted = scrapedChapters.length + completed;
+              set({ progress: { completed: overallCompleted, total: allSelected.length, current: currentTitle } });
             },
             abortController.signal,
             (entry) => {
