@@ -46,6 +46,7 @@ export const navConfig = [
   { title: "Thư viện", href: "/library", icon: LibraryIcon },
   { title: "Nhập sách", href: "/import", icon: UploadIcon },
   { title: "Import Truyện", href: "/scraper", icon: GlobeIcon },
+  { title: "Tạo Prompt Scraper", href: "/scraper/generator", icon: GitCompareArrowsIcon },
   { title: "Nhà cung cấp AI", href: "/settings/providers", icon: ServerIcon },
   {
     title: "Quản lý dữ liệu",

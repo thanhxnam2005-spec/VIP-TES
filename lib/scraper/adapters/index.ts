@@ -7,6 +7,8 @@ import { SixNineShuAdapter } from "./SixNineShu";
 import { SixNineShuTwAdapter } from "./SixNineShuTw";
 import { JjwxcAdapter } from "./Jjwxc";
 import { XTruyenAdapter } from "./XTruyen";
+import { MeTruyenChuAdapter } from "./MeTruyenChu";
+import { UniversalAdapter } from "./Universal";
 
 const adapters: SiteAdapter[] = [
   STVAdapter,
@@ -17,11 +19,20 @@ const adapters: SiteAdapter[] = [
   SixNineShuTwAdapter,
   JjwxcAdapter,
   XTruyenAdapter,
+  MeTruyenChuAdapter,
+  UniversalAdapter,
 ];
 
 /** Find the adapter that matches the given URL, or null. */
 export function detectAdapter(url: string): SiteAdapter | null {
-  return adapters.find((a) => a.urlPattern.test(url)) ?? null;
+  // Try to find a specific adapter first
+  const specific = adapters.slice(0, -1).find((a) => a.urlPattern.test(url));
+  if (specific) return specific;
+  
+  // Fallback to Universal if it's a novel site URL (broad check)
+  if (url.startsWith("http")) return UniversalAdapter;
+  
+  return null;
 }
 
 /** Get all registered adapters (for UI display). */
@@ -29,4 +40,4 @@ export function getAdapters(): SiteAdapter[] {
   return adapters;
 }
 
-export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter };
+export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, UniversalAdapter };
