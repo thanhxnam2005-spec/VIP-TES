@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   // Performance: tree-shake large icon/component libraries
   experimental: {
     optimizePackageImports: [
@@ -16,12 +15,6 @@ const nextConfig: NextConfig = {
   // Optimize images
   images: {
     formats: ["image/avif", "image/webp"],
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
   },
   async redirects() {
     return [{ source: "/landing", destination: "/", permanent: true }];
