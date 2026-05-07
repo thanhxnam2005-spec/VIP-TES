@@ -89,7 +89,7 @@
     "husky": "^9.1.7",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "@opennextjs/cloudflare": "^0.3.5",
-    "wrangler": "^3.80.0"
+    "@opennextjs/cloudflare": "^1.19.7",
+    "wrangler": "^3.114.0"
   }
 }
