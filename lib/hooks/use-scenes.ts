@@ -76,15 +76,33 @@ export function useNovelWordCount(novelId: string | undefined) {
   const wordCount = useLiveQuery(
     async () => {
       if (!novelId) return 0;
-      const scenes = await db.scenes
+      let sum = 0;
+      await db.scenes
         .where("[novelId+isActive]")
         .equals([novelId, 1])
-        .toArray();
-      return scenes.reduce((sum, s) => sum + s.wordCount, 0);
+        .each((s) => { sum += s.wordCount; });
+      return sum;
     },
     [novelId],
   );
   return wordCount ?? 0;
+}
+
+export function useChapterWordCounts(novelId: string | undefined) {
+  return useLiveQuery(
+    async () => {
+      const map = new Map<string, number>();
+      if (!novelId) return map;
+      await db.scenes
+        .where("[novelId+isActive]")
+        .equals([novelId, 1])
+        .each((s) => {
+          map.set(s.chapterId, (map.get(s.chapterId) ?? 0) + s.wordCount);
+        });
+      return map;
+    },
+    [novelId]
+  ) ?? new Map<string, number>();
 }
 
 export async function createScene(

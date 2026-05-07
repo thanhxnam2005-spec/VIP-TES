@@ -35,7 +35,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
-import { ScraperOverlay } from "@/components/scraper/scraper-overlay";
+
 
 // Lazy load heavy panel components for faster initial render
 const ChatPanel = lazy(() => import("@/components/chat-panel").then(m => ({ default: m.ChatPanel })));
@@ -196,7 +196,7 @@ export default function DashboardLayout({
       <DictInitializer />
       <GlobalSearchDialog />
       <WelcomeModal />
-      <ScraperOverlay />
+
     </SidebarProvider>
   );
 }

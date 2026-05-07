@@ -64,6 +64,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 
 type SortField = "updatedAt" | "createdAt" | "title";
 type SortDirection = "asc" | "desc";
@@ -466,6 +467,7 @@ export default function LibraryPage() {
                     <p className="mt-1 text-[10px] text-muted-foreground/50">
                       {formatDate(novel.updatedAt)}
                     </p>
+                    <NovelTranslateProgress novelId={novel.id} />
                   </div>
                 </div>
               ))}
@@ -528,9 +530,12 @@ export default function LibraryPage() {
                       </div>
                     )}
 
-                    <span className="shrink-0 text-[11px] text-muted-foreground/50">
-                      {formatDate(novel.updatedAt)}
-                    </span>
+                    <div className="flex flex-col items-end shrink-0 gap-1">
+                      <span className="text-[11px] text-muted-foreground/50">
+                        {formatDate(novel.updatedAt)}
+                      </span>
+                      <NovelTranslateProgress novelId={novel.id} />
+                    </div>
 
                     <div onClick={(e) => e.stopPropagation()}>
                       <NovelActions
@@ -718,4 +723,20 @@ function paginationRange(current: number, total: number): (number | "...")[] {
   if (current < total - 2) pages.push("...");
   pages.push(total);
   return pages;
+}
+
+// ─── Translation Progress Indicator ─────────────────────────────
+
+function NovelTranslateProgress({ novelId }: { novelId: string }) {
+  const job = useBulkTranslateStore((s) => s.jobs[novelId]);
+  if (!job || (!job.isRunning && job.step !== "progress")) return null;
+  
+  const percent = job.totalChapters > 0 ? Math.round((job.chaptersCompleted / job.totalChapters) * 100) : 0;
+  
+  return (
+    <div className="flex w-full items-center justify-between text-[10px] font-medium text-emerald-600 dark:text-emerald-500 mt-0.5">
+      <span className="truncate pr-2">Đang dịch {job.chaptersCompleted}/{job.totalChapters}</span>
+      <span>{percent}%</span>
+    </div>
+  );
 }

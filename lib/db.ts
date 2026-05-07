@@ -42,6 +42,8 @@ export interface Novel {
   }>;
   /** AI-generated per-novel translation prompt from style analysis. */
   customTranslatePrompt?: string;
+  customTranslateProviderId?: string;
+  customTranslateModelId?: string;
   /** Timestamp of last style scan. */
   styleScannedAt?: Date;
   createdAt: Date;
@@ -68,6 +70,7 @@ export type SceneVersionType =
   | "qt-convert"
   | "stv-translate"
   | "stv-convert"
+  | "hybrid-converter"
   | "find-replace";
 
 export interface Scene {

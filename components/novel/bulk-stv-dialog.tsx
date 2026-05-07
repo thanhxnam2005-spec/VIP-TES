@@ -14,6 +14,7 @@ import { updateChapter } from "@/lib/hooks/use-chapters";
 import {
   createSceneVersion,
   ensureInitialVersion,
+  getOriginalContent,
 } from "@/lib/hooks/use-scene-versions";
 import { updateScene } from "@/lib/hooks/use-scenes";
 import { stvTranslate } from "@/lib/api/stv-translator";
@@ -75,20 +76,23 @@ export function BulkSTVDialog({
         }
 
         try {
+          // Get ORIGINAL content (pre-translation) for both title and scene
+          const originalContent = await getOriginalContent(scene.id);
+          
           // Translate Title
           const translatedTitle = await stvTranslate(ch.title, { 
             signal: controller.signal,
             dictionary: dict 
           });
           
-          // Translate Content
-          const translatedContent = await stvTranslate(scene.content, { 
+          // Translate Content — always from original
+          const translatedContent = await stvTranslate(originalContent || scene.content, { 
             signal: controller.signal,
             dictionary: dict
           });
 
           // Save results
-          await ensureInitialVersion(scene.id, novelId, scene.content);
+          await ensureInitialVersion(scene.id, novelId, originalContent || scene.content);
           await createSceneVersion(
             scene.id,
             novelId,

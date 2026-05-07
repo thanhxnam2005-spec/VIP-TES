@@ -20,7 +20,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { useNovels } from "@/lib/hooks";
+
 import { useQTEngineStatus } from "@/lib/hooks/use-qt-engine";
 
 import {
@@ -74,8 +74,6 @@ export const miscNav = [
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const novels = useNovels();
-  const recentNovels = novels?.slice(0, 5);
   const isAdmin = false;
 
   const adminNavItem = {
@@ -84,12 +82,17 @@ export function AppSidebar() {
     icon: ShieldCheckIcon,
   } as const;
 
-  const mainNav = navConfig.filter(
+  let mainNav = navConfig.filter(
     (item) => !item.href.startsWith("/settings"),
   );
   const settingsNav = navConfig.filter((item) =>
     item.href.startsWith("/settings"),
   );
+
+  // Hide Scraper Generator in production
+  if (process.env.NODE_ENV !== "development") {
+    mainNav = mainNav.filter((item) => item.href !== "/scraper/generator");
+  }
 
   const [logoError, setLogoError] = useState(false);
   const sidebarNav = isAdmin ? [...mainNav, adminNavItem] : mainNav;
@@ -152,40 +155,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Tiểu thuyết gần đây</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {recentNovels && recentNovels.length > 0 ? (
-                recentNovels.map((novel) => (
-                  <SidebarMenuItem key={novel.id}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === `/novels/${novel.id}`}
-                      tooltip={novel.title}
-                      className="text-base font-medium py-2 h-auto"
-                    >
-                      <Link href={`/novels/${novel.id}`}>
-                        <BookOpenIcon className="size-5" />
-                        <span className="truncate">{novel.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              ) : (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="Chưa có tiểu thuyết"
-                    className="text-sidebar-foreground/60"
-                  >
-                    <BookOpenIcon />
-                    <span className="italic">Chưa có tiểu thuyết</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
 
         <SidebarGroup>
           <SidebarGroupLabel>Cài đặt</SidebarGroupLabel>

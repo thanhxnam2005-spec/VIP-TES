@@ -29,6 +29,7 @@ import {
 import type { Chapter } from "@/lib/db";
 import { fuzzyMatch } from "@/lib/fuzzy";
 import { deleteChapter, type ChapterAnalysisStatus } from "@/lib/hooks";
+import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 import { useDebouncedValue } from "@/lib/hooks/use-debounce";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
@@ -39,7 +40,7 @@ import {
   CircleDashedIcon,
   ClockIcon,
   FileTextIcon,
-  GitCompareArrowsIcon,
+  ZapIcon,
   LanguagesIcon,
   PencilIcon,
   PlusIcon,
@@ -49,6 +50,13 @@ import {
   TrashIcon,
   WrenchIcon,
   XIcon,
+  LoaderIcon,
+  PlayIcon,
+  PauseIcon,
+  XCircleIcon,
+  CheckIcon,
+  EyeOffIcon,
+  EyeIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
@@ -129,7 +137,10 @@ export function ChaptersTab({
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showTranslateStatus, setShowTranslateStatus] = useState(true);
   const debouncedQuery = useDebouncedValue(searchQuery, 350);
+
+  const translateJob = useBulkTranslateStore((s) => s.jobs[novelId]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -266,8 +277,8 @@ export function ChaptersTab({
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
                   onClick={() => onConvert(Array.from(selected))}
                 >
-                  <GitCompareArrowsIcon className="size-3.5" />
-                  Convert STV đã chọn
+                  <ZapIcon className="size-3.5" />
+                  Converter AI đã chọn
                 </button>
               )}
               {onResplit && (
@@ -281,6 +292,18 @@ export function ChaptersTab({
               )}
             </PopoverContent>
           </Popover>
+          
+          {translateJob && (translateJob.isRunning || translateJob.step === "progress") && (
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="h-8 w-8 ml-1"
+              title={showTranslateStatus ? "Ẩn trạng thái dịch" : "Hiện trạng thái dịch"}
+              onClick={() => setShowTranslateStatus(!showTranslateStatus)}
+            >
+              {showTranslateStatus ? <EyeOffIcon className="size-4 text-muted-foreground" /> : <EyeIcon className="size-4 text-primary" />}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -357,6 +380,15 @@ export function ChaptersTab({
                   const StatusIcon = statusCfg.icon;
                   const isExpanded = expandedId === ch.id;
 
+                  const tlStatus = translateJob?.statuses.get(ch.id);
+                  let TlBadge = null;
+                  if (showTranslateStatus && tlStatus) {
+                    if (tlStatus === "pending") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-muted text-muted-foreground whitespace-nowrap">Chờ dịch</span>;
+                    else if (tlStatus === "translating") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-blue-500/10 text-blue-600 whitespace-nowrap flex items-center gap-1"><LoaderIcon className="size-3 animate-spin" />Đang dịch</span>;
+                    else if (tlStatus === "done") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 whitespace-nowrap">Đã dịch</span>;
+                    else if (tlStatus === "error") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-600 whitespace-nowrap">Lỗi</span>;
+                  }
+
                   return (
                     <div
                       key={ch.id}
@@ -401,11 +433,12 @@ export function ChaptersTab({
                             ) : (
                               <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
                             )}
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            <span className="min-w-0 flex-1 flex items-center truncate text-sm font-medium">
                               <HighlightedText
                                 text={ch.title}
                                 indices={indices}
                               />
+                              {TlBadge}
                             </span>
                           </div>
                           <div className="flex items-center gap-1 px-3 pb-1.5 pl-[3.75rem]">
@@ -462,11 +495,12 @@ export function ChaptersTab({
                             ) : (
                               <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
                             )}
-                            <span className="truncate font-medium">
+                            <span className="truncate font-medium flex items-center gap-2">
                               <HighlightedText
                                 text={ch.title}
                                 indices={indices}
                               />
+                              {TlBadge}
                             </span>
                           </button>
                           <span className="w-14 shrink-0 text-right text-xs text-muted-foreground">
@@ -593,6 +627,49 @@ export function ChaptersTab({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {translateJob && (translateJob.isRunning || translateJob.step === "progress") && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 shadow-xl border bg-background/95 backdrop-blur p-3 rounded-lg flex items-center gap-4 w-[90%] max-w-sm">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between text-xs font-medium mb-1.5">
+              <span className="text-primary truncate">
+                Dịch hàng loạt ({translateJob.chaptersCompleted}/{translateJob.totalChapters})
+              </span>
+              <span>{Math.round((translateJob.chaptersCompleted / Math.max(1, translateJob.totalChapters)) * 100)}%</span>
+            </div>
+            <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${translateJob.isPaused ? "bg-amber-500" : "bg-primary"} transition-all duration-300`} 
+                style={{ width: `${Math.round((translateJob.chaptersCompleted / Math.max(1, translateJob.totalChapters)) * 100)}%` }} 
+              />
+            </div>
+            {translateJob.currentChapterId && !translateJob.isPaused && (
+              <p className="text-[10px] text-muted-foreground mt-1 truncate animate-pulse">
+                Đang dịch chương hiện tại...
+              </p>
+            )}
+            {translateJob.isPaused && (
+              <p className="text-[10px] text-amber-600 mt-1 truncate">
+                Đã tạm dừng
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {translateJob.isPaused ? (
+              <Button size="icon" variant="outline" className="h-8 w-8 text-primary" onClick={() => useBulkTranslateStore.getState().resume(novelId)} title="Tiếp tục">
+                <PlayIcon className="size-4" />
+              </Button>
+            ) : (
+              <Button size="icon" variant="outline" className="h-8 w-8 text-amber-600" onClick={() => useBulkTranslateStore.getState().pause(novelId)} title="Tạm dừng">
+                <PauseIcon className="size-4" />
+              </Button>
+            )}
+            <Button size="icon" variant="outline" className="h-8 w-8 text-destructive" onClick={() => useBulkTranslateStore.getState().cancel(novelId)} title="Hủy dịch">
+              <XCircleIcon className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

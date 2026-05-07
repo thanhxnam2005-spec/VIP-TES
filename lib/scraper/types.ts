@@ -12,7 +12,7 @@ export interface SiteAdapter {
   /** CSS selector to click after page load to trigger content loading */
   chapterClickSelector?: string;
   /** Parse novel page HTML → novel info + chapter list */
-  getNovelInfo(html: string, url: string): NovelInfo | Promise<NovelInfo>;
+  getNovelInfo(html: string, url: string, onProgress?: (count: number) => void): NovelInfo | Promise<NovelInfo>;
   /** Parse chapter page HTML → chapter content. contentText is innerText from live DOM (bypasses font obfuscation). */
   getChapterContent(html: string, url: string, contentText?: string): ChapterContent | Promise<ChapterContent>;
 }

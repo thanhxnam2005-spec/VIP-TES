@@ -7,7 +7,7 @@ export const SixNineShuTwAdapter: SiteAdapter = {
   urlPattern: /69shuba\.tw/i,
   chapterWaitSelector: ".txtnav, .nr_nr, #nr1",
 
-  async getNovelInfo(html, url) {
+  async getNovelInfo(html, url, onProgress) {
     let doc = new DOMParser().parseFromString(html, "text/html");
     let currentBase = new URL(url);
 
@@ -55,6 +55,7 @@ export const SixNineShuTwAdapter: SiteAdapter = {
     };
 
     extractChaptersFromDoc(doc, currentBase);
+    onProgress?.(chapters.length);
 
     // Check if there is pagination (e.g., 69shuba.tw indexlist)
     const selectOptions = doc.querySelectorAll("select#indexselect-top option");
@@ -67,6 +68,7 @@ export const SixNineShuTwAdapter: SiteAdapter = {
             const res = await extensionFetch(pageUrl);
             const pageDoc = new DOMParser().parseFromString(res.html, "text/html");
             extractChaptersFromDoc(pageDoc, new URL(pageUrl));
+            onProgress?.(chapters.length);
           } catch (e) {
             console.warn("Failed to fetch paginated index", pageUrl, e);
           }

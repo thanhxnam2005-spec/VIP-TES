@@ -8,6 +8,7 @@ export const VERSION_TYPE_LABELS: Record<SceneVersionType, string> = {
   "qt-convert": "Convert QT",
   "stv-translate": "Dịch STV",
   "stv-convert": "Convert STV",
+  "hybrid-converter": "Converter AI",
   "find-replace": "Thay thế",
 };
 
@@ -22,6 +23,7 @@ export const VERSION_TYPE_VARIANTS: Record<
   "qt-convert": "secondary",
   "stv-translate": "secondary",
   "stv-convert": "secondary",
+  "hybrid-converter": "default",
   "find-replace": "secondary",
 };
 

@@ -2,7 +2,7 @@ import { streamText } from "ai";
 import type { LanguageModel } from "ai";
 import { db } from "@/lib/db";
 import type { AnalysisSettings, Scene } from "@/lib/db";
-import { createSceneVersion, ensureInitialVersion } from "@/lib/hooks/use-scene-versions";
+import { createSceneVersion, ensureInitialVersion, getOriginalContent } from "@/lib/hooks/use-scene-versions";
 import { getMergedNameDict } from "@/lib/hooks/use-name-entries";
 import type { ContextDepth } from "./context";
 import { buildTranslateContext } from "./context";
@@ -12,8 +12,8 @@ import {
   buildTranslateSceneBreakNote,
   buildTranslateUserPrompt,
 } from "./prompts";
-import type { TranslateChapterResult, TranslateError } from "@/lib/stores/bulk-translate";
 import { cleanGarbageLines } from "@/lib/text-utils";
+import { useBulkTranslateStore, type TranslateChapterResult, type TranslateError } from "@/lib/stores/bulk-translate";
 
 // ── Retry & Error Handling ──
 
@@ -105,10 +105,11 @@ async function saveChapterScenes(
     });
   }
   for (const scene of result.scenes) {
-    // Bootstrap v1 (manual) with original content if no versions exist
+    // Bootstrap v1 (manual) with ORIGINAL content if no versions exist
     const existing = await db.scenes.get(scene.sceneId);
     if (existing) {
-      await ensureInitialVersion(scene.sceneId, existing.novelId, existing.content);
+      const origContent = await getOriginalContent(scene.sceneId);
+      await ensureInitialVersion(scene.sceneId, existing.novelId, origContent);
       // Save the NEW translated content as a version
       await createSceneVersion(scene.sceneId, existing.novelId, "ai-translate", scene.content);
     }
@@ -197,7 +198,11 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
     scenes.sort((a, b) => a.order - b.order);
   }
 
-  const basePrompt = customPrompt?.trim() || resolveChapterToolPrompts(settings).translate;
+  // Use novel's scanned custom prompt (genre-aware) > manual override > settings default
+  const novel = await db.novels.get(novelId);
+  const basePrompt = novel?.customTranslatePrompt?.trim() 
+    || customPrompt?.trim() 
+    || resolveChapterToolPrompts(settings).translate;
 
   // Fetch name dictionary once for dynamic filtering per chapter
   const nameDict = await getMergedNameDict(novelId);
@@ -212,6 +217,12 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
     isFirst = false;
+
+    // Pause loop
+    while (useBulkTranslateStore.getState().jobs[novelId]?.isPaused) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (signal?.aborted) break;
+    }
 
     if (signal?.aborted) break;
 
@@ -229,11 +240,15 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
         continue;
       }
 
-      // Join scene contents
+      // Join scene contents — ALWAYS use ORIGINAL content (pre-translation)
+      // If a scene was previously translated, getOriginalContent returns the v1 snapshot
       const isMultiScene = scenes.length > 1;
+      const originalContents = await Promise.all(
+        scenes.map((s) => getOriginalContent(s.id))
+      );
       const joinedContent = isMultiScene
-        ? scenes.map((s) => s.content).join(`\n\n${SCENE_BREAK}\n\n`)
-        : scenes[0].content;
+        ? originalContents.join(`\n\n${SCENE_BREAK}\n\n`)
+        : originalContents[0];
 
       // Build context with dynamic dictionary filtering:
       // Only terms that appear in this chapter's source text are sent to AI

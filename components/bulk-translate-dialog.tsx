@@ -80,6 +80,7 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 function makeCallbacks(
+  novelId: string,
   autoSave: boolean,
 ): Pick<
   BulkTranslateOptions,
@@ -88,22 +89,22 @@ function makeCallbacks(
   const store = useBulkTranslateStore.getState;
   return {
     onChapterStart: (chapterId) => {
-      store().setCurrentChapter(chapterId);
-      store().setChapterStatus(chapterId, "translating");
+      store().setCurrentChapter(novelId, chapterId);
+      store().setChapterStatus(novelId, chapterId, "translating");
     },
     onChapterComplete: (result) => {
-      store().setChapterStatus(result.chapterId, "done");
-      store().addResult(result);
-      store().incrementCompleted();
-      if (autoSave) store().markSaved([result.chapterId]);
+      store().setChapterStatus(novelId, result.chapterId, "done");
+      store().addResult(novelId, result);
+      store().incrementCompleted(novelId);
+      if (autoSave) store().markSaved(novelId, [result.chapterId]);
     },
     onChapterError: (error) => {
-      store().setChapterStatus(error.chapterId, "error");
-      store().addError(error);
-      store().incrementCompleted();
+      store().setChapterStatus(novelId, error.chapterId, "error");
+      store().addError(novelId, error);
+      store().incrementCompleted(novelId);
     },
     onAllComplete: () => {
-      store().finish();
+      store().finish(novelId);
     },
   };
 }
@@ -122,37 +123,58 @@ export function BulkTranslateDialog({
   chapters: Chapter[];
 }) {
   // Store — use selectors to avoid unnecessary re-renders
-  const step = useBulkTranslateStore((s) => s.step);
-  const isRunning = useBulkTranslateStore((s) => s.isRunning);
+  const job = useBulkTranslateStore((s) => s.jobs[novelId]);
+  
+  const step = job?.step ?? "config";
+  const isRunning = job?.isRunning ?? false;
+  const statuses = job?.statuses ?? new Map();
+  const chaptersCompleted = job?.chaptersCompleted ?? 0;
+  const totalChapters = job?.totalChapters ?? 0;
+  const results = job?.results ?? new Map();
+  const errors = job?.errors ?? [];
+  const savedChapterIds = job?.savedChapterIds ?? new Set();
+
+  useEffect(() => {
+    useBulkTranslateStore.getState().initJob(novelId);
+  }, [novelId]);
 
   const { showConfirm, guard, confirm, dismiss } =
     useConfirmInterrupt(isRunning);
-  const statuses = useBulkTranslateStore((s) => s.statuses);
-  const chaptersCompleted = useBulkTranslateStore((s) => s.chaptersCompleted);
-  const totalChapters = useBulkTranslateStore((s) => s.totalChapters);
-  const results = useBulkTranslateStore((s) => s.results);
-  const errors = useBulkTranslateStore((s) => s.errors);
-  const savedChapterIds = useBulkTranslateStore((s) => s.savedChapterIds);
 
   const settings = useAnalysisSettings();
   const chatSettings = useChatSettings();
   const providers = useApiInferenceProviders();
   const defaultProvider = useAIProvider(chatSettings?.providerId);
 
-  // Model — synced with AnalysisSettings.translateModel
-  const currentModel = settings.translateModel as StepModelConfig | undefined;
+  const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
+
+  // Model — synced with novel settings (fallback to global)
+  const currentModel = useMemo(() => {
+    if (novel?.customTranslateProviderId) {
+      return {
+        providerId: novel.customTranslateProviderId,
+        modelId: novel.customTranslateModelId || "",
+      };
+    }
+    return settings.translateModel as StepModelConfig | undefined;
+  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel]);
+
   const selectedProviderId = currentModel?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
   const saveModel = useCallback(async (model: StepModelConfig | undefined) => {
     try {
-      await updateAnalysisSettings({
-        translateModel: model,
-      } as Partial<AnalysisSettings>);
+      await db.novels.update(novelId, {
+        customTranslateProviderId: model?.providerId || "",
+        customTranslateModelId: model?.modelId || "",
+      });
+      if (model) {
+        await updateAnalysisSettings({ translateModel: model } as Partial<AnalysisSettings>);
+      }
     } catch {
       /* silent */
     }
-  }, []);
+  }, [novelId]);
 
   const clearWebGpu = useCallback(async () => {
     await saveModel(undefined);
@@ -173,7 +195,6 @@ export function BulkTranslateDialog({
   const [promptOpen, setPromptOpen] = useState(false);
 
   // ── Per-novel custom prompt ──
-  const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
   const novelPrompt = novel?.customTranslatePrompt;
   const hasNovelPrompt = Boolean(novelPrompt?.trim());
   const [useNovelPrompt, setUseNovelPrompt] = useState(true);
@@ -190,8 +211,11 @@ export function BulkTranslateDialog({
   }, [hasNovelPrompt, useNovelPrompt, novelPrompt, effectivePrompt]);
 
   const resolveModel = useCallback(async () => {
+    const activeModel = novel?.customTranslateProviderId 
+      ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" } 
+      : settings.translateModel;
     const model = await resolveChapterToolModel(
-      settings.translateModel,
+      activeModel,
       defaultProvider,
       chatSettings,
     );
@@ -199,7 +223,7 @@ export function BulkTranslateDialog({
       toast.error(getChapterToolModelMissingMessage(defaultProvider));
     }
     return model;
-  }, [settings.translateModel, defaultProvider, chatSettings]);
+  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel, defaultProvider, chatSettings]);
 
   // Scan novel style handler
   const handleScanStyle = useCallback(async () => {
@@ -276,7 +300,7 @@ export function BulkTranslateDialog({
       const model = await resolveModel();
       if (!model) return;
 
-      const signal = useBulkTranslateStore.getState().abortController?.signal;
+      const signal = useBulkTranslateStore.getState().jobs[novelId]?.abortController?.signal;
 
       await runBulkTranslate({
         novelId,
@@ -289,7 +313,7 @@ export function BulkTranslateDialog({
         customPrompt: promptText,
         signal,
         delayMs: delaySeconds * 1000,
-        ...makeCallbacks(autoSave),
+        ...makeCallbacks(novelId, autoSave),
       });
     },
     [
@@ -304,16 +328,27 @@ export function BulkTranslateDialog({
   );
 
   const handleStart = useCallback(async () => {
-    useBulkTranslateStore.getState().start(selectedChapterIds);
+    const activeModel = currentModel;
+    if (activeModel?.providerId && activeModel?.modelId) {
+       const jobs = useBulkTranslateStore.getState().jobs;
+       for (const [id, job] of Object.entries(jobs)) {
+          if (id !== novelId && job.isRunning && job.providerId === activeModel.providerId && job.modelId === activeModel.modelId) {
+             toast.error(`Khóa AI: Mô hình AI này đang bận dịch truyện khác. Vui lòng chọn mô hình AI khác để dịch song song!`);
+             return;
+          }
+       }
+    }
+
+    useBulkTranslateStore.getState().start(novelId, selectedChapterIds, activeModel?.providerId, activeModel?.modelId);
     await runTranslate(selectedChapterIds);
-  }, [selectedChapterIds, runTranslate]);
+  }, [novelId, selectedChapterIds, runTranslate, currentModel]);
 
   const handleRetry = useCallback(async () => {
     const failedIds = errors.map((e) => e.chapterId);
     if (failedIds.length === 0) return;
-    useBulkTranslateStore.getState().startRetry(failedIds);
+    useBulkTranslateStore.getState().startRetry(novelId, failedIds);
     await runTranslate(failedIds);
-  }, [errors, runTranslate]);
+  }, [novelId, errors, runTranslate]);
 
   const handleSaveAll = useCallback(async () => {
     const unsaved = Array.from(results.entries()).filter(
@@ -323,15 +358,15 @@ export function BulkTranslateDialog({
 
     try {
       await saveBulkResults(unsaved.map(([, r]) => r));
-      useBulkTranslateStore.getState().markSaved(unsaved.map(([id]) => id));
+      useBulkTranslateStore.getState().markSaved(novelId, unsaved.map(([id]) => id));
       toast.success(`Đã lưu ${unsaved.length} chương`);
     } catch {
       toast.error("Lưu thất bại");
     }
-  }, [results, savedChapterIds]);
+  }, [novelId, results, savedChapterIds]);
 
   const handleClose = () => {
-    useBulkTranslateStore.getState().reset();
+    useBulkTranslateStore.getState().reset(novelId);
     onOpenChange(false);
   };
 
@@ -602,7 +637,7 @@ export function BulkTranslateDialog({
                         size="sm"
                         className="h-6 text-xs"
                         onClick={() =>
-                          useBulkTranslateStore.getState().cancel()
+                          useBulkTranslateStore.getState().cancel(novelId)
                         }
                       >
                         <XIcon className="mr-1 size-3" />

@@ -5,17 +5,66 @@
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+let hiddenWindowId = null;
+
+async function getOrCreateHiddenWindow() {
+  if (hiddenWindowId !== null) {
+    try {
+      const win = await chrome.windows.get(hiddenWindowId);
+      if (win) return win;
+    } catch {
+      hiddenWindowId = null;
+    }
+  }
+  const win = await chrome.windows.create({
+    url: "about:blank",
+    type: "popup",
+    state: "minimized",
+    focused: false,
+  });
+  hiddenWindowId = win.id;
+  return win;
+}
+
 async function handleFetch(url, options = {}) {
   const { smartScrape, timeout = 60000 } = options;
   const logs = [];
   const log = (msg) => logs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
 
-  let tabId, windowId;
+  // 1. Try silent background fetch first if no special scraping is needed
+  if (!smartScrape) {
+    try {
+      log(`Attempting silent background fetch for ${url}`);
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(fetchTimeout);
+      
+      if (res.ok) {
+        const text = await res.text();
+        // Check for common Cloudflare / anti-bot signs
+        if (!text.includes("Just a moment...") && !text.includes("Cloudflare") && text.length > 500) {
+          log(`Silent fetch successful (${text.length} bytes)`);
+          return { ok: true, html: text, contentText: null, logs };
+        }
+        log(`Silent fetch returned anti-bot page, falling back to tab...`);
+      } else {
+        log(`Silent fetch failed with status ${res.status}, falling back...`);
+      }
+    } catch (e) {
+      log(`Silent fetch error: ${e.message}, falling back...`);
+    }
+  }
+
+  // 2. Fallback to real hidden window
+  let tabId;
   try {
-    const window = await chrome.windows.create({ url, state: "minimized" });
-    windowId = window.id;
-    tabId = window.tabs[0].id;
-    log(`Tab created (id=${tabId})`);
+    const win = await getOrCreateHiddenWindow();
+    tabId = win.tabs[0].id;
+    
+    // Navigate the hidden window's tab to the new URL
+    await chrome.tabs.update(tabId, { url });
+    log(`Navigating hidden window tab (id=${tabId}) to ${url}`);
 
     // Wait for initial page load
     await delay(3000); 
@@ -81,7 +130,10 @@ async function handleFetch(url, options = {}) {
     log(`Error: ${err.message}`);
     return { ok: false, error: err.message, logs };
   } finally {
-    if (windowId) chrome.windows.remove(windowId).catch(() => {});
+    // Navigate to blank to free memory, but keep window open for reuse
+    if (tabId) {
+      chrome.tabs.update(tabId, { url: "about:blank" }).catch(() => {});
+    }
   }
 }
 

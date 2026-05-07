@@ -13,7 +13,7 @@ export const XTruyenAdapter: SiteAdapter = {
   // but usually they are present in the DOM or loaded via JS.
   chapterWaitSelector: "#chapter-reading-content",
 
-  async getNovelInfo(html, url) {
+  async getNovelInfo(html, url, onProgress) {
     const doc = new DOMParser().parseFromString(html, "text/html");
 
     const title = doc.querySelector(".post-title h1")?.textContent?.trim() || "";
@@ -90,6 +90,7 @@ export const XTruyenAdapter: SiteAdapter = {
             order: 0
           });
         });
+        onProgress?.(allChapterLinks.length);
 
         // Deduplicate and sort
         const seenUrls = new Set<string>();

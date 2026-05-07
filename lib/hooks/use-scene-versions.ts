@@ -105,6 +105,29 @@ export async function ensureInitialVersion(
   });
 }
 
+/**
+ * Get the ORIGINAL content of a scene (pre-translation).
+ * Looks for the first version (v1 / "manual") snapshot.
+ * If no versions exist, returns the current scene content (it IS the original).
+ */
+export async function getOriginalContent(sceneId: string): Promise<string> {
+  // Look for version 1 (the "manual" / original snapshot)
+  const versions = await db.scenes
+    .where("activeSceneId")
+    .equals(sceneId)
+    .sortBy("version");
+
+  if (versions.length > 0) {
+    // v1 is the original content saved before any translation
+    const v1 = versions[0];
+    if (v1.content?.trim()) return v1.content;
+  }
+
+  // No versions exist → current content IS the original
+  const scene = await db.scenes.get(sceneId);
+  return scene?.content ?? "";
+}
+
 /** Delete a single version (inactive scene) by ID. */
 export async function deleteSceneVersion(id: string): Promise<void> {
   await db.scenes.delete(id);

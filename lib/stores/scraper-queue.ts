@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { db } from "../db";
 import { detectAdapter } from "../scraper/adapters";
 import { scrapeChapters } from "../scraper/engine";
@@ -10,6 +11,7 @@ export interface ScraperJob {
   id: string; // novelId
   title: string;
   url: string;
+  coverImage?: string;
   adapter: SiteAdapter;
   chaptersToScrape: ChapterLink[];
   progress: { completed: number; total: number; current: string };
@@ -30,7 +32,8 @@ interface ScraperQueueState {
     title: string,
     url: string,
     chapters: ChapterLink[],
-    delayMs: number
+    delayMs: number,
+    coverImage?: string
   ) => void;
   removeJob: (id: string) => void;
   pauseJob: (id: string) => void;
@@ -43,13 +46,15 @@ interface ScraperQueueState {
 
 const MAX_CONCURRENCY = 2;
 
-export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
-  jobs: {},
-  isOverlayMinimized: false,
+export const useScraperQueueStore = create<ScraperQueueState>()(
+  persist(
+    (set, get) => ({
+      jobs: {},
+      isOverlayMinimized: false,
 
-  setMinimized: (min) => set({ isOverlayMinimized: min }),
+      setMinimized: (min) => set({ isOverlayMinimized: min }),
 
-  addJob: async (novelId, title, url, chapters, delayMs) => {
+  addJob: async (novelId, title, url, chapters, delayMs, coverImage) => {
     const adapter = detectAdapter(url);
     if (!adapter) {
       toast.error("Không tìm thấy adapter cho URL này");
@@ -74,6 +79,7 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
       id: novelId,
       title,
       url,
+      coverImage,
       adapter,
       chaptersToScrape: newChapters,
       progress: { completed: 0, total: newChapters.length, current: "Đang đợi..." },
@@ -128,7 +134,8 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
                     ...j,
                     progress: { 
                       ...j.progress,
-                      completed: j.progress.total - j.chaptersToScrape.length + completed, 
+                      // Calculate overall completed based on total minus what this specific loop started with
+                      completed: (j.progress.total - total) + completed,
                       current: currentTitle 
                     },
                   },
@@ -258,20 +265,29 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
   },
 
   resumeJob: (id) => {
+    let needsProcess = false;
     set((state) => {
       const j = state.jobs[id];
       if (!j) return state;
       if (j.status === "paused") {
-        return { jobs: { ...state.jobs, [id]: { ...j, status: "scraping" } } };
+        if (j.abortController) {
+          // Loop is still alive, just unpause it
+          return { jobs: { ...state.jobs, [id]: { ...j, status: "scraping" } } };
+        } else {
+          // Loop is dead (reloaded), queue a new one
+          needsProcess = true;
+          return { jobs: { ...state.jobs, [id]: { ...j, status: "pending", abortController: new AbortController() } } };
+        }
       }
       if (j.status === "error") {
-        // Clear error and set to pending to re-process
-        return { jobs: { ...state.jobs, [id]: { ...j, status: "pending", error: undefined } } };
+        needsProcess = true;
+        return { jobs: { ...state.jobs, [id]: { ...j, status: "pending", error: undefined, abortController: new AbortController() } } };
       }
       return state;
     });
-    // Trigger queue if we resumed from error
-    get().processQueue();
+    if (needsProcess) {
+      get().processQueue();
+    }
   },
 
   cancelJob: (id) => {
@@ -294,4 +310,40 @@ export const useScraperQueueStore = create<ScraperQueueState>((set, get) => ({
       return { jobs: newJobs };
     });
   },
-}));
+}),
+{
+  name: "scraper-queue",
+      partialize: (state) => {
+        const jobsToSave: Record<string, any> = {};
+        for (const [id, job] of Object.entries(state.jobs)) {
+          // Serialize without non-serializable fields
+          jobsToSave[id] = {
+            ...job,
+            adapter: undefined,
+            abortController: undefined,
+          };
+        }
+        return { jobs: jobsToSave } as any;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          const rehydratedJobs: Record<string, ScraperJob> = {};
+          for (const [id, job] of Object.entries(state.jobs as Record<string, any>)) {
+            const adapter = detectAdapter(job.url);
+            if (!adapter) continue; // Skip if adapter is missing or invalid
+
+            rehydratedJobs[id] = {
+              ...job,
+              adapter,
+              abortController: undefined,
+              createdAt: new Date(job.createdAt),
+              // Auto-pause any job that was running
+              status: job.status === "scraping" ? "paused" : job.status,
+            };
+          }
+          state.jobs = rehydratedJobs;
+        }
+      },
+    }
+  )
+);

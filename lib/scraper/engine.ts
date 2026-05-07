@@ -96,42 +96,63 @@ export async function scrapeChapters(
     let contentText: string | undefined = undefined;
     let timedOut = false;
     let logs: string[] = [];
-
     let extTitle: string | undefined = undefined;
-    if (adapter.name === "STV" && chapter.id) {
-      try {
-        const res = await extensionDownloadSTVChapter(
-          chapter.id,
-          chapter.url,
-          i < chapters.length - 1 && !signal?.aborted,
-        );
-        html = res.data ?? "";
-        contentText = (res as any).contentText ?? res.content ?? undefined;
-        timedOut = (res as any).timedOut ?? false;
-        extTitle = res.title;
-        if (res.stopped) break;
-      } catch (err: any) {
-        timedOut = true; // Mark as issue if it fails
-        logs.push(err.message);
-      }
-    } else {
-      const fetchRes = await extensionFetch(chapter.url, {
-        waitSelector: adapter.chapterWaitSelector,
-        clickSelector: adapter.chapterClickSelector,
-      });
-      html = fetchRes.html;
-      contentText = fetchRes.contentText;
-      timedOut = fetchRes.timedOut ?? false;
-      logs = fetchRes.logs ?? [];
-    }
-    const content = sanitizeChapterContent(
-      await adapter.getChapterContent(html, chapter.url, contentText),
-    );
-    content.order = chapter.order;
+    let content: ChapterContent = { title: "", content: "" };
 
-    // Fallback to title from index page or extension result if extracted title is empty
-    if (!content.title || content.title.trim() === "") {
-      content.title = extTitle || chapter.title;
+    let attempts = 0;
+    let success = false;
+    let lastError: any = null;
+
+    while (attempts < 3 && !success) {
+      try {
+        if (adapter.name === "STV" && chapter.id) {
+          const res = await extensionDownloadSTVChapter(
+            chapter.id,
+            chapter.url,
+            i < chapters.length - 1 && !signal?.aborted,
+          );
+          html = res.data ?? "";
+          contentText = (res as any).contentText ?? res.content ?? undefined;
+          timedOut = (res as any).timedOut ?? false;
+          extTitle = res.title;
+          if (res.stopped) break;
+        } else {
+          const fetchRes = await extensionFetch(chapter.url, {
+            waitSelector: adapter.chapterWaitSelector,
+            clickSelector: adapter.chapterClickSelector,
+          });
+          html = fetchRes.html;
+          contentText = fetchRes.contentText;
+          timedOut = fetchRes.timedOut ?? false;
+          logs = fetchRes.logs ?? [];
+        }
+
+        content = sanitizeChapterContent(
+          await adapter.getChapterContent(html, chapter.url, contentText),
+        );
+        content.order = chapter.order;
+
+        if (!content.title || content.title.trim() === "") {
+          content.title = extTitle || chapter.title;
+        }
+
+        if ((timedOut || content.content.length < 30) && adapter.name !== "STV") {
+          throw new Error(`Lỗi lấy nội dung: Timeout hoặc quá ngắn (${content.content.length} ký tự)`);
+        }
+
+        success = true;
+      } catch (err: any) {
+        lastError = err;
+        attempts++;
+        if (attempts >= 3 || adapter.name === "STV") {
+          break;
+        }
+        await delay(1500 * attempts);
+      }
+    }
+
+    if (!success && lastError && adapter.name !== "STV") {
+      throw lastError; // Bubble up after 3 attempts
     }
 
     // ── Duplicate detection (all adapters) ──

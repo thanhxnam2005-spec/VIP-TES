@@ -2,7 +2,7 @@
 
 import { AnalysisDialog } from "@/components/analysis-dialog";
 import { EditNovelDialog } from "@/components/edit-novel-dialog";
-import { BulkSTVDialog } from "@/components/novel/bulk-stv-dialog";
+import { HybridConverterDialog } from "@/components/novel/hybrid-converter-dialog";
 import { BulkTranslateDialog } from "@/components/bulk-translate-dialog";
 import { BulkReplaceDialog } from "@/components/novel/bulk-replace-dialog";
 import { BulkResplitDialog } from "@/components/novel/bulk-resplit-dialog";
@@ -42,7 +42,8 @@ import {
   useChapters,
   useCharacters,
   useNovel,
-  useNovelScenes,
+  useChapterWordCounts,
+  useNovelWordCount,
 } from "@/lib/hooks";
 import { downloadNovelJson, downloadNovelChaptersZip, exportNovel, downloadNovelTxt } from "@/lib/novel-io";
 import {
@@ -74,7 +75,8 @@ export default function NovelDetailPage() {
   const activeTab = searchParams.get("tab") ?? "chapters";
   const novel = useNovel(id);
   const chapters = useChapters(id);
-  const scenes = useNovelScenes(id);
+  const chapterWordCounts = useChapterWordCounts(id);
+  const totalWords = useNovelWordCount(id);
   const analysisStatuses = useChapterAnalysisStatus(id);
   const characters = useCharacters(id);
 
@@ -92,20 +94,7 @@ export default function NovelDetailPage() {
   const [resplitOpen, setResplitOpen] = useState(false);
   const [resplitChapterIds, setResplitChapterIds] = useState<string[]>([]);
 
-  // Word counts
-  const chapterWordCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!scenes) return map;
-    for (const s of scenes) {
-      map.set(s.chapterId, (map.get(s.chapterId) ?? 0) + s.wordCount);
-    }
-    return map;
-  }, [scenes]);
-
-  const totalWords = useMemo(
-    () => scenes?.reduce((sum, s) => sum + s.wordCount, 0) ?? 0,
-    [scenes],
-  );
+  // Removed old useMemo word counts since they are now queried directly.
 
   const handleAnalyze = (mode: AnalysisMode, chapterIds?: string[]) => {
     setAnalysisMode(mode);
@@ -442,14 +431,13 @@ export default function NovelDetailPage() {
         chapters={chapters ?? []}
       />
 
-      {/* Bulk STV convert dialog */}
-      <BulkSTVDialog
+      {/* Hybrid Converter AI dialog */}
+      <HybridConverterDialog
         open={convertOpen}
         onOpenChange={setConvertOpen}
         novelId={id}
         chapterIds={convertChapterIds}
         chapters={chapters ?? []}
-        mode="convert"
       />
 
       {/* Bulk resplit dialog */}
