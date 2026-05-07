@@ -70,8 +70,11 @@ export default function ScraperGeneratorPage() {
     }, 1000);
   };
 
-  const scanMainPage = async (targetUrl: string, isAppend = false) => {
-    if (!extId) return toast.error("Vui lòng nhập Extension ID cho Generator.");
+  const scanMainPage = async (targetUrl: string, isAppend = false): Promise<{ nextUrl: string | null; nextClickSelector: string | null; count: number }> => {
+    if (!extId) {
+      toast.error("Vui lòng nhập Extension ID cho Generator.");
+      return { nextUrl: null, nextClickSelector: null, count: 0 };
+    }
     setLoading(true);
     try {
       const res = await extensionFetch(targetUrl, { extensionId: extId });
