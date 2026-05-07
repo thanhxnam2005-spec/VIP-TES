@@ -26,8 +26,10 @@
   ],
   "externally_connectable": {
     "matches": [
-      "*://*.vercel.app/*",
-      "*://localhost/*"
+      "https://thi-n-th-vip.vercel.app/*",
+      "https://*.vercel.app/*",
+      "http://localhost/*",
+      "https://localhost/*"
     ]
   }
 }
