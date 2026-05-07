@@ -2,7 +2,6 @@ import { SiteAdapter } from "../types";
 
 export const MeTruyenChuAdapter: SiteAdapter = {
   name: "MeTruyenChu",
-  host: "metruyenchu.com.vn",
   urlPattern: /metruyenchu\.com\.vn/,
 
   getNovelInfo(html, url) {
@@ -84,7 +83,7 @@ export const MeTruyenChuAdapter: SiteAdapter = {
 
     return {
       title: chapterTitle,
-      content: contentNode.innerText.trim(),
+      content: (contentNode as HTMLElement).innerText.trim(),
     };
   }
 };
