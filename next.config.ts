@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // Performance: tree-shake large icon/component libraries
   experimental: {
     optimizePackageImports: [
