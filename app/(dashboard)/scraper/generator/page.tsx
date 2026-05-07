@@ -271,7 +271,7 @@ export default function ScraperGeneratorPage() {
         prompt: `Tôi đang làm scraper cho truyện. Đây là HTML trang chủ: ${mainHtml.slice(0, 15000)}\n\nHãy tìm danh sách chương hoặc link dẫn đến mục lục. Trả về định dạng JSON: { "selector": "css selector vung chua link chuong", "tocUrl": "link den trang muc luc neu co", "reason": "tai sao" }`,
       });
 
-      const result = JSON.parse(text.match(/\{.*\}/s)?.[0] || "{}");
+      const result = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "{}");
       if (result.tocUrl) {
         toast.info("AI tìm thấy link mục lục: " + result.tocUrl);
         setUrl(result.tocUrl);
