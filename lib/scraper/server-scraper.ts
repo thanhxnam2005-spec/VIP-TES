@@ -8,6 +8,7 @@
  */
 
 import * as cheerio from "cheerio";
+import iconv from "iconv-lite";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -73,7 +74,16 @@ export async function fetchHtml(url: string): Promise<string> {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return await response.text();
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Decode GBK if necessary
+    const hostname = new URL(url).hostname;
+    if (hostname.includes("piaotia.com") || hostname.includes("jjwxc.net")) {
+      return iconv.decode(buffer, "gbk");
+    }
+
+    return buffer.toString("utf8");
   } finally {
     clearTimeout(timeout);
   }
