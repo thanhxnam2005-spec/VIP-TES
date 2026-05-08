@@ -67,11 +67,14 @@ export const CzbooksAdapter: SiteAdapter = {
         contentNode.querySelectorAll(sel).forEach(el => el.remove());
       });
       
-      const clone = contentNode.cloneNode(true) as HTMLElement;
-      clone.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-      clone.querySelectorAll("p").forEach((p) => p.replaceWith("\n" + p.textContent + "\n"));
+      let htmlContent = contentNode.innerHTML;
+      htmlContent = htmlContent.replace(/<br\s*\/?>/gi, '\n');
+      htmlContent = htmlContent.replace(/<p[^>]*>/gi, '\n');
+      htmlContent = htmlContent.replace(/<\/p>/gi, '\n');
       
-      rawText = clone.textContent?.trim() || "";
+      const tempDiv = doc.createElement("div");
+      tempDiv.innerHTML = htmlContent;
+      rawText = tempDiv.textContent?.trim() || "";
     }
 
     if (!rawText && contentText) {

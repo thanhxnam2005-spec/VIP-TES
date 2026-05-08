@@ -259,11 +259,11 @@ async function handleFetch(url, waitSelector, clickSelector, timeout, reuseTab =
         tabId = persistentTabId;
         await chrome.tabs.update(tabId, { url });
       } catch {
-        const tab = await chrome.tabs.create({ url, active: false });
+        const tab = await chrome.tabs.create({ url, active: true });
         tabId = persistentTabId = tab.id;
       }
     } else {
-      const tab = await chrome.tabs.create({ url, active: false });
+      const tab = await chrome.tabs.create({ url, active: true });
       tabId = persistentTabId = tab.id;
     }
   } else {

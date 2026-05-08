@@ -43,11 +43,19 @@ export const FanqieAdapter: SiteAdapter = {
     const contentEl = doc.querySelector(".muye-reader-content, .article-content, #content");
     
     if (contentEl) {
-      const clone = contentEl.cloneNode(true) as HTMLElement;
-      clone.querySelectorAll("script, style, .bottom-ad, iframe").forEach((el) => el.remove());
-      clone.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-      clone.querySelectorAll("p").forEach((p) => p.insertAdjacentText("afterend", "\n"));
-      text = clone.textContent || "";
+      const junkSelectors = ["script", "style", ".bottom-ad", "iframe", ".nav", ".footer"];
+      junkSelectors.forEach(sel => {
+        contentEl.querySelectorAll(sel).forEach(el => el.remove());
+      });
+      
+      let htmlContent = contentEl.innerHTML;
+      htmlContent = htmlContent.replace(/<br\s*\/?>/gi, '\n');
+      htmlContent = htmlContent.replace(/<p[^>]*>/gi, '\n');
+      htmlContent = htmlContent.replace(/<\/p>/gi, '\n');
+      
+      const tempDiv = doc.createElement("div");
+      tempDiv.innerHTML = htmlContent;
+      text = tempDiv.textContent?.trim() || "";
     } else {
       text = contentText || "";
     }
