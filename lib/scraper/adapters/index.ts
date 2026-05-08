@@ -9,6 +9,7 @@ import { JjwxcAdapter } from "./Jjwxc";
 import { XTruyenAdapter } from "./XTruyen";
 import { MeTruyenChuAdapter } from "./MeTruyenChu";
 import { ChomeredAdapter } from "./Chomered";
+import { Po18Adapter } from "./Po18";
 import { UniversalAdapter } from "./Universal";
 
 const adapters: SiteAdapter[] = [
@@ -22,6 +23,7 @@ const adapters: SiteAdapter[] = [
   XTruyenAdapter,
   MeTruyenChuAdapter,
   ChomeredAdapter,
+  Po18Adapter,
   UniversalAdapter,
 ];
 
