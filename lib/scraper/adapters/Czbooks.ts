@@ -6,6 +6,7 @@ export const CzbooksAdapter: SiteAdapter = {
   group: "cn",
   urlPattern: /czbooks\.net/,
   chapterWaitSelector: ".content, #content, .chapter-detail",
+  useSequentialTab: true,
 
   async getNovelInfo(html, url, onProgress) {
     const doc = new DOMParser().parseFromString(html, "text/html");

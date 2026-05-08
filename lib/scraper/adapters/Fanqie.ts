@@ -21,7 +21,7 @@ export const FanqieAdapter: SiteAdapter = {
     const coverImage = coverImg ? new URL(coverImg.getAttribute("src") || "", currentBase).href : undefined;
 
     const chapters: any[] = [];
-    const chapterLinks = doc.querySelectorAll(".chapter-item a, a.chapter-item-title");
+    const chapterLinks = doc.querySelectorAll(".chapter-item a, a.chapter-item-title, .dir-list a");
     
     Array.from(chapterLinks).forEach((a) => {
       const absUrl = new URL(a.getAttribute("href") || "", currentBase).href;

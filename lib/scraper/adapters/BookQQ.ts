@@ -21,7 +21,7 @@ export const BookQQAdapter: SiteAdapter = {
     const coverImage = coverImg ? new URL(coverImg.getAttribute("src") || "", currentBase).href : undefined;
 
     const chapters: any[] = [];
-    const chapterLinks = doc.querySelectorAll(".chapter-list a, .volume-list a, .dir-list a");
+    const chapterLinks = doc.querySelectorAll(".chapter-list a, .volume-list a, .dir-list a, .list-a, a.ypc-link");
     
     Array.from(chapterLinks).forEach((a) => {
       const href = a.getAttribute("href");
