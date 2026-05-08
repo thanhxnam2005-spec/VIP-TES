@@ -24,9 +24,13 @@ export const FanqieAdapter: SiteAdapter = {
     const chapterLinks = doc.querySelectorAll(".chapter-item a, a.chapter-item-title, .dir-list a");
     
     Array.from(chapterLinks).forEach((a) => {
+      const titleText = a.textContent?.trim() || "";
+      if (titleText.includes("最近更新") || titleText.includes("最新章节") || titleText.includes("最近")) {
+        return;
+      }
       const absUrl = new URL(a.getAttribute("href") || "", currentBase).href;
       chapters.push({
-        title: a.textContent?.trim() || `Chương ${chapters.length + 1}`,
+        title: titleText || `Chương ${chapters.length + 1}`,
         url: absUrl,
         order: chapters.length,
       });

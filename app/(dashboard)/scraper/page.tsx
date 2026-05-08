@@ -450,6 +450,12 @@ export default function ScraperLibraryPage() {
                      <p className="leading-relaxed">Bạn cần mở tab web SangTacViet ở trình duyệt, <b>bấm vào chương 1</b> để trang load nội dung ra, sau đó mới quay lại app ấn <b>Bắt đầu tải</b>.</p>
                    </div>
                  )}
+                 {currentAdapter?.name === "Fanqie" && (
+                   <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
+                     <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với Fanqie</p>
+                     <p className="leading-relaxed">Extension sẽ tự động mở tab Fanqie để lấy nội dung. <b>Nếu gặp lỗi bị chặn (trắng trang)</b>, vui lòng ấn vào Chương 1 trên tab vừa mở, giải capcha nếu có, sau đó extension sẽ tự động cày tiếp!</p>
+                   </div>
+                 )}
                  
                  <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
                    <Button variant="ghost" onClick={() => setIsConfirmOpen(false)}>Hủy</Button>
