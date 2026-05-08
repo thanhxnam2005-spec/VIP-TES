@@ -375,14 +375,11 @@ export default function ScraperLibraryPage() {
                       </div>
                       
                       <div className="flex gap-0.5 shrink-0">
-                        {job.status === "scraping" && (
-                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => pauseJob(job.id)}><PauseIcon className="w-3.5 h-3.5" /></Button>
-                        )}
-                        {job.status === "paused" && (
+                        {(job.status === "idle" || job.status === "paused" || job.status === "error") && (
                            <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => resumeJob(job.id)}><PlayIcon className="w-3.5 h-3.5" /></Button>
                         )}
-                        {job.status === "error" && (
-                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => resumeJob(job.id)}><PlayIcon className="w-3.5 h-3.5" /></Button>
+                        {job.status === "scraping" && (
+                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => pauseJob(job.id)}><PauseIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {(job.status !== "done") && (
                            <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => cancelJob(job.id)}><TrashIcon className="w-3.5 h-3.5" /></Button>
