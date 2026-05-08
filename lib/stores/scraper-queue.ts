@@ -49,6 +49,7 @@ interface ScraperQueueState {
   resumeJob: (id: string) => void;
   cancelJob: (id: string) => void;
   clearDone: () => void;
+  updateJobTitle: (id: string, newTitle: string) => void;
   setMinimized: (min: boolean) => void;
   processQueue: () => Promise<void>;
 }
@@ -442,6 +443,14 @@ export const useScraperQueueStore = create<ScraperQueueState>()(
         }
       }
       return { jobs: newJobs };
+    });
+  },
+
+  updateJobTitle: (id: string, newTitle: string) => {
+    set((state) => {
+      const j = state.jobs[id];
+      if (!j) return state;
+      return { jobs: { ...state.jobs, [id]: { ...j, title: newTitle } } };
     });
   },
 }),
