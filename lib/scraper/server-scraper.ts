@@ -413,12 +413,15 @@ export async function analyzeChapterPage(url: string): Promise<ServerChapterCont
   // Title
   let title = "";
   const h1Text = $("h1").first().text().trim();
-  const chapterTitleClass = $(".chapter-title, .chaptitle, .title-chuong").first().text().trim();
+  const chapterTitleClass = $(".chapter-title, .chaptitle, .title-chuong, h2").first().text().trim();
 
   // Ignore generic navigation h1 tags
   const isGenericH1 = /^(熱門|首页|首页|书库|排行榜|我的|书架)$/i.test(h1Text);
 
-  if (h1Text && !isGenericH1) {
+  if (chapterTitleClass && (chapterTitleClass.toLowerCase().includes("chương") || chapterTitleClass.toLowerCase().includes("chapter") || chapterTitleClass.includes("第"))) {
+    // If we find an explicit chapter title element that looks like a chapter, use it first
+    title = chapterTitleClass;
+  } else if (h1Text && !isGenericH1) {
     title = h1Text;
   } else if (chapterTitleClass) {
     title = chapterTitleClass;
@@ -441,6 +444,15 @@ export async function analyzeChapterPage(url: string): Promise<ServerChapterCont
         title = titleTag;
       }
     }
+  }
+
+  // Clean up any newlines or excess spaces that might have been captured
+  title = title.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+  
+  // Specific fix for MTC where title might be "Novel Name Chương X" 
+  if (title.includes("Chương") && !title.startsWith("Chương")) {
+     const match = title.match(/(Chương\s*\d+.*)/i);
+     if (match) title = match[1];
   }
 
   // Clean title
