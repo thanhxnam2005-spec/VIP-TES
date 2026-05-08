@@ -14,8 +14,7 @@ import { detectAdapter } from "@/lib/scraper/adapters";
 import { extensionFetch, checkExtensionStatus, getExtensionId, setExtensionId } from "@/lib/scraper/extension-bridge";
 import { serverAnalyzeNovel } from "@/lib/scraper/server-scraper-client";
 import { useScraperQueueStore } from "@/lib/stores/scraper-queue";
-import { SettingsIcon, BookIcon, LoaderIcon, PauseIcon, PlayIcon, TrashIcon, DownloadIcon, CheckCircleIcon, GlobeIcon, ZapIcon, BookDown, Languages } from "lucide-react";
-import { generateEpub } from "@/lib/epub-generator";
+import { SettingsIcon, BookIcon, PauseIcon, PlayIcon, TrashIcon, DownloadIcon, CheckCircleIcon, GlobeIcon, ZapIcon } from "lucide-react";
 
 /** URLs that can be fetched server-side (no extension needed) */
 const SERVER_FETCH_DOMAINS = [
@@ -40,11 +39,7 @@ export default function ScraperLibraryPage() {
   const pauseJob = useScraperQueueStore((s) => s.pauseJob);
   const resumeJob = useScraperQueueStore((s) => s.resumeJob);
   const cancelJob = useScraperQueueStore((s) => s.cancelJob);
-  const updateJobTitle = useScraperQueueStore((s) => s.updateJobTitle);
   const clearDone = useScraperQueueStore((s) => s.clearDone);
-
-  const [isExporting, setIsExporting] = useState<Record<string, boolean>>({});
-  const [isTranslating, setIsTranslating] = useState<Record<string, boolean>>({});
 
   const [extId, setExtId] = useState("");
   const [extVersion, setExtVersion] = useState<string | null>(null);
@@ -169,81 +164,6 @@ export default function ScraperLibraryPage() {
       toast.success("Đã thêm truyện vào thư viện tải!");
     } catch (err: any) {
       toast.error(err.message || "Có lỗi khi thêm truyện");
-    }
-  };
-
-  const handleTranslateTitle = async (jobId: string, currentTitle: string) => {
-    try {
-      setIsTranslating(prev => ({ ...prev, [jobId]: true }));
-      const res = await fetch("/api/ai-proxy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "system", content: "Bạn là biên dịch viên truyện chữ chuyên nghiệp. Chỉ trả về kết quả dịch tiếng Việt của tên truyện, không thêm bất kỳ câu chữ nào khác, không dùng ngoặc kép." },
-            { role: "user", content: `Dịch tên truyện này sang tiếng Việt: ${currentTitle}` }
-          ]
-        })
-      });
-      if (!res.ok) throw new Error("Lỗi gọi API dịch");
-      const data = await res.json();
-      const translated = data.choices[0].message.content.trim();
-      
-      updateJobTitle(jobId, translated);
-      
-      // Also update in DB
-      await db.novels.update(jobId, { title: translated });
-      toast.success("Đã dịch tên truyện thành công!");
-    } catch (e: any) {
-      toast.error(e.message || "Không thể dịch tên truyện");
-    } finally {
-      setIsTranslating(prev => ({ ...prev, [jobId]: false }));
-    }
-  };
-
-  const handleExportEpub = async (jobId: string, title: string, author: string, coverImage?: string) => {
-    try {
-      setIsExporting(prev => ({ ...prev, [jobId]: true }));
-      toast.info("Đang tạo file EPUB, vui lòng đợi...");
-      
-      const novel = await db.novels.get(jobId);
-      const chapters = await db.chapters.where("novelId").equals(jobId).sortBy("orderIndex");
-      
-      if (!chapters || chapters.length === 0) {
-        throw new Error("Không có chương nào để xuất!");
-      }
-      
-      let coverBase64 = null;
-      if (coverImage) {
-        try {
-          const imgRes = await fetch(coverImage);
-          const blob = await imgRes.blob();
-          coverBase64 = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-          });
-        } catch {
-          // Ignore cover fetch error
-        }
-      }
-      
-      const blob = await generateEpub(title, novel?.author || author || "Unknown", coverBase64 as string | null, chapters);
-      
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${title}.epub`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      
-      toast.success("Xuất EPUB thành công!");
-    } catch (e: any) {
-      toast.error(e.message || "Lỗi khi xuất EPUB");
-    } finally {
-      setIsExporting(prev => ({ ...prev, [jobId]: false }));
     }
   };
 
@@ -468,15 +388,7 @@ export default function ScraperLibraryPage() {
                            <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => cancelJob(job.id)}><TrashIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {job.status === "done" && (
-                           <>
-                             <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-blue-500 hover:bg-blue-500/10 mr-0.5" title="Dịch tên truyện" onClick={() => handleTranslateTitle(job.id, job.title)} disabled={isTranslating[job.id]}>
-                                {isTranslating[job.id] ? <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
-                             </Button>
-                             <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-amber-500 hover:bg-amber-500/10 mr-1" title="Xuất EPUB" onClick={() => handleExportEpub(job.id, job.title, job.adapter.name, job.coverImage)} disabled={isExporting[job.id]}>
-                                {isExporting[job.id] ? <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> : <BookDown className="w-3.5 h-3.5" />}
-                             </Button>
-                             <CheckCircleIcon className="w-5 h-5 text-green-500" />
-                           </>
+                           <CheckCircleIcon className="w-5 h-5 text-green-500 mr-1" />
                         )}
                       </div>
                    </div>

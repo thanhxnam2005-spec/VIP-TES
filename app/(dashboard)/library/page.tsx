@@ -12,6 +12,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -60,11 +68,16 @@ import {
   Trash2Icon,
   UploadIcon,
   XIcon,
+  BookDownIcon,
+  LanguagesIcon,
+  LoaderIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
+import { generateEpub } from "@/lib/epub-generator";
+import { useApiInferenceProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
 
 type SortField = "updatedAt" | "createdAt" | "title";
 type SortDirection = "asc" | "desc";
@@ -123,6 +136,26 @@ export default function LibraryPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Novel | null>(null);
   const [editTarget, setEditTarget] = useState<Novel | null>(null);
+  const [translateTarget, setTranslateTarget] = useState<Novel | null>(null);
+
+  const providers = useApiInferenceProviders();
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [isTranslating, setIsTranslating] = useState(false);
+  const models = useAIModels(selectedProvider);
+
+  // Auto-select first provider and model
+  useEffect(() => {
+    if (providers && providers.length > 0 && !selectedProvider) {
+      setSelectedProvider(providers[0].id);
+    }
+  }, [providers, selectedProvider]);
+  
+  useEffect(() => {
+    if (models && models.length > 0 && !selectedModel) {
+      setSelectedModel(models[0].id);
+    }
+  }, [models, selectedModel]);
 
   const genres = useMemo(() => {
     if (!novels) return [];
@@ -175,6 +208,123 @@ export default function LibraryPage() {
   const handleSort = (value: string) => {
     setSort(value as `${SortField}-${SortDirection}`);
     setPage(1);
+  };
+
+  const handleExportEpub = useCallback(async (novel: Novel) => {
+    try {
+      toast.info("Đang tạo file EPUB, vui lòng đợi...");
+      const chapters = await db.chapters.where("novelId").equals(novel.id).sortBy("orderIndex");
+      
+      if (!chapters || chapters.length === 0) {
+        throw new Error("Không có chương nào để xuất!");
+      }
+      
+      let coverBase64 = null;
+      if (novel.coverImage) {
+        try {
+          const imgRes = await fetch(novel.coverImage);
+          const blob = await imgRes.blob();
+          coverBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // Ignore cover fetch error
+        }
+      }
+      
+      const blob = await generateEpub(novel.title, novel.author || "Unknown", coverBase64 as string | null, chapters);
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${novel.title}.epub`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success("Xuất EPUB thành công!");
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi khi xuất EPUB");
+    }
+  }, []);
+
+  const handleTranslateTitle = async () => {
+    if (!translateTarget || !selectedProvider || !selectedModel) return;
+    
+    const activeProvider = providers?.find(p => p.id === selectedProvider);
+    if (!activeProvider) return;
+    
+    try {
+      setIsTranslating(true);
+      const targetUrl = activeProvider.providerType === "anthropic" 
+         ? "https://api.anthropic.com/v1/messages" 
+         : activeProvider.providerType === "google"
+           ? `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${activeProvider.apiKey}`
+           : `${activeProvider.baseUrl?.replace(/\/+$/, "")}/chat/completions`;
+           
+      let body: any;
+      const sysMsg = "Bạn là biên dịch viên truyện chữ chuyên nghiệp. Chỉ trả về kết quả dịch tiếng Việt của tên truyện, không thêm bất kỳ câu chữ nào khác, không dùng ngoặc kép.";
+      const usrMsg = `Dịch tên truyện này sang tiếng Việt: ${translateTarget.title}`;
+      
+      if (activeProvider.providerType === "anthropic") {
+         body = {
+            model: selectedModel,
+            system: sysMsg,
+            messages: [{ role: "user", content: usrMsg }],
+            max_tokens: 100,
+         };
+      } else if (activeProvider.providerType === "google") {
+         body = {
+            contents: [
+              { role: "user", parts: [{ text: `${sysMsg}\n\n${usrMsg}` }] }
+            ]
+         };
+      } else {
+         body = {
+            model: selectedModel,
+            messages: [
+              { role: "system", content: sysMsg },
+              { role: "user", content: usrMsg }
+            ]
+         };
+      }
+
+      const res = await fetch("/api/ai-proxy", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "x-target-url": targetUrl,
+          "Authorization": `Bearer ${activeProvider.apiKey}`,
+        },
+        body: JSON.stringify(body)
+      });
+      
+      if (!res.ok) throw new Error("Lỗi gọi API dịch");
+      const data = await res.json();
+      
+      let translated = "";
+      if (activeProvider.providerType === "anthropic") {
+         translated = data.content?.[0]?.text;
+      } else if (activeProvider.providerType === "google") {
+         translated = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      } else {
+         translated = data.choices?.[0]?.message?.content;
+      }
+      
+      translated = translated?.trim();
+      if (!translated) throw new Error("Không nhận được kết quả dịch");
+      
+      await db.novels.update(translateTarget.id, { title: translated });
+      toast.success("Đã dịch tên truyện thành công!");
+      setTranslateTarget(null);
+    } catch (e: any) {
+      toast.error(e.message || "Không thể dịch tên truyện");
+    } finally {
+      setIsTranslating(false);
+    }
   };
 
   const handleExport = useCallback(async (novel: Novel) => {
@@ -449,7 +599,9 @@ export default function LibraryPage() {
                         novel={novel}
                         onEdit={setEditTarget}
                         onExport={handleExport}
+                        onExportEpub={handleExportEpub}
                         onDelete={setDeleteTarget}
+                        onTranslate={setTranslateTarget}
                       />
                     </div>
                   </div>
@@ -542,7 +694,9 @@ export default function LibraryPage() {
                         novel={novel}
                         onEdit={setEditTarget}
                         onExport={handleExport}
+                        onExportEpub={handleExportEpub}
                         onDelete={setDeleteTarget}
+                        onTranslate={setTranslateTarget}
                       />
                     </div>
                   </CardContent>
@@ -643,6 +797,56 @@ export default function LibraryPage() {
           novel={editTarget}
         />
       )}
+
+      {/* Translate Title Dialog */}
+      <Dialog open={!!translateTarget} onOpenChange={(open) => !open && setTranslateTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dịch tên truyện</DialogTitle>
+            <DialogDescription>
+              Tên gốc: <strong className="text-foreground">{translateTarget?.title}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nhà cung cấp (Provider)</label>
+              <Select value={selectedProvider} onValueChange={setSelectedProvider} disabled={isTranslating}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers?.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Mô hình AI (Model)</label>
+              <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isTranslating || !models || models.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={models?.length ? "Chọn Model" : "Đang tải..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {models?.map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTranslateTarget(null)} disabled={isTranslating}>Hủy</Button>
+            <Button onClick={handleTranslateTitle} disabled={isTranslating || !selectedModel}>
+              {isTranslating ? <LoaderIcon className="w-4 h-4 mr-2 animate-spin" /> : <LanguagesIcon className="w-4 h-4 mr-2" />}
+              Dịch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
@@ -653,12 +857,16 @@ function NovelActions({
   novel,
   onEdit,
   onExport,
+  onExportEpub,
   onDelete,
+  onTranslate,
 }: {
   novel: Novel;
   onEdit: (novel: Novel) => void;
   onExport: (novel: Novel) => void;
+  onExportEpub: (novel: Novel) => void;
   onDelete: (novel: Novel) => void;
+  onTranslate: (novel: Novel) => void;
 }) {
   return (
     <div
@@ -677,6 +885,32 @@ function NovelActions({
           </Button>
         </TooltipTrigger>
         <TooltipContent>Chỉnh sửa</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10"
+            onClick={() => onTranslate(novel)}
+          >
+            <LanguagesIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Dịch tên truyện</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
+            onClick={() => onExportEpub(novel)}
+          >
+            <BookDownIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Xuất EPUB</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
