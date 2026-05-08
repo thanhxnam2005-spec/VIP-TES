@@ -368,6 +368,8 @@ export default function ScraperLibraryPage() {
                       <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-emerald-600"/> 69Shu.TW</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://czbooks.net/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-600"/> Czbooks</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.po18.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-500"/> PO18</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://fanqienovel.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600"/> Fanqie</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://book.qq.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400"/> BookQQ</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.popo.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-400"/> POPO</a></Button>
                     </div>
                   </div>
