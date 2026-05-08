@@ -23,7 +23,7 @@ export const FanqieAdapter: SiteAdapter = {
     const chapters = [
       {
         title: "Bắt đầu từ chương hiện tại",
-        url: currentUrl,
+        url: url,
         order: 0,
       }
     ];
