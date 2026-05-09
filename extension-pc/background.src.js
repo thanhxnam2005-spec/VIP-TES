@@ -201,7 +201,7 @@ async function stvFetchChapter(payload, sendResponse) {
       if (!stvScrapeActive) break;
       const cached = contentCache.get(tabId);
       if (cached && cached.length > 200) { content = cached.content; title = cached.title; contentCache.delete(tabId); break; }
-      if (i === 6) {
+      if (i === 2 || i === 5 || i === 8) {
         try {
           const resp = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_NOW" });
           if (resp && resp.length > 200) { content = resp.content; title = resp.title; break; }

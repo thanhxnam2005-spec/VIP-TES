@@ -55,12 +55,10 @@ import {
 import {
   deleteNovel,
   updateNovel,
-  useChapterAnalysisStatus,
+  useNovelDetailStats,
   useChapters,
   useCharacters,
   useNovel,
-  useChapterWordCounts,
-  useNovelWordCount,
 } from "@/lib/hooks";
 import { db } from "@/lib/db";
 import { generateEpub } from "@/lib/epub-generator";
@@ -95,13 +93,15 @@ export default function NovelDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const activeTab = searchParams.get("tab") ?? "chapters";
+  const [activeTab, setActiveTab] = useState("chapters");
   const novel = useNovel(id);
   const chapters = useChapters(id);
-  const chapterWordCounts = useChapterWordCounts(id);
-  const totalWords = useNovelWordCount(id);
-  const analysisStatuses = useChapterAnalysisStatus(id);
+  const { chapterWordCounts, analysisStatuses } = useNovelDetailStats(id);
+  const totalWords = useMemo(() => {
+    let sum = 0;
+    chapterWordCounts.forEach((count) => { sum += count; });
+    return sum;
+  }, [chapterWordCounts]);
   const characters = useCharacters(id);
 
   const [analysisOpen, setAnalysisOpen] = useState(false);
@@ -537,18 +537,7 @@ export default function NovelDetailPage() {
       {/* Tabs */}
       <Tabs
         value={activeTab}
-        onValueChange={(value) => {
-          const params = new URLSearchParams(searchParams.toString());
-          if (value === "chapters") {
-            params.delete("tab");
-          } else {
-            params.set("tab", value);
-          }
-          const query = params.toString();
-          router.replace(`${pathname}${query ? `?${query}` : ""}`, {
-            scroll: false,
-          });
-        }}
+        onValueChange={setActiveTab}
       >
         <TabsList className="w-full justify-center gap-1 p-1">
           <TabsTrigger

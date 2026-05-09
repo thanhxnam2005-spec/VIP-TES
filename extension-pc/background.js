@@ -318,19 +318,15 @@ async function stvFetchChapter(payload, sendResponse) {
       }
 
       // Try EXTRACT_NOW at multiple intervals as fallback
-      if (i === 5 || i === 12 || i === 25 || i === 40) {
+      if (i === 2 || i === 5 || i === 8) {
         try {
-          console.log("[STV] Trying EXTRACT_NOW, iteration:", i);
           const resp = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_NOW" });
           if (resp && resp.length > 200) {
             content = resp.content;
             title = resp.title;
-            console.log("[STV] EXTRACT_NOW success, length:", content.length);
             break;
           }
-        } catch (e) {
-          console.log("[STV] EXTRACT_NOW failed:", e.message, "- content script may not be ready yet");
-        }
+        } catch {}
       }
       await delay(500);
     }

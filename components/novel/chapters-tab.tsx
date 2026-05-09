@@ -26,7 +26,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { Chapter } from "@/lib/db";
+import { db, type Chapter } from "@/lib/db";
 import { fuzzyMatch } from "@/lib/fuzzy";
 import { deleteChapter, type ChapterAnalysisStatus } from "@/lib/hooks";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
@@ -61,6 +61,7 @@ import {
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { CopyXIcon } from "lucide-react";
 
 const STATUS_CONFIG: Record<
   ChapterAnalysisStatus,
@@ -140,6 +141,7 @@ export function ChaptersTab({
   const [deleteTarget, setDeleteTarget] = useState<Chapter | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showTranslateStatus, setShowTranslateStatus] = useState(true);
   const debouncedQuery = useDebouncedValue(searchQuery, 350);
@@ -221,6 +223,62 @@ export function ChaptersTab({
     setDeleteTarget(null);
   };
 
+  const selectDuplicates = async () => {
+    const toastId = toast.loading("Đang quét nội dung các chương...");
+    try {
+      const activeScenes = await db.scenes
+        .where("[novelId+isActive]")
+        .equals([novelId, 1])
+        .toArray();
+
+      const seenContent = new Set<string>();
+      const dupIds = new Set<string>();
+
+      // Mặc định quét theo thứ tự order để giữ lại chương xuất hiện đầu tiên
+      const chaptersByOrder = [...chapters].sort((a, b) => a.order - b.order);
+      const sceneMap = new Map(activeScenes.map((s) => [s.chapterId, s]));
+
+      for (const ch of chaptersByOrder) {
+        const scene = sceneMap.get(ch.id);
+        if (!scene || !scene.content) continue;
+        
+        // Chuẩn hóa: xóa toàn bộ khoảng trắng để so sánh chính xác dù có khác biệt về dòng/dấu cách
+        const normalized = scene.content.replace(/\s+/g, "").trim();
+        if (normalized.length < 50) continue; // Bỏ qua các chương quá ngắn (thường là lỗi hoặc thông báo)
+
+        if (seenContent.has(normalized)) {
+          dupIds.add(ch.id);
+        } else {
+          seenContent.add(normalized);
+        }
+      }
+
+      if (dupIds.size > 0) {
+        setSelected((prev) => new Set([...prev, ...dupIds]));
+        toast.success(`Đã chọn ${dupIds.size} chương có nội dung trùng lặp.`, { id: toastId });
+      } else {
+        toast.info("Không tìm thấy chương trùng lặp nội dung.", { id: toastId });
+      }
+    } catch {
+      toast.error("Lỗi khi quét chương trùng lặp", { id: toastId });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    try {
+      // Delete in parallel or sequentially. We do sequentially to avoid freezing DB
+      for (const id of selected) {
+        await deleteChapter(id);
+      }
+      toast.success(`Đã xóa ${selected.size} chương`);
+      setSelected(new Set());
+    } catch {
+      toast.error("Xóa thất bại");
+    }
+    setBulkDeleteOpen(false);
+  };
+
   return (
     <div className="max-w-full overflow-x-hidden">
       {/* Toolbar */}
@@ -232,6 +290,10 @@ export function ChaptersTab({
         <Button size="sm" variant="outline" onClick={() => setBulkOpen(true)}>
           <FileTextIcon className="size-3.5 sm:mr-1.5" />
           <span className="hidden sm:inline">Thêm nhiều</span>
+        </Button>
+        <Button size="sm" variant="outline" onClick={selectDuplicates}>
+          <CopyXIcon className="size-3.5 sm:mr-1.5" />
+          <span className="hidden sm:inline">Chọn trùng lặp</span>
         </Button>
         <Button 
           size="sm" 
@@ -266,6 +328,13 @@ export function ChaptersTab({
               >
                 <LanguagesIcon className="size-3.5" />
                 Dịch AI đã chọn
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-destructive"
+                onClick={() => setBulkDeleteOpen(true)}
+              >
+                <TrashIcon className="size-3.5" />
+                Xóa đã chọn
               </button>
               {onReplace && (
                 <button
@@ -645,6 +714,23 @@ export function ChaptersTab({
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDelete}>
               Xóa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa hàng loạt</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn chuẩn bị xóa <strong>{selected.size}</strong> chương đã chọn cùng toàn bộ nội dung của chúng. Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleBulkDelete}>
+              Xóa {selected.size} chương
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

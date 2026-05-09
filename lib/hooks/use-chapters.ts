@@ -1,6 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
+import { useState, useEffect } from "react";
 import { db, type Chapter } from "@/lib/db";
 
 export function useChapters(novelId: string | undefined) {
@@ -56,31 +57,94 @@ export function useChapterAnalysisStatus(novelId: string | undefined) {
         .where("novelId")
         .equals(novelId)
         .sortBy("order");
-      const results: { chapterId: string; status: ChapterAnalysisStatus }[] =
-        [];
-      for (const ch of chapters) {
-        if (!ch.analyzedAt) {
-          results.push({ chapterId: ch.id, status: "unanalyzed" });
-          continue;
-        }
-        const scenes = await db.scenes
-          .where("[chapterId+isActive]")
-          .equals([ch.id, 1])
-          .toArray();
-        const latestEdit = Math.max(
-          ...scenes.map((s) => s.updatedAt.getTime()),
-          0,
-        );
-        results.push({
-          chapterId: ch.id,
-          status:
-            latestEdit > ch.analyzedAt.getTime() ? "stale" : "analyzed",
+        
+      const latestEditByChapter = new Map<string, number>();
+      await db.scenes
+        .where("[novelId+isActive]")
+        .equals([novelId, 1])
+        .each((s) => {
+          const t = s.updatedAt.getTime();
+          const current = latestEditByChapter.get(s.chapterId) || 0;
+          if (t > current) {
+            latestEditByChapter.set(s.chapterId, t);
+          }
         });
-      }
-      return results;
+
+      return chapters.map((ch) => {
+        if (!ch.analyzedAt) return { chapterId: ch.id, status: "unanalyzed" as const };
+        const latestEdit = latestEditByChapter.get(ch.id) || 0;
+        return {
+          chapterId: ch.id,
+          status: latestEdit > ch.analyzedAt.getTime() ? "stale" as const : "analyzed" as const,
+        };
+      });
     },
     [novelId],
   );
+}
+
+export function useNovelDetailStats(novelId: string | undefined) {
+  // Trì hoãn việc chạy query nặng lúc mới mount để không chặn (block) thread khi chuyển trang.
+  const [shouldLoad, setShouldLoad] = useState(false);
+  
+  useEffect(() => {
+    // Đợi 150ms sau khi chuyển trang xong mới bắt đầu load
+    const timer = setTimeout(() => setShouldLoad(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return useLiveQuery(
+    async () => {
+      const chapterWordCounts = new Map<string, number>();
+      const latestEditByChapter = new Map<string, number>();
+      if (!novelId || !shouldLoad) return { chapterWordCounts, analysisStatuses: [] };
+
+      const chapters = await db.chapters
+        .where("novelId")
+        .equals(novelId)
+        .sortBy("order");
+
+      // Chunking to prevent blocking the main UI thread when scanning thousands of scenes
+      const CHUNK_SIZE = 500;
+      let offset = 0;
+      
+      while (true) {
+        const batch = await db.scenes
+          .where("[novelId+isActive]")
+          .equals([novelId, 1])
+          .offset(offset)
+          .limit(CHUNK_SIZE)
+          .toArray();
+
+        if (batch.length === 0) break;
+
+        for (const s of batch) {
+          chapterWordCounts.set(s.chapterId, (chapterWordCounts.get(s.chapterId) ?? 0) + s.wordCount);
+          const t = s.updatedAt.getTime();
+          const current = latestEditByChapter.get(s.chapterId) || 0;
+          if (t > current) {
+            latestEditByChapter.set(s.chapterId, t);
+          }
+        }
+
+        offset += CHUNK_SIZE;
+        // Nhường quyền cho event loop để UI không bị giật lag
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const analysisStatuses = chapters.map((ch) => {
+        if (!ch.analyzedAt) return { chapterId: ch.id, status: "unanalyzed" as const };
+        const latestEdit = latestEditByChapter.get(ch.id) || 0;
+        return {
+          chapterId: ch.id,
+          status: latestEdit > ch.analyzedAt.getTime() ? "stale" as const : "analyzed" as const,
+        };
+      });
+
+      return { chapterWordCounts, analysisStatuses };
+    },
+    [novelId, shouldLoad]
+  ) ?? { chapterWordCounts: new Map<string, number>(), analysisStatuses: [] };
 }
 
 export function useHasAnalyzedChapters(novelId: string | undefined) {

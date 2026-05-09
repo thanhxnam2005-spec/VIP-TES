@@ -185,8 +185,8 @@
       sent = false;
       lastContentHash = '';
       // Re-poll after URL change with increasing delays
-      for (let i = 0; i < 12; i++) {
-        setTimeout(autoExtract, 1000 + i * 1000);
+      for (let i = 0; i < 20; i++) {
+        setTimeout(autoExtract, 300 + i * 500);
       }
     }
   };
@@ -194,8 +194,7 @@
   // Observe DOM changes to auto-extract when SPA navigates
   const observer = new MutationObserver(() => {
     checkUrlChange();
-    // Always try to extract — sendToBackground will de-duplicate via hash
-    setTimeout(autoExtract, 1000);
+    setTimeout(autoExtract, 300);
   });
   if (document.body) {
     observer.observe(document.body, { childList: true, subtree: true });
@@ -205,8 +204,8 @@
   setInterval(checkUrlChange, 1500);
 
   const startPolling = () => {
-    for (let i = 0; i < 15; i++) {
-      setTimeout(autoExtract, 1500 + i * 1000);
+    for (let i = 0; i < 20; i++) {
+      setTimeout(autoExtract, 300 + i * 500);
     }
   };
   startPolling();
@@ -229,10 +228,10 @@
           sendResponse({ content, title, length: content.length, url: location.href });
         } else {
           console.log('[STV] EXTRACT_NOW retry, remaining:', n - 1, 'current length:', content.length);
-          setTimeout(() => tryExtract(n - 1), 1000);
+          setTimeout(() => tryExtract(n - 1), 300);
         }
       };
-      setTimeout(() => tryExtract(15), 1000);
+      setTimeout(() => tryExtract(25), 100);
       return true;
     }
     if (msg.type === "GO_NEXT") {
@@ -243,8 +242,8 @@
       sendResponse({ ok });
       // After clicking next, start polling for new content
       if (ok) {
-        for (let i = 0; i < 20; i++) {
-          setTimeout(autoExtract, 2000 + i * 1000);
+        for (let i = 0; i < 25; i++) {
+          setTimeout(autoExtract, 500 + i * 500);
         }
       }
       return false;

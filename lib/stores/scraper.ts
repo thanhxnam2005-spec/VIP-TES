@@ -82,7 +82,7 @@ const initialState = {
   abortController: null as AbortController | null,
   retryingIndex: null as number | null,
   debugLogs: [] as DebugLog[],
-  chapterDelay: 2,
+  chapterDelay: 0.5,
   isPaused: false,
   targetNovelId: null as string | null,
 };

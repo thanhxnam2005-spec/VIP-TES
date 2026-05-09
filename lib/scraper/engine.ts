@@ -73,7 +73,9 @@ export async function scrapeChapters(
   let consecutiveErrors = 0;
   const MAX_CONSECUTIVE_ERRORS = 3;
 
-    const safeDelayMs = Math.max(adapter.minDelayMs || delayMs || 7000, 100);
+    const defaultMin = adapter.minDelayMs ?? 0;
+    const userDelay = delayMs ?? 7000;
+    const safeDelayMs = Math.max(defaultMin, userDelay, 100);
 
     for (let i = 0; i < chapters.length; i++) {
       signal?.throwIfAborted();
