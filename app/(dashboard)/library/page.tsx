@@ -78,6 +78,8 @@ import { toast } from "sonner";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 import { generateEpub } from "@/lib/epub-generator";
 import { useApiInferenceProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
+import { generateText } from "ai";
+import { resolveStep } from "@/lib/ai/resolve-step";
 
 type SortField = "updatedAt" | "createdAt" | "title";
 type SortDirection = "asc" | "desc";
@@ -213,7 +215,7 @@ export default function LibraryPage() {
   const handleExportEpub = useCallback(async (novel: Novel) => {
     try {
       toast.info("Đang tạo file EPUB, vui lòng đợi...");
-      const chapters = await db.chapters.where("novelId").equals(novel.id).sortBy("orderIndex");
+      const chapters = await db.chapters.where("novelId").equals(novel.id).sortBy("order");
       
       if (!chapters || chapters.length === 0) {
         throw new Error("Không có chương nào để xuất!");
@@ -264,67 +266,22 @@ export default function LibraryPage() {
   const handleTranslateTitle = async () => {
     if (!translateTarget || !selectedProvider || !selectedModel) return;
     
-    const activeProvider = providers?.find(p => p.id === selectedProvider);
-    if (!activeProvider) return;
-    
     try {
       setIsTranslating(true);
-      const targetUrl = activeProvider.providerType === "anthropic" 
-         ? "https://api.anthropic.com/v1/messages" 
-         : activeProvider.providerType === "google"
-           ? `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${activeProvider.apiKey}`
-           : `${activeProvider.baseUrl?.replace(/\/+$/, "")}/chat/completions`;
-           
-      let body: any;
+
+      const model = await resolveStep({ providerId: selectedProvider, modelId: selectedModel });
+      if (!model) throw new Error("Không thể tải model AI");
+
       const sysMsg = "Bạn là biên dịch viên truyện chữ chuyên nghiệp. Chỉ trả về kết quả dịch tiếng Việt của tên truyện, không thêm bất kỳ câu chữ nào khác, không dùng ngoặc kép.";
       const usrMsg = `Dịch tên truyện này sang tiếng Việt: ${translateTarget.title}`;
-      
-      if (activeProvider.providerType === "anthropic") {
-         body = {
-            model: selectedModel,
-            system: sysMsg,
-            messages: [{ role: "user", content: usrMsg }],
-            max_tokens: 100,
-         };
-      } else if (activeProvider.providerType === "google") {
-         body = {
-            contents: [
-              { role: "user", parts: [{ text: `${sysMsg}\n\n${usrMsg}` }] }
-            ]
-         };
-      } else {
-         body = {
-            model: selectedModel,
-            messages: [
-              { role: "system", content: sysMsg },
-              { role: "user", content: usrMsg }
-            ]
-         };
-      }
 
-      const res = await fetch("/api/ai-proxy", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "x-target-url": targetUrl,
-          "Authorization": `Bearer ${activeProvider.apiKey}`,
-        },
-        body: JSON.stringify(body)
+      const { text } = await generateText({
+        model,
+        system: sysMsg,
+        prompt: usrMsg,
       });
-      
-      if (!res.ok) throw new Error("Lỗi gọi API dịch");
-      const data = await res.json();
-      
-      let translated = "";
-      if (activeProvider.providerType === "anthropic") {
-         translated = data.content?.[0]?.text;
-      } else if (activeProvider.providerType === "google") {
-         translated = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      } else {
-         translated = data.choices?.[0]?.message?.content;
-      }
-      
-      translated = translated?.trim();
+
+      const translated = text.trim();
       if (!translated) throw new Error("Không nhận được kết quả dịch");
       
       await db.novels.update(translateTarget.id, { title: translated });

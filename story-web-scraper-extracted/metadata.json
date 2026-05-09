@@ -1,0 +1,6 @@
+{
+  "name": "Story Web Scraper",
+  "description": "Scrapes story details, chapter lists, and chapter content from a given URL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Novel Studio Connector (PC)",
-  "version": "6.0",
+  "version": "6.3",
   "description": "Stealth novel scraper with proxy rotation & anti-bot",
   "background": {
     "service_worker": "background.js"

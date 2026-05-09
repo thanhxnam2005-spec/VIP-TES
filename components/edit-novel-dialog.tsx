@@ -19,7 +19,22 @@ import { updateNovel } from "@/lib/hooks";
 import { type Novel } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import { ImagePicker } from "@/components/ui/image-picker";
-import { PlusIcon, XIcon } from "lucide-react";
+import { PlusIcon, XIcon, CheckIcon } from "lucide-react";
+
+const GENRE_DICTS = [
+  "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
+  "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", 
+  "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+];
+
+const GENRE_LABELS: Record<string, string> = {
+  ngontinh: "Ngôn tình", hiendai: "Hiện đại", tienhiep: "Tiên hiệp",
+  huyenhuyen: "Huyền huyễn", dammi: "Đam mỹ", hocduong: "Học đường",
+  nsfw: "NSFW (18+)", hentai: "Hentai", dongphuong: "Đông phương",
+  dothi: "Đô thị", vongdu: "Võng du", khoahuyen: "Khoa huyễn",
+  quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
+  trinhtham: "Trinh thám", lichsu: "Lịch sử"
+};
 
 const PRESET_COLORS = [
   "#ef4444", // red
@@ -49,6 +64,7 @@ export function EditNovelDialog({
   const [color, setColor] = useState(novel.color ?? PRESET_COLORS[5]);
   const [genres, setGenres] = useState<string[]>(novel.genres ?? []);
   const [tags, setTags] = useState<string[]>(novel.tags ?? []);
+  const [activeDictSources, setActiveDictSources] = useState<string[]>(novel.activeDictSources ?? []);
   const [coverImage, setCoverImage] = useState<string | undefined>(novel.coverImage);
   const [saving, setSaving] = useState(false);
 
@@ -62,6 +78,7 @@ export function EditNovelDialog({
       setColor(novel.color ?? PRESET_COLORS[5]);
       setGenres(novel.genres ?? []);
       setTags(novel.tags ?? []);
+      setActiveDictSources(novel.activeDictSources ?? []);
       setCoverImage(novel.coverImage);
     }
   }, [open, novel]);
@@ -80,6 +97,7 @@ export function EditNovelDialog({
         sourceUrl: sourceUrl.trim() || undefined,
         genres,
         tags,
+        activeDictSources,
         coverImage: coverImage || undefined,
       });
 
@@ -187,6 +205,41 @@ export function EditNovelDialog({
                 onChange={setTags}
                 variant="secondary"
               />
+            </div>
+
+            {/* Dictionary Genres */}
+            <div className="pt-2 border-t">
+              <Label>Từ điển dịch truyện (Chọn bối cảnh/ngữ cảnh)</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Các từ điển này sẽ được ưu tiên đè lên VietPhrase chung để xưng hô và thuật ngữ chuẩn theo thể loại.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {GENRE_DICTS.map((src) => {
+                  const isActive = activeDictSources.includes(src);
+                  return (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => {
+                        if (isActive) {
+                          setActiveDictSources(activeDictSources.filter(s => s !== src));
+                        } else {
+                          setActiveDictSources([...activeDictSources, src]);
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors border",
+                        isActive 
+                          ? "bg-primary text-primary-foreground border-primary" 
+                          : "bg-background text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {isActive && <CheckIcon className="size-3" />}
+                      {GENRE_LABELS[src]}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div>

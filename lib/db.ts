@@ -44,6 +44,8 @@ export interface Novel {
   customTranslatePrompt?: string;
   customTranslateProviderId?: string;
   customTranslateModelId?: string;
+  /** Active genre dictionaries specifically selected for this novel */
+  activeDictSources?: string[];
   /** Timestamp of last style scan. */
   styleScannedAt?: Date;
   createdAt: Date;
@@ -331,7 +333,24 @@ export type DictSource =
   | "names"
   | "names2"
   | "phienam"
-  | "luatnhan";
+  | "luatnhan"
+  | "ngontinh"
+  | "hiendai"
+  | "tienhiep"
+  | "huyenhuyen"
+  | "dammi"
+  | "hocduong"
+  | "nsfw"
+  | "hentai"
+  | "dongphuong"
+  | "dothi"
+  | "vongdu"
+  | "khoahuyen"
+  | "quybi"
+  | "xuyenkhong"
+  | "hethong"
+  | "trinhtham"
+  | "lichsu";
 
 export interface DictEntry {
   id: string;

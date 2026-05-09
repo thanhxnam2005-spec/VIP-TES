@@ -22,6 +22,23 @@ const DICT_FILES: Record<DictSource, string> = {
   names2: "/dict/names2.txt",
   phienam: "/dict/phienam.txt",
   luatnhan: "/dict/luatnhan.txt",
+  ngontinh: "/dict/ngontinh.txt",
+  hiendai: "/dict/hiendai.txt",
+  tienhiep: "/dict/tienhiep.txt",
+  huyenhuyen: "/dict/huyenhuyen.txt",
+  dammi: "/dict/dammi.txt",
+  hocduong: "/dict/hocduong.txt",
+  nsfw: "/dict/nsfw.txt",
+  hentai: "/dict/hentai.txt",
+  dongphuong: "/dict/dongphuong.txt",
+  dothi: "/dict/dothi.txt",
+  vongdu: "/dict/vongdu.txt",
+  khoahuyen: "/dict/khoahuyen.txt",
+  quybi: "/dict/quybi.txt",
+  xuyenkhong: "/dict/xuyenkhong.txt",
+  hethong: "/dict/hethong.txt",
+  trinhtham: "/dict/trinhtham.txt",
+  lichsu: "/dict/lichsu.txt",
 };
 
 const VIETPHRASE_OVERRIDE_URL = "/dict/vietphrase-override.txt";
@@ -31,6 +48,23 @@ const ALL_SOURCES: DictSource[] = [
   "names2",
   "phienam",
   "luatnhan",
+  "ngontinh",
+  "hiendai",
+  "tienhiep",
+  "huyenhuyen",
+  "dammi",
+  "hocduong",
+  "nsfw",
+  "hentai",
+  "dongphuong",
+  "dothi",
+  "vongdu",
+  "khoahuyen",
+  "quybi",
+  "xuyenkhong",
+  "hethong",
+  "trinhtham",
+  "lichsu",
   "vietphrase",
 ];
 
@@ -282,6 +316,61 @@ export async function importDictFile(
   }
 
   return parsed.length;
+}
+
+export async function saveDictSource(source: DictSource, text: string): Promise<number> {
+  const parsed = parseDictText(text);
+
+  await db.dictEntries.where("source").equals(source).delete();
+
+  for (let i = 0; i < parsed.length; i += CHUNK_SIZE) {
+    const chunk = parsed.slice(i, i + CHUNK_SIZE).map((e) => ({
+      id: crypto.randomUUID(),
+      source,
+      chinese: e.chinese,
+      vietnamese: e.vietnamese,
+    }));
+    await db.dictEntries.bulkAdd(chunk);
+  }
+
+  await db.dictCache.put({ source, rawText: text });
+
+  const meta = await db.dictMeta.get("dict-meta");
+  if (meta) {
+    meta.sources[source] = parsed.length;
+    meta.loadedAt = new Date();
+    await db.dictMeta.put(meta);
+  }
+
+  return parsed.length;
+}
+
+export async function appendToDictSource(source: DictSource, entries: { chinese: string; vietnamese: string }[]): Promise<number> {
+  const cached = await db.dictCache.get(source);
+  let currentText = cached?.rawText || "";
+  
+  // Deduplicate existing keys
+  const existingKeys = new Set<string>();
+  const lines = currentText.split("\n");
+  for (const line of lines) {
+    const eqIdx = line.indexOf("=");
+    if (eqIdx > 0) {
+      existingKeys.add(line.slice(0, eqIdx).trim());
+    }
+  }
+
+  const newEntries = entries.filter(e => !existingKeys.has(e.chinese));
+  if (newEntries.length === 0) return 0;
+
+  if (currentText && !currentText.endsWith("\n")) {
+    currentText += "\n";
+  }
+
+  const newLines = newEntries.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
+  const newText = currentText + newLines + "\n";
+
+  await saveDictSource(source, newText);
+  return newEntries.length;
 }
 
 export async function clearDictSource(source: DictSource): Promise<void> {

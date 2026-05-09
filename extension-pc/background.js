@@ -1,4 +1,4 @@
-console.log("%c🚀 Novel Studio Connector v6.0 — Stealth Mode", "color:lime;font-size:16px");
+console.log("%c🚀 Novel Studio Connector v6.3 — Stealth Mode", "color:lime;font-size:16px");
 const contentCache = new Map();
 let stvScrapeActive = true;
 
@@ -195,39 +195,185 @@ chrome.runtime.onMessageExternal.addListener((request, _sender, sendResponse) =>
 // ══════════════════════════════════════════════════════════════
 // 5. STV CHAPTER FETCHING (unchanged)
 // ══════════════════════════════════════════════════════════════
-async function findSTVTab() {
-  const tabs = await chrome.tabs.query({ url: ["*://sangtacviet.com/*", "*://sangtacviet.app/*", "*://sangtacviet.vip/*", "*://fanqienovel.com/*", "*://*.fanqienovel.com/*"] });
-  return tabs.length > 0 ? tabs[0].id : null;
+async function findSTVTab(targetUrl) {
+  let queryUrls = ["*://sangtacviet.com/*", "*://sangtacviet.app/*", "*://sangtacviet.vip/*", "*://fanqienovel.com/*", "*://*.fanqienovel.com/*"];
+  
+  if (targetUrl) {
+    try {
+      const urlObj = new URL(targetUrl);
+      queryUrls = [`*://${urlObj.hostname}/*`];
+    } catch (e) {}
+  }
+  
+  const tabs = await chrome.tabs.query({ url: queryUrls });
+  if (tabs.length === 0) return null;
+  
+  // Prioritize reader tabs
+  tabs.sort((a, b) => {
+    const aIsReader = a.url && (a.url.includes('/reader/') || a.url.match(/\/\d+\/\d+\/$/));
+    const bIsReader = b.url && (b.url.includes('/reader/') || b.url.match(/\/\d+\/\d+\/$/));
+    if (aIsReader && !bIsReader) return -1;
+    if (!aIsReader && bIsReader) return 1;
+    return 0;
+  });
+  
+  return tabs[0].id;
 }
 
 async function stvFetchChapter(payload, sendResponse) {
   try {
-    const tabId = await findSTVTab();
-    if (!tabId) { sendResponse({ success: false, error: "Mở 1 tab SangTacViet trước!" }); return; }
+    const isFanqie = payload.chapterUrl && (payload.chapterUrl.includes('fanqienovel.com') || payload.chapterUrl.startsWith('fanqie-dynamic'));
+    const isDynamicFanqie = payload.chapterUrl && payload.chapterUrl.startsWith('fanqie-dynamic');
+    
+    // ── Step 1: Find or create a tab ──
+    let tabId;
+    let didNavigate = false;
+    
+    if (isFanqie) {
+      // Search for ANY existing Fanqie tab
+      const tabs = await chrome.tabs.query({ url: ["*://fanqienovel.com/*", "*://*.fanqienovel.com/*"] });
+      if (tabs.length > 0) {
+        // Prefer reader tabs over index pages
+        tabs.sort((a, b) => {
+          const aR = a.url && a.url.includes('/reader/');
+          const bR = b.url && b.url.includes('/reader/');
+          if (aR && !bR) return -1;
+          if (!aR && bR) return 1;
+          return 0;
+        });
+        tabId = tabs[0].id;
+        persistentTabId = tabId;
+        console.log("[Fanqie] Found existing tab:", tabId, "URL:", tabs[0].url);
+      }
+    } else {
+      tabId = await findSTVTab(payload.chapterUrl);
+    }
+
+    // Fanqie: no tab found → create new one
+    if (!tabId && isFanqie && !isDynamicFanqie) {
+      console.log("[Fanqie] Creating new tab for:", payload.chapterUrl);
+      const tab = await chrome.tabs.create({ url: payload.chapterUrl, active: true });
+      tabId = tab.id;
+      persistentTabId = tab.id;
+      didNavigate = true;
+      await waitForTabLoad(tabId, 20000);
+      // Clear cache right after load, then wait for content script
+      contentCache.delete(tabId);
+      await delay(4000);
+    } else if (!tabId && isDynamicFanqie) {
+      sendResponse({ success: false, error: "Tab Fanqie đã bị đóng! Mở lại 1 tab Fanqie." });
+      return;
+    } else if (!tabId) {
+      sendResponse({ success: false, error: "Mở 1 tab truyện trên trình duyệt trước!" }); 
+      return; 
+    }
+
+    // ── Step 2: Navigate existing tab to chapter URL (real URL only) ──
+    if (isFanqie && !isDynamicFanqie && !didNavigate) {
+      try {
+        const tabInfo = await chrome.tabs.get(tabId);
+        const targetSlug = payload.chapterUrl.split('/').filter(Boolean).pop();
+        const tabNeedsNavigation = tabInfo.url && !tabInfo.url.includes(targetSlug);
+        
+        if (tabNeedsNavigation) {
+          console.log("[Fanqie] Navigating tab to chapter:", payload.chapterUrl);
+          // Clear ALL cached content before navigating
+          contentCache.delete(tabId);
+          await chrome.tabs.update(tabId, { url: payload.chapterUrl, active: true });
+          didNavigate = true;
+          await waitForTabLoad(tabId, 20000);
+          // Clear cache RIGHT AFTER page load (before content script sends new data)
+          contentCache.delete(tabId);
+          // Wait for content script to inject and extract content
+          // Content script starts polling at 1.5s after inject
+          await delay(4000);
+          // Do NOT clear cache here — content script may have already sent data
+        } else {
+          console.log("[Fanqie] Tab already at chapter URL:", tabInfo.url);
+        }
+      } catch (e) {
+        console.log("[Fanqie] Navigation error:", e.message);
+      }
+    }
+
+    // For dynamic Fanqie: GO_NEXT was already clicked, tab is showing next chapter.
+    // Just need to extract. Content script should already have detected URL change.
+
+    // ── Step 3: Extract content ──
     let content = "", title = "";
-    for (let i = 0; i < 40; i++) {
+    console.log("[STV] Extracting content from tab:", tabId, "isFanqie:", isFanqie, "isDynamic:", isDynamicFanqie, "didNavigate:", didNavigate);
+
+    // Poll for content
+    for (let i = 0; i < 60; i++) {
       if (!stvScrapeActive) break;
+
+      // Check cache (content script auto-sends STV_CONTENT_READY)
       const cached = contentCache.get(tabId);
-      if (cached && cached.length > 200) { content = cached.content; title = cached.title; contentCache.delete(tabId); break; }
-      if (i === 6) {
+      if (cached && cached.length > 200) {
+        content = cached.content;
+        title = cached.title;
+        contentCache.delete(tabId);
+        console.log("[STV] Got content from cache, length:", content.length);
+        break;
+      }
+
+      // Try EXTRACT_NOW at multiple intervals as fallback
+      if (i === 5 || i === 12 || i === 25 || i === 40) {
         try {
+          console.log("[STV] Trying EXTRACT_NOW, iteration:", i);
           const resp = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_NOW" });
-          if (resp && resp.length > 200) { content = resp.content; title = resp.title; break; }
-        } catch {}
+          if (resp && resp.length > 200) {
+            content = resp.content;
+            title = resp.title;
+            console.log("[STV] EXTRACT_NOW success, length:", content.length);
+            break;
+          }
+        } catch (e) {
+          console.log("[STV] EXTRACT_NOW failed:", e.message, "- content script may not be ready yet");
+        }
       }
       await delay(500);
     }
     contentCache.delete(tabId);
+
+    console.log("[STV] Extraction done. Length:", content.length, "Title:", title);
+
+    // ── Step 4: GO_NEXT — Click next chapter button ──
+    // For Fanqie with real URLs: SKIP GO_NEXT. We navigate to each URL directly.
+    // Only use GO_NEXT for STV and dynamic Fanqie (no URL available).
     const shouldNext = payload.allowNext !== false && stvScrapeActive;
-    if (shouldNext && content.length > 200) {
+    const skipGoNext = isFanqie && !isDynamicFanqie; // Real URLs → navigate directly, no need to click next
+    if (shouldNext && content.length > 200 && !skipGoNext) {
       try {
+        console.log("[STV] Sending GO_NEXT...");
+        contentCache.delete(tabId);
         await chrome.tabs.sendMessage(tabId, { type: "GO_NEXT" });
-        await waitForTabLoad(tabId, 25000);
-        for (let i = 0; i < 30; i++) { if (!stvScrapeActive || contentCache.has(tabId)) break; await delay(500); }
-      } catch (e) { console.log("[STV] GO_NEXT Error:", e.message); }
+        
+        // Wait for SPA to navigate and new content to load
+        await delay(3000);
+        
+        // Poll for next chapter content to appear
+        for (let i = 0; i < 60; i++) { 
+          if (!stvScrapeActive || contentCache.has(tabId)) break; 
+          await delay(500); 
+        }
+        console.log("[STV] GO_NEXT done. Next content cached:", contentCache.has(tabId));
+      } catch (e) { 
+        console.log("[STV] GO_NEXT Error:", e.message); 
+      }
+    } else if (skipGoNext) {
+      console.log("[Fanqie] Skipping GO_NEXT — will navigate to next chapter URL directly");
     }
-    sendResponse({ success: true, content, contentText: content, data: "", length: content.length, title, timedOut: content.length < 200, stopped: !stvScrapeActive });
-  } catch (error) { sendResponse({ success: false, error: error.message }); }
+    
+    sendResponse({ 
+      success: true, content, contentText: content, data: "", 
+      length: content.length, title, 
+      timedOut: content.length < 200, stopped: !stvScrapeActive 
+    });
+  } catch (error) {
+    console.log("[STV] stvFetchChapter ERROR:", error.message);
+    sendResponse({ success: false, error: error.message });
+  }
 }
 
 async function downloadAllSequential({ chapters, delay: d = 1000 }, sendResponse) {
@@ -272,7 +418,7 @@ async function handleFetch(url, waitSelector, clickSelector, timeout, reuseTab =
   }
 
   try {
-    await waitForTabLoad(tabId, 30000);
+    await waitForTabLoad(tabId, 10000);
     await injectFullStealth(tabId);
     // Human-like random delay
     await delay(getAdaptiveDelay(1500));

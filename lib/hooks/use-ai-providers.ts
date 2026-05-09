@@ -24,15 +24,19 @@ export function isSystemProvider(id: string | undefined): boolean {
   return id === WEBGPU_SYSTEM_PROVIDER_ID;
 }
 
+import { useMemo } from "react";
+
 // ─── Provider Queries ───────────────────────────────────────
 
 export function useAIProviders() {
   const dbProviders = useLiveQuery(() =>
     db.aiProviders.orderBy("createdAt").reverse().toArray(),
   );
-  if (!dbProviders) return undefined;
-  // Append system provider at the end (always available)
-  return [...dbProviders, WEBGPU_SYSTEM_PROVIDER];
+  
+  return useMemo(() => {
+    if (!dbProviders) return undefined;
+    return [...dbProviders, WEBGPU_SYSTEM_PROVIDER];
+  }, [dbProviders]);
 }
 
 /** Providers allowed for analysis, chapter tools, writing pipeline (excludes WebGPU). */

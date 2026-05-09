@@ -20,74 +20,118 @@ export const FanqieAdapter: SiteAdapter = {
     const coverImg = doc.querySelector(".book-cover-img");
     const coverImage = coverImg ? new URL(coverImg.getAttribute("src") || "", currentBase).href : undefined;
 
-    const chapters = [
-      {
-        title: "Bắt đầu từ chương hiện tại",
-        url: url,
-        order: 0,
-      }
-    ];
+    let chapters = Array.from(doc.querySelectorAll(".chapter-item-title"))
+      .filter(el => !(el.textContent?.trim() || "").includes("最近更新"))
+      .map((el, index) => {
+      const title = el.textContent?.trim() || `Chapter ${index + 1}`;
+      const href = el.getAttribute("href");
+      return {
+        id: href || `chapter-${index}`,
+        title: title,
+        url: href ? new URL(href, currentBase).toString() : url,
+        order: index,
+        hasHref: !!href
+      };
+    }).filter(c => c.hasHref).map(c => ({
+      id: c.id,
+      title: c.title,
+      url: c.url,
+      order: c.order
+    }));
+
+    if (chapters.length === 0) {
+      chapters = [
+        {
+          id: "fanqie-init",
+          title: "Bắt đầu từ chương hiện tại",
+          url: url,
+          order: 0,
+        }
+      ];
+    }
 
     return { title, author, description, chapters, coverImage };
   },
 
   getChapterContent(html, _url, contentText) {
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    const chapterTitle = doc.querySelector("h1, .title, .reader-header-title")?.textContent?.trim() || "";
+    // ── Get chapter title ──
+    let chapterTitle = "";
+    if (html && html.length > 100) {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      chapterTitle = doc.querySelector("h1, .title, .reader-header-title, .muye-reader-title")?.textContent?.trim() || "";
+    }
+    if (!chapterTitle && contentText) {
+      // Try to extract title from first line of contentText
+      const firstLine = contentText.split('\n')[0]?.trim();
+      if (firstLine && firstLine.length < 100) {
+        chapterTitle = firstLine;
+      }
+    }
 
+    // ── Get chapter content ──
+    // Priority: contentText from extension (live DOM extraction) > HTML parsing
     let text = "";
-    const contentEl = doc.querySelector(".muye-reader-content, .article-content, #content");
     
-    if (contentEl) {
-      const junkSelectors = ["script", "style", ".bottom-ad", "iframe", ".nav", ".footer"];
-      junkSelectors.forEach(sel => {
-        contentEl.querySelectorAll(sel).forEach(el => el.remove());
-      });
+    if (contentText && contentText.length > 100) {
+      // Use contentText directly — it's already extracted from the live DOM by content script
+      // This bypasses PUA font issues since the content script reads innerText/textContent
+      text = contentText;
+      console.log("[Fanqie] Using contentText from extension, length:", text.length);
+    } else if (html && html.length > 100) {
+      // Fallback: parse HTML
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const contentEl = doc.querySelector(".muye-reader-content, .article-content, #content");
       
-      let htmlContent = contentEl.innerHTML;
-      htmlContent = htmlContent.replace(/<br\s*\/?>/gi, '\n');
-      htmlContent = htmlContent.replace(/<p[^>]*>/gi, '\n');
-      htmlContent = htmlContent.replace(/<\/p>/gi, '\n');
-      
-      const tempDiv = doc.createElement("div");
-      tempDiv.innerHTML = htmlContent;
-      text = tempDiv.textContent?.trim() || "";
-    } else {
-      text = contentText || "";
+      if (contentEl) {
+        const junkSelectors = ["script", "style", ".bottom-ad", "iframe", ".nav", ".footer"];
+        junkSelectors.forEach(sel => {
+          contentEl.querySelectorAll(sel).forEach(el => el.remove());
+        });
+        
+        let htmlContent = contentEl.innerHTML;
+        htmlContent = htmlContent.replace(/<br\s*\/?>/gi, '\n');
+        htmlContent = htmlContent.replace(/<p[^>]*>/gi, '\n');
+        htmlContent = htmlContent.replace(/<\/p>/gi, '\n');
+        
+        const tempDiv = doc.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        text = tempDiv.textContent?.trim() || "";
+      }
     }
 
-    // ── FANQIE DECRYPTION LOGIC ──
-    // Mapping placeholders since python original snippet keys were lost in chat
-    const mapping: Record<string, string> = {};
-
-    for (const [oldChar, newChar] of Object.entries(mapping)) {
-      if (oldChar) text = text.split(oldChar).join(newChar);
+    if (!text) {
+      return { title: chapterTitle, content: "" };
     }
 
-    // Remove remaining PUA characters
-    text = text.replace(/[\ue000-\uf8ff]/g, '');
-
+    // ── Clean up text ──
+    // Don't strip ALL PUA chars — the static mapping is unreliable and gets stale.
+    // Instead, just clean up obvious formatting issues.
     const lines = text.split('\n');
-    const cleanedLines = lines.map(line => line.replace(/\s+/g, ' ').trim()).filter(line => line.length > 0);
+    const cleanedLines = lines
+      .map(line => line.replace(/\s+/g, ' ').trim())
+      .filter(line => line.length > 0);
     text = cleanedLines.join('\n\n');
 
-    text = text.replace(/唐治/g, '唐治').replace(/隆基哥/g, '隆基哥');
     text = text.replace(/ +/g, ' ');
-
     text = cleanGarbageLines(text);
 
-    // Attempt to find Next Chapter URL
+    // Attempt to find Next Chapter URL from HTML
     let nextChapterUrl = "";
-    const nextLinks = Array.from(doc.querySelectorAll("a[href]"));
-    for (const link of nextLinks) {
-      const t = link.textContent?.trim() || "";
-      if (t.includes("下一章") || t.includes("下一页") || t.includes("next")) {
-         const href = link.getAttribute("href");
-         if (href && !href.startsWith("javascript")) {
-             nextChapterUrl = new URL(href, _url).toString();
-             break;
-         }
-      }
+    if (html && html.length > 100) {
+      try {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const nextLinks = Array.from(doc.querySelectorAll("a[href]"));
+        for (const link of nextLinks) {
+          const t = link.textContent?.trim() || "";
+          if (t.includes("下一章") || t.includes("下一页") || t.includes("next")) {
+            const href = link.getAttribute("href");
+            if (href && !href.startsWith("javascript")) {
+              nextChapterUrl = new URL(href, _url).toString();
+              break;
+            }
+          }
+        }
+      } catch {}
     }
 
     return { title: chapterTitle, content: text, nextChapterUrl };

@@ -82,9 +82,11 @@ export function BulkConvertDialog({
 
     try {
       const nameDict = await getMergedNameDict(novelId);
+      const novel = await db.novels.get(novelId);
       const mergedOptions: ConvertOptions = {
         ...convertOptions,
         rejectedAutoNames,
+        activeDictSources: novel?.activeDictSources,
       };
 
       const scenes = await db.scenes

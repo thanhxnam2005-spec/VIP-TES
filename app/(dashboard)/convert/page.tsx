@@ -1,6 +1,5 @@
 "use client";
 
-import { ConvertConfig } from "@/components/convert-config";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -18,580 +17,658 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TextCompareEditor } from "@/components/ui/text-compare-editor";
+import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedValue } from "@/lib/hooks/use-debounce";
-import { useReaderPanel } from "@/lib/stores/reader-panel";
-import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-entries";
-import { useAIProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
-import { type TrainingSuggestion } from "@/lib/ai/training-tools";
-import { aiPolishTranslation } from "@/lib/ai/convert-pipeline";
-import { getModel } from "@/lib/ai/provider";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { useTrainingStore } from "@/lib/stores/training-store";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ArrowRightLeftIcon,
-  BookTextIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ClipboardCopyIcon,
-  ClipboardListIcon,
   FileUpIcon,
   LoaderIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  SearchIcon,
-  SettingsIcon,
-  SparklesIcon,
   Trash2Icon,
-  Volume2Icon,
-  Wand2Icon,
+  WrenchIcon,
+  SparklesIcon,
+  ArrowRightLeftIcon,
+  BotIcon,
+  LibraryIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sify } from "chinese-conv";
-import { useTrainingStore } from "@/lib/stores/training-store";
-import { useBackgroundTraining } from "@/lib/hooks/use-background-training";
-import { toast } from "sonner";
-import { stvTranslate } from "@/lib/api/stv-translator";
-import { DictionaryManagement } from "@/components/dictionary-management";
-import { useMergedNameEntries } from "@/lib/hooks/use-name-entries";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { convertText, useQTEngineReady } from "@/lib/hooks/use-qt-engine";
 import { useConvertSettings } from "@/lib/hooks/use-convert-settings";
-import { cleanVietnameseText, cleanSTVOutput, cleanGarbageLines } from "@/lib/text-utils";
+import { useAIProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
+import { extractDictionaryEntries, type TrainingSuggestion } from "@/lib/ai/training-tools";
+import { getModel } from "@/lib/ai/provider";
+import { appendToDictSource } from "@/lib/hooks/use-dict-entries";
+import { type DictSource, db } from "@/lib/db";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+import { useNovels } from "@/lib/hooks/use-novels";
+import { useChapters } from "@/lib/hooks/use-chapters";
+
+const GENRE_DICTS = [
+  "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
+  "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", 
+  "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+];
+
+const GENRE_LABELS: Record<string, string> = {
+  ngontinh: "Ngôn tình", hiendai: "Hiện đại", tienhiep: "Tiên hiệp",
+  huyenhuyen: "H Huyền huyễn", dammi: "Đam mỹ", hocduong: "Học đường",
+  nsfw: "NSFW (18+)", hentai: "Hentai", dongphuong: "Đông phương",
+  dothi: "Đô thị", vongdu: "Võng du", khoahuyen: "Khoa huyễn",
+  quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
+  trinhtham: "Trinh thám", lichsu: "Lịch sử"
+};
+
+interface WorkerState {
+  id: number;
+  providerId: string;
+  modelId: string;
+  isProcessing: boolean;
+  currentChunk: string;
+}
 
 export default function ConvertPage() {
   const store = useTrainingStore();
-  const { handleTrain, stopTraining } = useBackgroundTraining();
   const qtReady = useQTEngineReady();
   const convertSettings = useConvertSettings();
+  
+  const { input = "", setInput } = store;
+  const [qtOut, setQtOut] = useState("");
+  const [activeTab, setActiveTab] = useState<"qt" | "train" | "results">("qt");
+  const [activeDictSources, setActiveDictSources] = useState<string[]>([]);
+  const [editMode, setEditMode] = useState(false);
+  const [isConvertingQT, setIsConvertingQT] = useState(false);
+  
+  // Library selection state
+  const novels = useNovels();
+  const [selectedNovelId, setSelectedNovelId] = useState<string>("");
+  const chapters = useChapters(selectedNovelId);
+  const [selectedChapterId, setSelectedChapterId] = useState<string>("");
+  const [targetGenre, setTargetGenre] = useState<string>("auto");
+  
+  const selectedChapterIdRef = useRef(selectedChapterId);
+  useEffect(() => { selectedChapterIdRef.current = selectedChapterId; }, [selectedChapterId]);
+
+  // Load chapter text when selected
+  useEffect(() => {
+    if (selectedChapterId && !isQueueRunning) {
+      db.scenes.where("[chapterId+isActive]").equals([selectedChapterId, 1]).sortBy("order").then(scenes => {
+        const text = scenes.map(s => s.content).join("\n");
+        setInput(text);
+      });
+    }
+  }, [selectedChapterId, setInput]);
+
+  // AI Training state
   const aiProviders = useAIProviders();
   const availableProviders = useMemo(() => aiProviders?.filter(p => p.isActive && p.providerType !== "webgpu") || [], [aiProviders]);
   
-  const [selectedProviderId, setSelectedProviderId] = useState<string>("");
-  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [extractedTerms, setExtractedTerms] = useState<TrainingSuggestion[]>([]);
+  const [autoSave, setAutoSave] = useState(true);
 
+  // Multi-worker state
+  const [workers, setWorkers] = useState<WorkerState[]>(() => 
+    Array.from({ length: 5 }).map((_, i) => ({
+      id: i + 1,
+      providerId: "",
+      modelId: "",
+      isProcessing: false,
+      currentChunk: "",
+    }))
+  );
+  
+  const [isQueueRunning, setIsQueueRunning] = useState(false);
+  const isQueueRunningRef = useRef(false);
+
+  // Auto-select first provider/model for all workers initially
   useEffect(() => {
-    if (availableProviders.length > 0 && !selectedProviderId) {
-      setSelectedProviderId(availableProviders[0].id);
+    if (availableProviders.length > 0) {
+      const pId = availableProviders[0].id;
+      setWorkers(prev => {
+        let changed = false;
+        const next = prev.map(w => {
+          if (!w.providerId) {
+            changed = true;
+            return { ...w, providerId: pId };
+          }
+          return w;
+        });
+        return changed ? next : prev;
+      });
     }
-  }, [availableProviders, selectedProviderId]);
+  }, [availableProviders]);
 
-  const activeProvider = availableProviders.find(p => p.id === selectedProviderId);
-  const models = useAIModels(selectedProviderId);
-  
-  useEffect(() => {
-    if (models && models.length > 0) {
-      if (!selectedModelId || !models.find(m => m.modelId === selectedModelId)) {
-        setSelectedModelId(models[0].modelId);
-      }
-    } else {
-      setSelectedModelId("");
-    }
-  }, [models, selectedModelId]);
-
-  const defaultModel = models?.find(m => m.modelId === selectedModelId);
-
-  const {
-    input = "", setInput,
-    output = "", setOutput,
-    isTraining = false,
-    trainingSuggestions = [], setTrainingSuggestions,
-    batchProgress = null,
-    lastProcessedIndex = 0, setLastProcessedIndex,
-    isAutoNext = false, setIsAutoNext
-  } = store;
-
-  const [isScanning, setIsScanning] = useState(false);
-  const [isConverting, setIsConverting] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [useSTVMode, setUseSTVMode] = useState(true);
-  const [stvProgress, setSTVProgress] = useState<string | null>(null);
-  const [pipelineProgress, setPipelineProgress] = useState<string | null>(null);
-  const [dictPopoverOpen, setDictPopoverOpen] = useState(false);
-  
-  const [stvOut, setStvOut] = useState("");
-  const [activeTab, setActiveTab] = useState<"ai" | "stv">("ai");
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const stvAbortRef = useRef<AbortController | null>(null);
-  const seqRef = useRef(0);
-
-  const mergedEntries = useMergedNameEntries("global");
-  
-  // Quét các từ điển đang xuất hiện trong văn bản
-  const activeEntries = useMemo(() => {
-    if (!input || !mergedEntries) return [];
-    return mergedEntries.filter(e => input.includes(e.chinese)).slice(0, 20);
-  }, [input, mergedEntries]);
-
   const debouncedInput = useDebouncedValue(input, 500);
 
-  const handleSTVTranslate = useCallback(async () => {
-    if (!input.trim()) {
-      setStvOut("");
+  useEffect(() => {
+    if (!qtReady || activeTab !== "qt") return;
+    if (!debouncedInput.trim()) {
+      setQtOut("");
       return;
     }
     
-    const cleanedInput = cleanGarbageLines(input);
-    const seq = ++seqRef.current;
-    setIsConverting(true);
-    setSTVProgress(null);
-    stvAbortRef.current?.abort();
-    
-    try {
-      const controller = new AbortController();
-      stvAbortRef.current = controller;
-      
-      const dict = await getMergedNameDict();
-      
-      const result = await stvTranslate(cleanedInput, {
-        signal: controller.signal,
-        dictionary: dict,
-        onProgress: (p) => {
-          if (seqRef.current !== seq) return;
-          setStvOut(cleanVietnameseText(cleanSTVOutput(p.partialResult)));
-          setSTVProgress(`Đang dịch STV: ${p.currentChunk + 1}/${p.totalChunks} phần`);
-        },
-      });
-      
-      if (seqRef.current === seq) {
-        setStvOut(cleanVietnameseText(cleanSTVOutput(result)));
-        setSTVProgress(null);
+    let isMounted = true;
+    setIsConvertingQT(true);
+    convertText(debouncedInput, {
+      options: {
+        ...convertSettings,
+        activeDictSources,
       }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      if (seqRef.current === seq) {
-        toast.error("Lỗi STV: " + (err instanceof Error ? err.message : String(err)));
-      }
-    } finally {
-      if (seqRef.current === seq) {
-        setIsConverting(false);
-        setSTVProgress(null);
-      }
-    }
-  }, [input]);
+    }).then(res => {
+      if (isMounted) setQtOut(res.plainText);
+    }).catch(err => {
+      console.error(err);
+    }).finally(() => {
+      if (isMounted) setIsConvertingQT(false);
+    });
 
-  const handleQuickScan = useCallback(async () => {
-    if (!input.trim()) return;
-    setIsScanning(true);
-    try {
-      // Thực hiện convert giả định bằng bộ máy QT cục bộ để bóc tách từ điển
-      const result = await convertText(input, {
-        options: {
-          ...convertSettings,
-          autoDetectNames: true,
-          nameDetectMinFrequency: 1, // Quét triệt để
-          maxPhraseLength: 10,
-        }
-      });
-      
-      // Thu thập tất cả các đoạn đã được dịch (không phải unknown hoặc phienam thuần túy)
-      const recognizedEntries = new Map<string, string>();
-      
-      if (result.segments) {
-        for (const seg of result.segments) {
-          // Chỉ lấy các từ được nhận diện từ các nguồn từ điển (novel, global, qt, vietphrase, luatnhan)
-          if (seg.source !== "unknown" && seg.source !== "phienam" && seg.original.length > 1) {
-            recognizedEntries.set(seg.original, seg.translated);
-          }
-        }
-      }
-
-      // Bổ sung thêm các tên tự động nhận diện nếu có
-      if (result.detectedNames) {
-        for (const n of result.detectedNames) {
-          recognizedEntries.set(n.chinese, n.vietnamese);
-        }
-      }
-      
-      if (recognizedEntries.size > 0) {
-        const entriesToImport = Array.from(recognizedEntries.entries()).map(([chinese, vietnamese]) => ({
-          chinese,
-          vietnamese
-        }));
-        
-        // Tự động lưu toàn bộ vào từ điển chung (Global)
-        const importResult = await bulkImportNameEntries("global", entriesToImport, "khác", "skip");
-        
-        toast.success(`Đã quét toàn bộ! Tự động thêm ${importResult.added} cụm từ mới vào bộ quản lý.`);
-        setDictPopoverOpen(true); // Tự động mở bảng quản lý
-        
-        if (importResult.skipped > 0) {
-          toast.info(`${importResult.skipped} cụm từ đã tồn tại.`);
-        }
-      } else {
-        toast.info("Không tìm thấy cụm từ nào mới trong văn bản");
-      }
-    } catch (err) {
-      toast.error("Lỗi khi quét toàn bộ từ điển: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsScanning(false);
-    }
-  }, [input, convertSettings]);
+    return () => { isMounted = false; };
+  }, [debouncedInput, qtReady, convertSettings, activeDictSources, activeTab]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setInput(content);
+      const buffer = event.target?.result as ArrayBuffer;
+      let text = new TextDecoder("utf-8").decode(buffer);
+      if (text.includes("")) {
+        text = new TextDecoder("gb18030").decode(buffer);
+      }
+      setInput(text);
+      setSelectedNovelId("");
+      setSelectedChapterId("");
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
-
-  const handleRead = useCallback(() => {
-    if (!output.trim()) return;
-    useReaderPanel.getState().loadText(output, "Kết quả convert");
-  }, [output]);
-
-  const handleCopy = useCallback(async () => {
-    if (!output) return;
-    await navigator.clipboard.writeText(output);
-    setCopied(true);
-    toast.success("Đã sao chép");
-    setTimeout(() => setCopied(false), 2000);
-  }, [output]);
 
   const handleClear = useCallback(() => {
     setInput("");
-    setOutput("");
-    setStvOut("");
-  }, [setInput, setOutput]);
+    setQtOut("");
+    setExtractedTerms([]);
+    setSelectedNovelId("");
+    setSelectedChapterId("");
+    stopQueue();
+  }, [setInput]);
 
-  const handleCleanOutput = useCallback(() => {
-    if (!output) return;
-    const cleaned = cleanVietnameseText(cleanSTVOutput(output));
-    setOutput(cleaned);
-    toast.success("Đã dọn dẹp văn bản");
-  }, [output, setOutput]);
+  const processAutoSave = async (suggestions: TrainingSuggestion[]) => {
+    const grouped = suggestions.reduce((acc, curr) => {
+      const g = curr.genre || "global";
+      if (!acc[g]) acc[g] = [];
+      acc[g].push(curr);
+      return acc;
+    }, {} as Record<string, TrainingSuggestion[]>);
 
-  const handleAddTrainingSuggestion = async (s: TrainingSuggestion) => {
-    try {
-      await bulkImportNameEntries("global", [{ chinese: s.chinese, vietnamese: s.vietnamese }], s.category, "replace");
-      setTrainingSuggestions(trainingSuggestions.filter(item => item.chinese !== s.chinese));
-      toast.success(`Đã thêm "${s.chinese}" vào Từ điển tên chung`);
-    } catch {
-      toast.error("Lưu thất bại");
+    let totalSaved = 0;
+    for (const [genre, terms] of Object.entries(grouped)) {
+      const targetSource = genre === "global" ? "names" : (GENRE_DICTS.includes(genre) ? genre as DictSource : "names");
+      const savedCount = await appendToDictSource(targetSource, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
+      totalSaved += savedCount;
+    }
+    if (totalSaved > 0) {
+      toast.success(`Đã lưu tự động ${totalSaved} từ vào từ điển.`);
     }
   };
 
-  const handleAIPipeline = async () => {
+  const stopQueue = () => {
+    isQueueRunningRef.current = false;
+    setIsQueueRunning(false);
+  };
+
+  const workersRef = useRef(workers);
+  useEffect(() => {
+    workersRef.current = workers;
+  }, [workers]);
+
+  const startQueue = async () => {
     if (!input.trim()) return;
-    if (!activeProvider || !defaultModel) {
-      toast.error("Vui lòng kích hoạt một AI Provider trong cài đặt để dùng tính năng này.");
-      return;
+    setIsQueueRunning(true);
+    isQueueRunningRef.current = true;
+
+    const processingWorkerIds = new Set<number>();
+
+    while (isQueueRunningRef.current) {
+      const idleWorkers = workersRef.current.filter(
+        w => !processingWorkerIds.has(w.id) && !w.isProcessing && w.providerId && w.modelId
+      );
+      
+      if (idleWorkers.length === 0) {
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+
+      let currentInput = useTrainingStore.getState().input;
+
+      if (!currentInput.trim()) {
+        const currentChId = selectedChapterIdRef.current;
+        if (currentChId) {
+           const currCh = await db.chapters.get(currentChId);
+           if (currCh) {
+             const nextCh = await db.chapters.where("novelId").equals(currCh.novelId)
+               .filter(c => c.order > currCh.order)
+               .sortBy("order")
+               .then(arr => arr[0]);
+               
+             if (nextCh) {
+               const scenes = await db.scenes.where("[chapterId+isActive]").equals([nextCh.id, 1]).sortBy("order");
+               const text = scenes.map(s => s.content).join("\n");
+               useTrainingStore.getState().setInput(text);
+               setSelectedChapterId(nextCh.id);
+               toast.info(`Tự động chuyển sang chương tiếp theo: ${nextCh.title}`);
+               await new Promise(r => setTimeout(r, 1000));
+               continue;
+             }
+           }
+        }
+        
+        toast.success("Đã phân tích xong toàn bộ văn bản!");
+        stopQueue();
+        break;
+      }
+
+      // Lấy 15 dòng cho mỗi worker
+      const lines = currentInput.split('\n');
+      const chunkLines = lines.slice(0, 15);
+      const remainingLines = lines.slice(15);
+      
+      const chunkText = chunkLines.join('\n');
+      
+      useTrainingStore.getState().setInput(remainingLines.join('\n'));
+
+      if (!chunkText.trim()) continue;
+
+      const workerToUse = idleWorkers[0];
+      processingWorkerIds.add(workerToUse.id);
+      
+      setWorkers(prev => prev.map(w => w.id === workerToUse.id ? { ...w, isProcessing: true, currentChunk: chunkText } : w));
+
+      runWorkerTask(workerToUse, chunkText).finally(() => {
+        processingWorkerIds.delete(workerToUse.id);
+        setWorkers(prev => prev.map(w => w.id === workerToUse.id ? { ...w, isProcessing: false, currentChunk: "" } : w));
+      });
+      
+      await new Promise(r => setTimeout(r, 100));
     }
-    
-    setIsConverting(true);
-    stvAbortRef.current?.abort();
-    
+  };
+
+  const runWorkerTask = async (worker: WorkerState, chunkText: string) => {
+    if (!isQueueRunningRef.current) return;
     try {
-      const model = await getModel(activeProvider, defaultModel.modelId);
-      const dict = await getMergedNameDict();
-      const cleanedInput = cleanGarbageLines(input);
-      
-      // Split input into chunks of max 1500 chars, preserving paragraph boundaries if possible
-      const chunks = cleanedInput.match(/[^]{1,1500}(?:\n\n|$)|[^]{1,1500}/g) || [];
-      let finalTranslation = "";
-      let finalStv = "";
-      
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i].trim();
-        if (!chunk) continue;
-        
-        setPipelineProgress(`Đang xử lý phần ${i + 1}/${chunks.length}... (STV)`);
-        const draftTranslation = await stvTranslate(chunk, { dictionary: dict });
-        const cleanedDraft = cleanVietnameseText(cleanSTVOutput(draftTranslation));
-        finalStv += cleanedDraft + "\n\n";
-        setStvOut(finalStv.trim());
-        
-        setPipelineProgress(`Đang xử lý phần ${i + 1}/${chunks.length}... (AI Nhuận sắc)`);
-        const polished = await aiPolishTranslation({
-          model,
-          sourceText: chunk,
-          draftTranslation: cleanedDraft,
-        });
-        
-        finalTranslation += polished + "\n\n";
-        setOutput(finalTranslation.trim());
-        
-        // Wait 2.5s to avoid AI rate limits (e.g. 15 RPM limit)
-        if (i < chunks.length - 1) {
-          await new Promise(r => setTimeout(r, 2500));
+      const provider = availableProviders.find(p => p.id === worker.providerId);
+      if (!provider) return;
+      const model = await getModel(provider, worker.modelId);
+
+      const suggestions = await extractDictionaryEntries({
+        model,
+        sourceText: chunkText,
+        targetGenre: targetGenre && targetGenre !== "auto" ? targetGenre : undefined,
+      });
+
+      if (suggestions.length > 0) {
+        setExtractedTerms(prev => [...suggestions, ...prev]);
+        if (autoSave) {
+          await processAutoSave(suggestions);
         }
       }
-      
-      toast.success("Dịch Thông Minh 3 Bước hoàn tất!");
-      
     } catch (err) {
-      toast.error("Lỗi Dịch Thông Minh: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setIsConverting(false);
-      setPipelineProgress(null);
+      console.error(`Worker ${worker.id} error:`, err);
+      toast.error(`Worker ${worker.id} lỗi: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
   return (
     <main className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden px-6 py-4">
-      {/* ── Header ── */}
       <div className="mb-4 flex shrink-0 items-start justify-between flex-col sm:flex-row gap-2">
         <div>
-          <h1 className="font-serif text-2xl font-bold">Convert nhanh</h1>
-          {(stvProgress || pipelineProgress) && (
-            <p className="text-xs text-primary mt-1 flex items-center gap-1.5">
-              <LoaderIcon className="size-3 animate-spin" />
-              {pipelineProgress || stvProgress}
-            </p>
-          )}
+          <h1 className="font-serif text-2xl font-bold">Convert QT (Live Test)</h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {input && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={handleClear}
-              title="Xóa"
-            >
+            <Button variant="ghost" size="icon-sm" onClick={handleClear} title="Xóa toàn bộ">
               <Trash2Icon className="size-3.5" />
             </Button>
           )}
-          {output && (
+
+          {input && <div className="h-5 w-px bg-border hidden sm:block" />}
+
+          {activeTab === "qt" && (
+            <div className="flex items-center gap-2 border-l pl-4 mr-2">
+              <Switch id="edit-mode" checked={editMode} onCheckedChange={setEditMode} />
+              <Label htmlFor="edit-mode" className="text-sm">Sửa bản gốc</Label>
+            </div>
+          )}
+
+          {activeTab === "train" && (
             <>
-              <Button variant="ghost" size="sm" onClick={handleRead}>
-                <Volume2Icon className="mr-1.5 size-3.5" />
-                Đọc
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleCopy}>
-                {copied ? (
-                  <CheckIcon className="mr-1.5 size-3.5" />
-                ) : (
-                  <ClipboardCopyIcon className="mr-1.5 size-3.5" />
-                )}
-                {copied ? "Đã chép" : "Sao chép"}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleCleanOutput} title="Dọn dẹp văn bản (xóa dấu cách thừa, sửa chữ viết liền)">
-                <Wand2Icon className="mr-1.5 size-3.5" />
-                Dọn dẹp
-              </Button>
+              {isQueueRunning ? (
+                <Button variant="destructive" size="sm" onClick={stopQueue} className="animate-pulse">
+                  <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
+                  Dừng Phân tích
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={startQueue}
+                  disabled={!input.trim()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <SparklesIcon className="mr-1.5 size-3.5" />
+                  Bắt đầu Cuốn chiếu Song song (15 dòng/Worker)
+                </Button>
+              )}
+              
+              <div className="flex items-center gap-2 border-l pl-2 ml-2">
+                <Switch id="auto-save" checked={autoSave} onCheckedChange={setAutoSave} />
+                <Label htmlFor="auto-save" className="text-xs">Tự động Lưu</Label>
+              </div>
             </>
           )}
 
-          {(input || output) && <div className="h-5 w-px bg-border" />}
-
-          <div className="flex items-center gap-2 border-l pl-4 mr-2">
-            <Switch
-              id="edit-mode"
-              checked={editMode}
-              onCheckedChange={setEditMode}
-            />
-            <Label htmlFor="edit-mode" className="text-sm">
-              Chế độ sửa
-            </Label>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {isConverting && (
+          <div className="flex items-center gap-2">
+            {isConvertingQT && activeTab === "qt" && (
               <LoaderIcon className="size-4 animate-spin text-muted-foreground mr-2" />
             )}
             
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleQuickScan}
-              disabled={isScanning || !input || !qtReady}
-              className="border-emerald-500/30 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/10"
-            >
-              {isScanning ? (
-                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
-              ) : (
-                <SearchIcon className="mr-1.5 size-3.5" />
-              )}
-              Quét QT
+            <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <FileUpIcon className="mr-1.5 size-3.5" /> Nhập File txt
             </Button>
-
-            <div className="flex items-center gap-1 border border-input rounded-md px-1 bg-background/50">
-              <Select value={selectedProviderId} onValueChange={setSelectedProviderId}>
-                <SelectTrigger className="h-8 w-[100px] border-0 focus:ring-0 text-xs shadow-none px-2">
-                  <SelectValue placeholder="AI Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableProviders.map(p => (
-                    <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="w-px h-4 bg-border" />
-              <Select value={selectedModelId} onValueChange={setSelectedModelId} disabled={!models?.length}>
-                <SelectTrigger className="h-8 w-[120px] border-0 focus:ring-0 text-xs shadow-none px-2">
-                  <SelectValue placeholder="Model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models?.map(m => (
-                    <SelectItem key={m.modelId} value={m.modelId} className="text-xs">
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {activeTab === "stv" && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSTVTranslate}
-                disabled={isConverting || !input}
-                className="border-blue-500/30 bg-blue-500/5 text-blue-600 hover:bg-blue-500/10"
-              >
-                <Wand2Icon className="mr-1.5 size-3.5" />
-                Chạy STV Convert
-              </Button>
-            )}
-
-            {activeTab === "ai" && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleAIPipeline}
-                disabled={isConverting || !input}
-                className="border-blue-500/30 bg-blue-500/5 text-blue-600 hover:bg-blue-500/10"
-              >
-                <Wand2Icon className="mr-1.5 size-3.5" />
-                Chạy Toàn Bộ (Dịch AI 2 Bước)
-              </Button>
-            )}
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleTrain(lastProcessedIndex)}
-              disabled={isTraining || !input}
-              className="border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
-            >
-              {isTraining ? (
-                <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
-              ) : (
-                <SparklesIcon className="mr-1.5 size-3.5" />
-              )}
-              {lastProcessedIndex > 0 ? "Tiếp tục huấn luyện AI" : "Huấn luyện AI"}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              title="Nhập văn bản từ file .txt"
-            >
-              <FileUpIcon className="mr-1.5 size-3.5" />
-              Nhập File
-            </Button>
-            <input
-              type="file"
-              accept=".txt"
-              ref={fileInputRef}
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-
+            <input type="file" accept=".txt" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </div>
         </div>
       </div>
 
-
-
-      {/* ── Side-by-side editor ── */}
-      <div className="flex-1 min-h-[600px] flex flex-col" ref={scrollContainerRef}>
-        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as "ai" | "stv")} className="mb-2 w-full">
-          <div className="flex justify-between items-center bg-muted/30 p-1 rounded-md border">
-            <TabsList className="bg-transparent border-none h-8">
-              <TabsTrigger value="ai" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Dịch AI</TabsTrigger>
-              <TabsTrigger value="stv" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">STV Convert</TabsTrigger>
+      <div className="flex-1 min-h-[600px] flex flex-col">
+        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as any)} className="mb-2 w-full">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-muted/30 p-1 rounded-md border gap-2">
+            <TabsList className="bg-transparent border-none h-8 shrink-0">
+              <TabsTrigger value="qt" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Từ điển QT (Live)</TabsTrigger>
+              <TabsTrigger value="train" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Train từ điển (Đa luồng)</TabsTrigger>
+              <TabsTrigger value="results" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Kết quả Từ điển Đã Lưu</TabsTrigger>
             </TabsList>
-            <div className="text-[10px] text-muted-foreground mr-2 hidden sm:block">
-              (Bản gốc tiếng Trung ở bên trái, kết quả chọn ở bên phải)
+            
+            {activeTab === "train" && (
+              <div className="flex items-center gap-2 mr-2 flex-wrap">
+                <LibraryIcon className="size-3.5 text-muted-foreground shrink-0" />
+                <Select value={selectedNovelId} onValueChange={setSelectedNovelId} disabled={isQueueRunning}>
+                  <SelectTrigger className="h-7 text-xs w-[160px]">
+                    <SelectValue placeholder="Chọn truyện..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {novels?.map(n => (
+                      <SelectItem key={n.id} value={n.id} className="text-xs">{n.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {selectedNovelId && (
+                  <Select value={selectedChapterId} onValueChange={setSelectedChapterId} disabled={isQueueRunning}>
+                    <SelectTrigger className="h-7 text-xs w-[120px]">
+                      <SelectValue placeholder="Chọn chương..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {chapters?.map(c => (
+                        <SelectItem key={c.id} value={c.id} className="text-xs">{c.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+                
+                <Select value={targetGenre} onValueChange={setTargetGenre} disabled={isQueueRunning}>
+                  <SelectTrigger className="h-7 text-xs w-[140px] bg-emerald-500/5 border-emerald-500/20 text-emerald-700">
+                    <SelectValue placeholder="Tất cả thể loại (AI tự chọn)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto" className="text-xs font-semibold text-muted-foreground">Tất cả thể loại (AI tự chọn)</SelectItem>
+                    {GENRE_DICTS.map(genre => (
+                      <SelectItem key={genre} value={genre} className="text-xs">{GENRE_LABELS[genre]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            <div className="text-[10px] text-muted-foreground mr-2 flex items-center gap-2">
+              {activeTab === "qt" && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="xs" className="h-6 text-[10px] border-primary/20 text-primary bg-primary/5 hover:bg-primary/10">
+                      <WrenchIcon className="size-3 mr-1" /> Từ điển: {activeDictSources.length}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 p-3">
+                    <h4 className="font-semibold text-xs mb-2 text-muted-foreground">Chọn bối cảnh truyện để dịch Live</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {GENRE_DICTS.map(src => {
+                        const isActive = activeDictSources.includes(src);
+                        return (
+                          <button
+                            key={src}
+                            onClick={() => {
+                              if (isActive) setActiveDictSources(activeDictSources.filter(s => s !== src));
+                              else setActiveDictSources([...activeDictSources, src]);
+                            }}
+                            className={cn(
+                              "text-[10px] px-2 py-1 rounded-md border transition-colors",
+                              isActive ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                            )}
+                          >
+                            {GENRE_LABELS[src]}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           </div>
         </Tabs>
 
-        <TextCompareEditor
-          panelWrapperClassName="h-[calc(100vh-320px)] min-h-[500px]"
-          leftValue={input}
-          rightValue={
-            activeTab === "stv" ? stvOut : output
-          }
-          onChange={editMode && activeTab === "ai" ? setOutput : undefined}
-          editableSide={editMode && activeTab === "ai" ? "right" : "left"}
-          storageKey="convert-stv"
-          leftLabel="Văn bản gốc (Trung)"
-          rightLabel={
-            activeTab === "stv" ? "STV Convert (Chỉ đọc)" :
-            (editMode ? "Dịch AI (Có thể sửa)" : "Dịch AI (Chỉ đọc)")
-          }
-        />
-      </div>
-
-      {/* ── Training Suggestions ── */}
-      {(trainingSuggestions.length > 0 || batchProgress) && (
-        <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold flex items-center gap-2 text-primary">
-                <ClipboardListIcon className="size-4" />
-                Kết quả huấn luyện AI {batchProgress && `(Khối hiện tại: ${batchProgress.current}/${batchProgress.total})`}
-              </h3>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                Tiến độ: {lastProcessedIndex.toLocaleString()} / {input.length.toLocaleString()} ký tự
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <Label htmlFor="auto-next" className="text-[10px] cursor-pointer">Tự động quét tiếp</Label>
-                <Switch
-                  id="auto-next"
-                  checked={isAutoNext}
-                  onCheckedChange={setIsAutoNext}
-                  className="scale-75"
-                />
+        {activeTab === "qt" && (
+          <TextCompareEditor
+            panelWrapperClassName="h-[calc(100vh-200px)] min-h-[500px]"
+            leftValue={input}
+            rightValue={qtOut}
+            onChange={editMode ? setInput : undefined}
+            editableSide={editMode ? "left" : undefined}
+            storageKey="convert-qt"
+            leftLabel="Văn bản gốc (Trung)"
+            rightLabel="Từ điển QT (Tự động cập nhật)"
+          />
+        )}
+        
+        {activeTab === "train" && (
+          <div className="flex flex-col gap-4 h-[calc(100vh-200px)] min-h-[500px] overflow-y-auto pr-2 pb-10">
+            <div className="flex flex-col rounded-xl border bg-background shadow-sm overflow-hidden shrink-0">
+              <div className="bg-muted px-4 py-2 font-semibold text-sm border-b shrink-0 flex justify-between">
+                <span>Văn bản gốc chờ phân tích</span>
+                <span className="text-xs font-normal text-muted-foreground">Tự động cắt 15 dòng cho mỗi luồng</span>
               </div>
-              {isTraining && (
-                <Badge variant="secondary" className="animate-pulse">Đang quét...</Badge>
+              <Textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className="flex-1 resize-y rounded-none border-0 focus-visible:ring-0 p-4 min-h-[150px] max-h-[300px]"
+                placeholder="Dán nội dung tiếng Trung, nhập File txt, hoặc chọn truyện từ thư viện ở bên trên..."
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <h3 className="font-semibold text-sm text-muted-foreground pl-1">Công nhân AI (Workers)</h3>
+              <div className="flex flex-col gap-2">
+                {workers.map((worker) => (
+                  <WorkerCard 
+                    key={worker.id} 
+                    worker={worker} 
+                    availableProviders={availableProviders}
+                    onUpdate={(updates) => setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, ...updates } : w))}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "results" && (
+          <div className="flex flex-col rounded-xl border bg-background shadow-sm overflow-hidden h-[calc(100vh-200px)] min-h-[500px]">
+            <div className="bg-muted px-4 py-2 font-semibold text-sm border-b shrink-0 flex justify-between items-center">
+              <span>Các Thể Loại Từ Điển Đã Train ({extractedTerms.length} từ)</span>
+              {extractedTerms.length > 0 && !autoSave && (
+                 <Button size="xs" variant="secondary" onClick={() => processAutoSave(extractedTerms)}>Lưu toàn bộ</Button>
               )}
-              {isTraining && (
-                <Button variant="outline" size="xs" onClick={stopTraining}>Dừng</Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10">
+              {extractedTerms.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-sm">
+                  {isQueueRunning ? (
+                    <><LoaderIcon className="size-6 animate-spin mb-2" /> Đang nhận kết quả từ các luồng AI...</>
+                  ) : "Kết quả từ các AI sẽ được phân loại vào từng ngăn kéo tương ứng ở đây."}
+                </div>
+              ) : (
+                <GroupedExtractionList terms={extractedTerms} onRemove={(term) => setExtractedTerms(extractedTerms.filter(t => t !== term))} />
               )}
             </div>
           </div>
+        )}
+      </div>
+    </main>
+  );
+}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2">
-            {trainingSuggestions.map((s, idx) => (
-              <div key={idx} className="flex flex-col gap-2 p-3 rounded-lg bg-background border shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono font-bold">{s.chinese}</span>
-                    <ArrowRightLeftIcon className="size-3 text-muted-foreground" />
-                    <span className="text-sm text-primary font-medium">{s.vietnamese}</span>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] capitalize h-5">{s.category}</Badge>
-                </div>
-                <p className="text-[10px] text-muted-foreground line-clamp-2 italic">&ldquo;{s.reason}&rdquo;</p>
-                <Button size="xs" className="w-full mt-1" onClick={() => handleAddTrainingSuggestion(s)}>
-                  Thêm vào từ điển
-                </Button>
-              </div>
+// ─── Subcomponents ─────────────────────────────────────────────────────────────
+
+function WorkerCard({ 
+  worker, 
+  availableProviders, 
+  onUpdate 
+}: { 
+  worker: WorkerState, 
+  availableProviders: ReturnType<typeof useAIProviders>,
+  onUpdate: (u: Partial<WorkerState>) => void 
+}) {
+  const models = useAIModels(worker.providerId);
+  
+  useEffect(() => {
+    if (models && models.length > 0 && !worker.modelId) {
+      onUpdate({ modelId: models[0].modelId });
+    }
+  }, [models, worker.modelId, onUpdate]);
+
+  return (
+    <div className={cn("border rounded-lg flex items-stretch overflow-hidden text-xs transition-colors h-[100px]", worker.isProcessing ? "border-emerald-500 shadow-sm bg-emerald-50/30" : "bg-muted/10")}>
+      <div className={cn("px-3 py-2 font-bold border-r flex flex-col justify-center items-center w-20 shrink-0", worker.isProcessing ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>
+        <BotIcon className="size-5 mb-1" />
+        W{worker.id}
+        {worker.isProcessing && <LoaderIcon className="size-3 animate-spin mt-1" />}
+      </div>
+      
+      <div className="p-3 border-r bg-background flex flex-col justify-center gap-2 w-[220px] shrink-0">
+        <Select value={worker.providerId} onValueChange={v => onUpdate({ providerId: v, modelId: "" })} disabled={worker.isProcessing}>
+          <SelectTrigger className="h-7 px-2 text-[11px]">
+            <SelectValue placeholder="AI API" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableProviders?.map(p => (
+              <SelectItem key={p.id} value={p.id} className="text-[11px]">{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
+        <Select value={worker.modelId} onValueChange={v => onUpdate({ modelId: v })} disabled={!models?.length || worker.isProcessing}>
+          <SelectTrigger className="h-7 px-2 text-[11px]">
+            <SelectValue placeholder="Model" />
+          </SelectTrigger>
+          <SelectContent>
+            {models?.map(m => (
+              <SelectItem key={m.modelId} value={m.modelId} className="text-[11px]">{m.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="p-3 flex-1 overflow-hidden relative">
+        {worker.currentChunk ? (
+          <div className="text-[10px] text-muted-foreground whitespace-pre-wrap leading-tight opacity-80 h-full overflow-y-auto pr-2 custom-scrollbar">
+            {worker.currentChunk}
+          </div>
+        ) : (
+          <div className="h-full flex items-center justify-center">
+            <span className="text-[10px] text-muted-foreground/50 italic">Đang chờ việc...</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupedExtractionList({ terms, onRemove }: { terms: TrainingSuggestion[], onRemove: (term: TrainingSuggestion) => void }) {
+  const grouped = terms.reduce((acc, curr) => {
+    const g = curr.genre || "global";
+    if (!acc[g]) acc[g] = [];
+    acc[g].push(curr);
+    return acc;
+  }, {} as Record<string, TrainingSuggestion[]>);
+
+  const handleDownloadDict = async (genre: string) => {
+    try {
+      const targetSource = genre === "global" ? "names" : (GENRE_DICTS.includes(genre) ? genre as DictSource : "names");
+      const cached = await db.dictCache.get(targetSource);
+      if (!cached || !cached.rawText) {
+        toast.error("Từ điển này hiện đang trống!");
+        return;
+      }
+      
+      const blob = new Blob([cached.rawText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${targetSource}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Đã tải xuống kho từ điển ${targetSource}.txt`);
+    } catch (err) {
+      toast.error("Lỗi khi tải từ điển");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(grouped).map(([genre, items]) => (
+        <div key={genre} className="space-y-2 bg-background border p-4 rounded-xl shadow-sm">
+          <h4 className="font-bold text-[13px] text-primary border-b pb-2 uppercase flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span>{genre === "global" ? "TỪ CHUNG (NAMES)" : (GENRE_LABELS[genre] || genre)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="font-mono">{items.length} từ mới</Badge>
+              <Button size="xs" variant="outline" className="h-5 px-2 text-[10px]" onClick={() => handleDownloadDict(genre)}>
+                Tải Kho Từ Điển (.txt)
+              </Button>
+            </div>
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto pr-1">
+            {items.map((term, idx) => (
+               <div key={`${term.chinese}-${idx}`} className="flex flex-col gap-1.5 p-2 bg-muted/20 rounded-md border hover:border-emerald-500/50 transition-colors">
+                 <div className="flex items-center justify-between">
+                   <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-background">{term.category}</Badge>
+                   <span className="text-[9px] text-muted-foreground italic truncate max-w-[120px]">{term.context_zh}</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                   <span className="font-mono font-bold text-sm text-foreground/90">{term.chinese}</span>
+                   <ArrowRightLeftIcon className="size-3 text-muted-foreground/50 shrink-0" />
+                   <span className="font-medium text-emerald-600 text-sm truncate">{term.vietnamese}</span>
+                 </div>
+               </div>
             ))}
           </div>
         </div>
-      )}
-    </main>
+      ))}
+    </div>
   );
 }

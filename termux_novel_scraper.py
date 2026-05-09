@@ -74,8 +74,9 @@ class NovelDownloader:
         for link in links:
             text = link.get_text(strip=True)
             href = link['href']
-            # Regex tìm "Chương X" hoặc "Chapter X"
-            if re.search(r'(chương|chapter|quyển|tập)\s+\d+', text, re.I):
+            classes = link.get('class', [])
+            # Regex tìm "Chương X" hoặc "Chapter X" hoặc Fanqie class
+            if re.search(r'(chương|chapter|quyển|tập|第)\s*\d+', text, re.I) or 'chapter-item-title' in classes:
                 full_url = urljoin(url, href)
                 if full_url not in [c['url'] for c in chapter_links]:
                     chapter_links.append({'title': text, 'url': full_url})

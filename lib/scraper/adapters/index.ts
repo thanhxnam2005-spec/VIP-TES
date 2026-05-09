@@ -15,6 +15,7 @@ import { TimotxtAdapter } from "./Timotxt";
 import { CzbooksAdapter } from "./Czbooks";
 import { FanqieAdapter } from "./Fanqie";
 import { BookQQAdapter } from "./BookQQ";
+import { WikiDichAdapter } from "./WikiDich";
 import { UniversalAdapter } from "./Universal";
 
 const adapters: SiteAdapter[] = [
@@ -34,6 +35,7 @@ const adapters: SiteAdapter[] = [
   CzbooksAdapter,
   FanqieAdapter,
   BookQQAdapter,
+  WikiDichAdapter,
   UniversalAdapter,
 ];
 
@@ -54,4 +56,4 @@ export function getAdapters(): SiteAdapter[] {
   return adapters;
 }
 
-export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, UniversalAdapter };
+export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter };

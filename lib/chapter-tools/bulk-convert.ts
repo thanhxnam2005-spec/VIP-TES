@@ -64,6 +64,10 @@ export async function runBulkConvert(opts: BulkConvertOptions): Promise<void> {
 
   const nameDict = await getMergedNameDict(novelId);
   const convertOptions = await getConvertSettings();
+  const novel = await db.novels.get(novelId);
+  if (novel?.activeDictSources) {
+    convertOptions.activeDictSources = novel.activeDictSources;
+  }
 
   // Process each chapter
   for (const chapterId of chapterIds) {
@@ -98,6 +102,7 @@ export async function runBulkConvert(opts: BulkConvertOptions): Promise<void> {
 
       const result = await convertText(joinedContent, {
         novelNames: nameDict,
+        options: convertOptions,
       });
 
       let convertedChapterTitle: string | undefined;

@@ -51,6 +51,13 @@ export default function ScraperLibraryPage() {
   const [chapterDelay, setChapterDelay] = useState(7);
   const [currentAdapter, setCurrentAdapter] = useState<any>(null);
 
+  // Chapter range selection
+  const [chapterFrom, setChapterFrom] = useState(1);
+  const [chapterTo, setChapterTo] = useState(0);
+
+  // Check if running on localhost
+  const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
   useEffect(() => {
     setExtId(getExtensionId());
     checkExtensionStatus().then((res) => {
@@ -98,6 +105,8 @@ export default function ScraperLibraryPage() {
         // Create a minimal "server" adapter for the queue
         setCurrentAdapter({ name: "Server", urlPattern: /.*/ });
         setChapterDelay(2); // Server fetch is faster, less delay needed
+        setChapterFrom(1);
+        setChapterTo(adapterInfo.chapters.length);
         setIsShowingChapters(false);
         setIsConfirmOpen(true);
         toast.success(`⚡ Server: Tìm thấy ${novelInfo.chapters.length} chương!`);
@@ -120,6 +129,8 @@ export default function ScraperLibraryPage() {
       setScrapedNovelInfo(novelInfo);
       setCurrentAdapter(adapter);
       setChapterDelay(7);
+      setChapterFrom(1);
+      setChapterTo(novelInfo.chapters.length);
       setIsShowingChapters(false);
       setIsConfirmOpen(true);
     } catch (error: any) {
@@ -133,10 +144,30 @@ export default function ScraperLibraryPage() {
     if (!scrapedNovelInfo || !currentAdapter) return;
     setIsConfirmOpen(false);
     try {
+      // Apply chapter range filter
+      const fromIdx = Math.max(0, chapterFrom - 1);
+      const toIdx = Math.min(scrapedNovelInfo.chapters.length, chapterTo);
+      const selectedChapters = scrapedNovelInfo.chapters.slice(fromIdx, toIdx).map((ch: any, i: number) => ({
+        ...ch,
+        order: fromIdx + i, // Keep original order for correct sorting
+      }));
+
+      if (selectedChapters.length === 0) {
+        toast.error("Không có chương nào được chọn!");
+        return;
+      }
+
       let novelId;
-      const existingNovel = await db.novels.where("sourceUrl").equals(url).first();
+      // Check if novel already exists in library (by sourceUrl OR title)
+      let existingNovel = await db.novels.where("sourceUrl").equals(url).first();
+      if (!existingNovel) {
+        // Also try matching by title
+        existingNovel = await db.novels.where("title").equals(scrapedNovelInfo.title).first();
+      }
+
       if (existingNovel) {
         novelId = existingNovel.id;
+        toast.info(`📚 Truyện "${existingNovel.title}" đã có trong thư viện — sẽ thêm chương mới vào.`);
       } else {
         novelId = crypto.randomUUID();
         const now = new Date();
@@ -155,13 +186,13 @@ export default function ScraperLibraryPage() {
         novelId, 
         scrapedNovelInfo.title, 
         url, 
-        scrapedNovelInfo.chapters, 
+        selectedChapters, 
         chapterDelay * 1000, 
         scrapedNovelInfo.coverImage,
         currentAdapter?.name
       );
       setUrl("");
-      toast.success("Đã thêm truyện vào thư viện tải!");
+      toast.success(`Đã thêm ${selectedChapters.length} chương (từ ${chapterFrom} đến ${toIdx}) vào thư viện tải!`);
     } catch (err: any) {
       toast.error(err.message || "Có lỗi khi thêm truyện");
     }
@@ -233,9 +264,9 @@ export default function ScraperLibraryPage() {
 
                     <div className="border-t pt-4 mt-2">
                       <Button variant="secondary" className="w-full sm:w-auto" asChild>
-                        <a href="/novel-studio-connector-pc.zip?v=6.0" download>
+                        <a href="/novel-studio-connector-pc.zip?v=6.3" download>
                           <DownloadIcon className="mr-2 w-4 h-4" />
-                          Tải Extension v6.0 (.zip)
+                          Tải Extension v6.3 (.zip)
                         </a>
                       </Button>
                     </div>
@@ -276,6 +307,9 @@ export default function ScraperLibraryPage() {
                       <Button variant="outline" size="sm" asChild>
                         <a href="https://xtruyen.vn" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-orange-500"/> XTruyen</a>
                       </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://wikicv.net" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-500"/> WikiDich</a>
+                      </Button>
                     </div>
                   </div>
 
@@ -288,8 +322,8 @@ export default function ScraperLibraryPage() {
                       <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-emerald-600"/> 69Shu.TW</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://czbooks.net/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-600"/> Czbooks</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.po18.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-500"/> PO18</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://fanqienovel.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600"/> Fanqie</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://book.qq.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400"/> BookQQ</a></Button>
+                      {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://fanqienovel.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600"/> Fanqie (Dev)</a></Button>}
+                      {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://book.qq.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400"/> BookQQ (Dev)</a></Button>}
                       <Button variant="outline" size="sm" asChild><a href="https://www.popo.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-400"/> POPO</a></Button>
                     </div>
                   </div>
@@ -435,7 +469,23 @@ export default function ScraperLibraryPage() {
                    </div>
                  </div>
 
-                 <div className="space-y-2 mt-4">
+                 <div className="space-y-3 mt-4">
+                    <Label className="font-semibold">📖 Chọn phạm vi chương tải</Label>
+                    <div className="flex gap-2 items-center">
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Từ chương</Label>
+                        <Input type="number" min={1} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterFrom} onChange={e => setChapterFrom(Math.max(1, Number(e.target.value)))} />
+                      </div>
+                      <span className="mt-5 text-muted-foreground">→</span>
+                      <div className="flex-1">
+                        <Label className="text-xs text-muted-foreground">Đến chương</Label>
+                        <Input type="number" min={chapterFrom} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterTo} onChange={e => setChapterTo(Math.min(scrapedNovelInfo?.chapters?.length || 1, Math.max(chapterFrom, Number(e.target.value))))} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Tổng: <strong>{Math.max(0, chapterTo - chapterFrom + 1)}</strong> chương sẽ được tải (trong {scrapedNovelInfo?.chapters?.length || 0} chương)</p>
+                 </div>
+
+                 <div className="space-y-2 mt-2">
                     <Label>Thời gian chờ mỗi chương (giây)</Label>
                     <Input type="number" min={0} value={chapterDelay} onChange={e => setChapterDelay(Number(e.target.value))} />
                     <p className="text-xs text-muted-foreground">Mặc định là 7 giây để tránh bị website chặn IP.</p>
@@ -447,10 +497,10 @@ export default function ScraperLibraryPage() {
                      <p className="leading-relaxed">Bạn cần mở tab web SangTacViet ở trình duyệt, <b>bấm vào chương 1</b> để trang load nội dung ra, sau đó mới quay lại app ấn <b>Bắt đầu tải</b>.</p>
                    </div>
                  )}
-                 {currentAdapter?.name === "Fanqie" && (
+                 {currentAdapter?.name === "Fanqie Novel" && (
                    <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
                      <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với Fanqie</p>
-                     <p className="leading-relaxed">Extension sẽ tự động mở tab Fanqie để lấy nội dung. <b>Nếu gặp lỗi bị chặn (trắng trang)</b>, vui lòng ấn vào Chương 1 trên tab vừa mở, giải capcha nếu có, sau đó extension sẽ tự động cày tiếp!</p>
+                     <p className="leading-relaxed">Đã chuyển sang chế độ tải từng chương giống các web khác (tự động chuyển tab). Nếu bạn thấy chương bị kẹt hoặc lỗi, hãy kiểm tra xem tab Fanqie có đang bị dính Captcha không nhé!</p>
                    </div>
                  )}
                  

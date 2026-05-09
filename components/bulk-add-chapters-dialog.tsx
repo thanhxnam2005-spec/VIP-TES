@@ -83,9 +83,8 @@ export function BulkAddChaptersDialog({
       const file = e.target.files?.[0];
       if (!file) return;
       e.target.value = "";
-      const reader = new FileReader();
-      reader.onload = (ev) => setRawText(ev.target?.result as string);
-      reader.readAsText(file);
+      // Smart encoding: try UTF-8, fallback to GBK for Chinese TXT files
+      readFileWithEncoding(file).then(text => setRawText(text));
     },
     [],
   );
@@ -420,4 +419,54 @@ function countWords(text: string): number {
     .split(/\s+/)
     .filter(Boolean);
   return (cjk?.length ?? 0) + latin.length;
+}
+
+/**
+ * Read a text file with smart encoding detection.
+ * Tries UTF-8 first; if the result contains replacement characters (\uFFFD),
+ * retries with GBK encoding (common for Chinese .txt files).
+ */
+async function readFileWithEncoding(file: File): Promise<string> {
+  // First try UTF-8
+  const utf8Text = await file.text();
+  
+  // Check for replacement characters (indicates wrong encoding)
+  const replacementCount = (utf8Text.match(/\uFFFD/g) || []).length;
+  const hasGarbled = replacementCount > 5; // More than 5 replacement chars = likely wrong encoding
+  
+  if (!hasGarbled) return utf8Text;
+  
+  // Try GBK/GB18030 (common Chinese encoding)
+  try {
+    const buffer = await file.arrayBuffer();
+    const decoder = new TextDecoder('gbk');
+    const gbkText = decoder.decode(buffer);
+    
+    // Verify GBK decode is better (has Chinese chars, fewer replacements)
+    const gbkReplacements = (gbkText.match(/\uFFFD/g) || []).length;
+    const hasChinese = /[\u4e00-\u9fff]/.test(gbkText);
+    
+    if (hasChinese && gbkReplacements < replacementCount) {
+      return gbkText;
+    }
+  } catch {
+    // GBK decoding failed, fall back to UTF-8
+  }
+  
+  // Try Big5 (Traditional Chinese)
+  try {
+    const buffer = await file.arrayBuffer();
+    const decoder = new TextDecoder('big5');
+    const big5Text = decoder.decode(buffer);
+    const big5Replacements = (big5Text.match(/\uFFFD/g) || []).length;
+    const hasChinese = /[\u4e00-\u9fff]/.test(big5Text);
+    
+    if (hasChinese && big5Replacements < replacementCount) {
+      return big5Text;
+    }
+  } catch {
+    // Big5 failed too
+  }
+  
+  return utf8Text; // Fallback to original UTF-8
 }

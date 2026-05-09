@@ -100,14 +100,9 @@ export function NovelImportWizard() {
       setInputMode("file");
       setPasteText("");
 
-      const reader = new FileReader();
-      reader.onprogress = (ev) => {
-        if (ev.lengthComputable) {
-          setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-        }
-      };
-      reader.onload = (ev) => {
-        const text = ev.target?.result as string;
+      // Smart encoding: try UTF-8, fallback to GBK/Big5 for Chinese TXT files
+      setUploadProgress(50);
+      readFileWithEncoding(file).then(text => {
         fullTextRef.current = text;
         const previewLines = text.split("\n").slice(0, 100).join("\n");
         setFileInfo({
@@ -118,13 +113,11 @@ export function NovelImportWizard() {
         });
         setHasText(true);
         setUploadProgress(null);
-      };
-      reader.onerror = () => {
+      }).catch(() => {
         toast.error("Không thể đọc file");
         setUploadProgress(null);
         setInputMode("paste");
-      };
-      reader.readAsText(file);
+      });
     },
     [],
   );
@@ -711,4 +704,40 @@ export function NovelImportWizard() {
       )}
     </div>
   );
+}
+
+/**
+ * Read a text file with smart encoding detection.
+ * Tries UTF-8 first; if the result contains replacement characters (\uFFFD),
+ * retries with GBK/Big5 encoding (common for Chinese .txt files).
+ */
+async function readFileWithEncoding(file: File): Promise<string> {
+  const utf8Text = await file.text();
+  
+  const replacementCount = (utf8Text.match(/\uFFFD/g) || []).length;
+  const hasGarbled = replacementCount > 5;
+  
+  if (!hasGarbled) return utf8Text;
+  
+  // Try GBK/GB18030
+  try {
+    const buffer = await file.arrayBuffer();
+    const gbkText = new TextDecoder('gbk').decode(buffer);
+    const gbkReplacements = (gbkText.match(/\uFFFD/g) || []).length;
+    if (/[\u4e00-\u9fff]/.test(gbkText) && gbkReplacements < replacementCount) {
+      return gbkText;
+    }
+  } catch {}
+  
+  // Try Big5
+  try {
+    const buffer = await file.arrayBuffer();
+    const big5Text = new TextDecoder('big5').decode(buffer);
+    const big5Replacements = (big5Text.match(/\uFFFD/g) || []).length;
+    if (/[\u4e00-\u9fff]/.test(big5Text) && big5Replacements < replacementCount) {
+      return big5Text;
+    }
+  } catch {}
+  
+  return utf8Text;
 }

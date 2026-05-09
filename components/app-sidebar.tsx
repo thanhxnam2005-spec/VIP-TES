@@ -36,6 +36,7 @@ import {
   UploadIcon,
   SettingsIcon,
   ChevronRightIcon,
+  Wand2Icon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -45,6 +46,7 @@ export const navConfig = [
   { title: "Trang chủ", href: "/dashboard", icon: HomeIcon },
   { title: "Thư viện", href: "/library", icon: LibraryIcon },
   { title: "Nhập sách", href: "/import", icon: UploadIcon },
+  { title: "Convert nhanh", href: "/convert", icon: Wand2Icon },
   { title: "Import Truyện", href: "/scraper", icon: GlobeIcon },
   { title: "Tạo Prompt Scraper", href: "/scraper/generator", icon: GitCompareArrowsIcon },
   { title: "Nhà cung cấp AI", href: "/settings/providers", icon: ServerIcon },

@@ -41,6 +41,8 @@ export type SplitMode = "sentence" | "paragraph";
 export interface ConvertOptions {
   /** name dict vs vietphrase priority (default: "name-first") */
   nameVsPriority?: NameVsPriority;
+  /** Which genre dictionaries to activate (e.g. ['tienhiep', 'hethong']). Applied before vietphrase. */
+  activeDictSources?: string[];
   /** novel-specific vs global name priority (default: "novel-first") */
   scopePriority?: ScopePriority;
   /** Max phrase length to try matching (default: 12) */

@@ -2,6 +2,7 @@
 
 import { AnalysisDialog } from "@/components/analysis-dialog";
 import { EditNovelDialog } from "@/components/edit-novel-dialog";
+import { PdfTranslateDialog } from "@/components/novel/pdf-translate-dialog";
 import { HybridConverterDialog } from "@/components/novel/hybrid-converter-dialog";
 import { BulkTranslateDialog } from "@/components/bulk-translate-dialog";
 import { BulkReplaceDialog } from "@/components/novel/bulk-replace-dialog";
@@ -22,6 +23,21 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
@@ -45,6 +61,11 @@ import {
   useChapterWordCounts,
   useNovelWordCount,
 } from "@/lib/hooks";
+import { db } from "@/lib/db";
+import { generateEpub } from "@/lib/epub-generator";
+import { useApiInferenceProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
+import { generateText } from "ai";
+import { resolveStep } from "@/lib/ai/resolve-step";
 import { downloadNovelJson, downloadNovelChaptersZip, exportNovel, downloadNovelTxt } from "@/lib/novel-io";
 import {
   DownloadIcon,
@@ -55,6 +76,8 @@ import {
   FileArchiveIcon,
   BookOpenIcon,
   LanguagesIcon,
+  BookDownIcon,
+  LoaderIcon,
 } from "lucide-react";
 import {
   useParams,
@@ -62,7 +85,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
 type AnalysisMode = "full" | "incremental" | "selected";
@@ -87,12 +110,33 @@ export default function NovelDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
   const [translateChapterIds, setTranslateChapterIds] = useState<string[]>([]);
+  const [pdfTranslateOpen, setPdfTranslateOpen] = useState(false);
+  const [pdfTranslateChapterIds, setPdfTranslateChapterIds] = useState<string[]>([]);
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [replaceChapterIds, setReplaceChapterIds] = useState<string[]>([]);
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertChapterIds, setConvertChapterIds] = useState<string[]>([]);
   const [resplitOpen, setResplitOpen] = useState(false);
   const [resplitChapterIds, setResplitChapterIds] = useState<string[]>([]);
+
+  const [translateTitleOpen, setTranslateTitleOpen] = useState(false);
+  const providers = useApiInferenceProviders();
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [isTranslatingTitle, setIsTranslatingTitle] = useState(false);
+  const models = useAIModels(selectedProvider);
+
+  useEffect(() => {
+    if (providers && providers.length > 0 && !selectedProvider) {
+      setSelectedProvider(providers[0].id);
+    }
+  }, [providers, selectedProvider]);
+  
+  useEffect(() => {
+    if (models && models.length > 0 && !selectedModel) {
+      setSelectedModel(models[0].id);
+    }
+  }, [models, selectedModel]);
 
   // Removed old useMemo word counts since they are now queried directly.
 
@@ -117,9 +161,97 @@ export default function NovelDetailPage() {
     setConvertOpen(true);
   };
 
+  const handlePdfTranslate = (chapterIds: string[]) => {
+    setPdfTranslateChapterIds(chapterIds);
+    setPdfTranslateOpen(true);
+  };
+
   const handleResplit = (chapterIds: string[]) => {
     setResplitChapterIds(chapterIds);
     setResplitOpen(true);
+  };
+
+  const handleExportEpub = useCallback(async () => {
+    if (!novel) return;
+    try {
+      toast.info("Đang tạo file EPUB, vui lòng đợi...");
+      const dbChapters = await db.chapters.where("novelId").equals(novel.id).sortBy("order");
+      
+      if (!dbChapters || dbChapters.length === 0) {
+        throw new Error("Không có chương nào để xuất!");
+      }
+      
+      let coverBase64 = null;
+      if (novel.coverImage) {
+        try {
+          const imgRes = await fetch(novel.coverImage);
+          const blob = await imgRes.blob();
+          coverBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // Ignore cover fetch error
+        }
+      }
+      
+      const scenes = await db.scenes.where("[novelId+isActive]").equals([novel.id, 1]).toArray();
+      const chaptersWithContent = dbChapters.map(ch => {
+         const chScenes = scenes.filter(s => s.chapterId === ch.id).sort((a, b) => a.order - b.order);
+         const content = chScenes.map(s => s.content).join("\n\n");
+         return {
+            title: ch.title,
+            content: content || "Nội dung chương trống."
+         };
+      });
+      
+      const blob = await generateEpub(novel.title, novel.author || "Unknown", coverBase64 as string | null, chaptersWithContent);
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${novel.title}.epub`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success("Xuất EPUB thành công!");
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi khi xuất EPUB");
+    }
+  }, [novel]);
+
+  const handleTranslateTitle = async () => {
+    if (!novel || !selectedProvider || !selectedModel) return;
+    
+    try {
+      setIsTranslatingTitle(true);
+      
+      const model = await resolveStep({ providerId: selectedProvider, modelId: selectedModel });
+      if (!model) throw new Error("Không thể tải model AI");
+
+      const sysMsg = "Bạn là biên dịch viên truyện chữ chuyên nghiệp. Chỉ trả về kết quả dịch tiếng Việt của tên truyện, không thêm bất kỳ câu chữ nào khác, không dùng ngoặc kép.";
+      const usrMsg = `Dịch tên truyện này sang tiếng Việt: ${novel.title}`;
+
+      const { text } = await generateText({
+        model,
+        system: sysMsg,
+        prompt: usrMsg,
+      });
+
+      const translated = text.trim();
+      if (!translated) throw new Error("Không nhận được kết quả dịch");
+      
+      await db.novels.update(novel.id, { title: translated });
+      toast.success("Đã dịch tên truyện thành công!");
+      setTranslateTitleOpen(false);
+    } catch (e: any) {
+      toast.error(e.message || "Không thể dịch tên truyện");
+    } finally {
+      setIsTranslatingTitle(false);
+    }
   };
 
   const handleExport = async () => {
@@ -262,6 +394,18 @@ export default function NovelDetailPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => setTranslateTitleOpen(true)}
+                  >
+                    <LanguagesIcon className="size-4 text-emerald-600 dark:text-emerald-400" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Dịch tên truyện</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setEditOpen(true)}
                   >
                     <PencilIcon className="size-4" />
@@ -318,6 +462,14 @@ export default function NovelDetailPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleExportEpub}>
+                    <BookDownIcon className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Xuất EPUB</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" onClick={handleExport}>
@@ -417,6 +569,7 @@ export default function NovelDetailPage() {
             onTranslate={handleTranslate}
             onReplace={handleReplace}
             onConvert={handleConvert}
+            onPdfTranslate={handlePdfTranslate}
             onResplit={handleResplit}
           />
         </TabsContent>
@@ -437,6 +590,15 @@ export default function NovelDetailPage() {
         onOpenChange={setConvertOpen}
         novelId={id}
         chapterIds={convertChapterIds}
+        chapters={chapters ?? []}
+      />
+
+      {/* Pdf Translate dialog */}
+      <PdfTranslateDialog
+        open={pdfTranslateOpen}
+        onOpenChange={setPdfTranslateOpen}
+        novelId={id}
+        chapterIds={pdfTranslateChapterIds}
         chapters={chapters ?? []}
       />
 
@@ -496,6 +658,55 @@ export default function NovelDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Translate Title Dialog */}
+      <Dialog open={translateTitleOpen} onOpenChange={setTranslateTitleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dịch tên truyện</DialogTitle>
+            <DialogDescription>
+              Tên gốc: <strong className="text-foreground">{novel.title}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nhà cung cấp (Provider)</label>
+              <Select value={selectedProvider} onValueChange={setSelectedProvider} disabled={isTranslatingTitle}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers?.map(p => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Mô hình AI (Model)</label>
+              <Select value={selectedModel} onValueChange={setSelectedModel} disabled={isTranslatingTitle || !models || models.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={models?.length ? "Chọn Model" : "Đang tải..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {models?.map(m => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTranslateTitleOpen(false)} disabled={isTranslatingTitle}>Hủy</Button>
+            <Button onClick={handleTranslateTitle} disabled={isTranslatingTitle || !selectedModel}>
+              {isTranslatingTitle ? <LoaderIcon className="w-4 h-4 mr-2 animate-spin" /> : <LanguagesIcon className="w-4 h-4 mr-2" />}
+              Dịch
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

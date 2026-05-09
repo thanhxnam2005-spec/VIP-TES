@@ -98,6 +98,7 @@ function buildIndexedDict(source: Map<string, string>): IndexedDict {
 let namesMap: Map<string, string>;
 let vietPhraseMap: Map<string, string>;
 let phienAmMap: Map<string, string>;
+let genreDictMaps: Map<string, Map<string, string>>;
 let luatNhanPatterns: Array<{
   prefix: string;
   suffix: string;
@@ -126,6 +127,23 @@ function initDicts(dictData: Record<string, DictPair[]>): void {
       vietPhraseMap.set(e.chinese, FULLWIDTH_PUNCT[e.chinese]);
     } else {
       vietPhraseMap.set(e.chinese, pickPrimary(e.vietnamese));
+    }
+  }
+
+  genreDictMaps = new Map();
+  const genreSources = [
+    "ngontinh", "hiendai", "tienhiep", "huyenhuyen",
+    "dammi", "hocduong", "nsfw", "hentai",
+    "dongphuong", "dothi", "vongdu", "khoahuyen", 
+    "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+  ];
+  for (const src of genreSources) {
+    const genreMap = new Map<string, string>();
+    for (const e of dictData[src] ?? []) {
+      genreMap.set(e.chinese, pickPrimary(e.vietnamese));
+    }
+    if (genreMap.size > 0) {
+      genreDictMaps.set(src, genreMap);
     }
   }
 
@@ -574,10 +592,23 @@ function convert(
   }
   orderedNameMaps.push(["qt-name", namesMap]);
 
+  // Insert genre dicts
+  const activeGenreMaps: PriorityEntry[] = [];
+  if (o.activeDictSources?.length) {
+    for (const src of o.activeDictSources) {
+      const gMap = genreDictMaps.get(src);
+      if (gMap) {
+        activeGenreMaps.push([src as ConvertSource, gMap]);
+      }
+    }
+  }
+
   if (o.nameVsPriority === "name-first") {
     priorityMaps.push(...orderedNameMaps);
+    priorityMaps.push(...activeGenreMaps);
     priorityMaps.push(["vietphrase", filteredVP]);
   } else {
+    priorityMaps.push(...activeGenreMaps);
     priorityMaps.push(["vietphrase", filteredVP]);
     priorityMaps.push(...orderedNameMaps);
   }

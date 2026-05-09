@@ -114,6 +114,7 @@ export function ChaptersTab({
   onTranslate,
   onReplace,
   onConvert,
+  onPdfTranslate,
   onResplit,
 }: {
   novelId: string;
@@ -129,6 +130,7 @@ export function ChaptersTab({
   onTranslate: (chapterIds: string[]) => void;
   onReplace?: (chapterIds: string[]) => void;
   onConvert?: (chapterIds: string[]) => void;
+  onPdfTranslate?: (chapterIds: string[]) => void;
   onResplit?: (chapterIds: string[]) => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -279,6 +281,15 @@ export function ChaptersTab({
                 >
                   <ZapIcon className="size-3.5" />
                   Converter AI đã chọn
+                </button>
+              )}
+              {onPdfTranslate && (
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-blue-600 dark:text-blue-400"
+                  onClick={() => onPdfTranslate(Array.from(selected))}
+                >
+                  <FileTextIcon className="size-3.5" />
+                  Dịch kèm Prompt PDF
                 </button>
               )}
               {onResplit && (

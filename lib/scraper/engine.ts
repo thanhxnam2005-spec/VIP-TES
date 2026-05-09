@@ -106,10 +106,13 @@ export async function scrapeChapters(
       while (attempts < 3 && !success) {
         try {
           if ((adapter.name === "STV" || adapter.name === "Fanqie Novel") && chapter.id) {
+            const isFanqieRealUrl = adapter.name === "Fanqie Novel" && !chapter.url.startsWith('fanqie-dynamic');
             const res = await extensionDownloadSTVChapter(
               chapter.id,
               chapter.url,
-              i < chapters.length - 1 && !signal?.aborted,
+              // For Fanqie real URLs: don't send allowNext (we navigate directly)
+              isFanqieRealUrl ? false : (i < chapters.length - 1 && !signal?.aborted),
+              false
             );
             html = res.data ?? "";
             contentText = (res as any).contentText ?? res.content ?? undefined;
@@ -133,11 +136,15 @@ export async function scrapeChapters(
         );
         content.order = chapter.order;
 
-        if (!content.title || content.title.trim() === "") {
+        // For Fanqie: ALWAYS use chapter.title from the list (PUA-encoded page titles are garbage)
+        if (adapter.name === "Fanqie Novel") {
+          content.title = chapter.title;
+        } else if (!content.title || content.title.trim() === "") {
           content.title = extTitle || chapter.title;
         }
 
-        if ((timedOut || content.content.length < 30) && adapter.name !== "STV") {
+        const isTabBased = adapter.name === "STV" || adapter.name === "Fanqie Novel";
+        if ((timedOut || content.content.length < 30) && !isTabBased) {
           throw new Error(`Lỗi lấy nội dung: Timeout hoặc quá ngắn (${content.content.length} ký tự)`);
         }
 
@@ -145,14 +152,14 @@ export async function scrapeChapters(
       } catch (err: any) {
         lastError = err;
         attempts++;
-        if (attempts >= 3 || adapter.name === "STV") {
+        if (attempts >= 3 || adapter.name === "STV" || adapter.name === "Fanqie Novel") {
           break;
         }
         await delay(1500 * attempts);
       }
     }
 
-    if (!success && lastError && adapter.name !== "STV") {
+    if (!success && lastError && adapter.name !== "STV" && adapter.name !== "Fanqie Novel") {
       throw lastError; // Bubble up after 3 attempts
     }
 
@@ -196,13 +203,14 @@ export async function scrapeChapters(
       clickSelector: adapter.chapterClickSelector,
     });
 
-    // For STV, stop IMMEDIATELY if content is missing or too short
-    if (adapter.name === "STV" && (timedOut || content.content.length < 30)) {
+    // For STV/Fanqie, stop IMMEDIATELY if content is missing or too short
+    if ((adapter.name === "STV" || adapter.name === "Fanqie Novel") && (timedOut || content.content.length < 30)) {
       await extensionStopScrape();
       const chNumMatch = chapter.title.match(/(\d+)/);
       const chNum = chNumMatch ? `số ${chNumMatch[0]}` : "";
+      const siteName = adapter.name === "Fanqie Novel" ? "Fanqie" : "SangTacViet";
       throw new Error(
-        `STV_RESUME_REQUIRED|${chapter.title}|Vui lòng mở Tab SangTacViet, vào đúng chương ${chNum} ("${chapter.title}") và đảm bảo nội dung đã hiển thị, sau đó quay lại đây bấm "Tiếp tục".`,
+        `STV_RESUME_REQUIRED|${chapter.title}|Vui lòng mở Tab ${siteName}, vào đúng chương ${chNum} ("${chapter.title}") và đảm bảo nội dung đã hiển thị, sau đó quay lại đây bấm "Tiếp tục".`,
       );
     }
 
@@ -215,9 +223,22 @@ export async function scrapeChapters(
     }
 
     // ── Dynamic Next Chapter Crawling ──
-      // If we just processed the last chapter in our list, and it gave us a next link
-      if (i === chapters.length - 1 && content.nextChapterUrl) {
-        // Make sure we haven't seen it yet
+      // If we just processed the last chapter in our list, and we didn't stop or error out
+      if (i === chapters.length - 1 && !signal?.aborted && adapter.name === "Fanqie Novel" && success && !timedOut && content.content.length > 200) {
+        // For Fanqie, we simulate the next chapter since the extension ALREADY clicked "Next".
+        // The URL in the browser changed, but our `chapter.url` is outdated. That's fine for STV mode.
+        // We just append a dummy chapter to keep the loop going!
+        const nextIdx = chapters.length;
+        const newChapter: ChapterLink = {
+          title: `Chương ${nextIdx + 1}`,
+          url: content.nextChapterUrl || `fanqie-dynamic-next-${nextIdx}`, // placeholder
+          order: nextIdx,
+          id: `fanqie-dynamic-${nextIdx}` // Need an ID for STV mode to trigger
+        };
+        chapters.push(newChapter);
+        onDynamicChapterAdded?.(newChapter);
+      } else if (i === chapters.length - 1 && content.nextChapterUrl) {
+        // Existing logic for other adapters
         const alreadyExists = chapters.some((ch) => ch.url === content.nextChapterUrl);
         if (!alreadyExists && content.nextChapterUrl.startsWith("http")) {
           const newChapter: ChapterLink = {

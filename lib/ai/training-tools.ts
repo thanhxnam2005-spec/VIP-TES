@@ -7,6 +7,7 @@ export interface TrainingSuggestion {
   vietnamese: string;
   reason: string;
   category: string;
+  genre: string;
   context_zh?: string;
   context_vi_before?: string;
   context_vi_after?: string;
@@ -24,11 +25,12 @@ const trainingSchema = jsonSchema<{ suggestions: TrainingSuggestion[] }>({
           vietnamese: { type: "string" },
           reason: { type: "string" },
           category: { type: "string" },
+          genre: { type: "string" },
           context_zh: { type: "string" },
           context_vi_before: { type: "string" },
           context_vi_after: { type: "string" },
         },
-        required: ["chinese", "vietnamese", "reason", "category", "context_zh", "context_vi_before", "context_vi_after"],
+        required: ["chinese", "vietnamese", "reason", "category", "genre", "context_zh", "context_vi_before", "context_vi_after"],
       },
     },
   },
@@ -79,6 +81,52 @@ ${opts.aiTranslated.slice(0, 3000)}
     model: opts.model,
     schema: trainingSchema,
     system: "Bạn là chuyên gia huấn luyện hệ thống dịch thuật Trung-Việt.",
+    prompt,
+  });
+
+  return result.object.suggestions;
+}
+
+export async function extractDictionaryEntries(opts: {
+  model: LanguageModel;
+  sourceText: string;
+  targetGenre?: string;
+}): Promise<TrainingSuggestion[]> {
+  const genreInstruction = opts.targetGenre 
+    ? `5. BẮT BUỘC phân loại "genre": Vì đây là truyện thể loại "${opts.targetGenre}", bạn CHỈ ĐƯỢC CHỌN "global" (nếu là tên riêng, danh xưng chung) hoặc "${opts.targetGenre}" (nếu là từ đặc thù của thể loại này). TUYỆT ĐỐI KHÔNG chọn các thể loại khác.`
+    : `5. BẮT BUỘC phân loại "genre" vào MỘT trong các thể loại sau dựa trên bối cảnh của từ vựng đó: "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu", hoặc "global" (nếu là từ dùng chung).`;
+
+  const prompt = `
+<role>
+Bạn là chuyên gia dịch thuật Trung-Việt và là người biên soạn từ điển chuyên ngành cho tiểu thuyết mạng.
+</role>
+
+<task>
+Hãy đọc đoạn văn bản tiếng Trung dưới đây và trích xuất ra các Tên riêng, Thuật ngữ chuyên môn, Danh xưng, và Cụm từ khó dịch.
+Sau đó đề xuất nghĩa tiếng Việt chuẩn xác nhất cho từng từ đó để người dùng có thể thêm vào từ điển cá nhân.
+</task>
+
+<source_text lang="zh">
+${opts.sourceText.slice(0, 3000)}
+</source_text>
+
+<requirements>
+1. Tập trung vào Tên nhân vật, Tên địa danh, Cảnh giới, Môn phái, Chiêu thức, Đồ vật đặc biệt.
+2. Tập trung vào các đại từ nhân xưng, xưng hô đặc thù (VD: vi sư, lão phu, trẫm, thần thiếp...).
+3. Tập trung vào các từ lóng, cụm từ lặp, idiom (thành ngữ).
+4. Phân loại "category" vào: "Tên riêng", "Thuật ngữ", "Xưng hô", "Thành ngữ", "Khác".
+${genreInstruction}
+6. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó) và context_vi_before/after (có thể để trống nếu không cần thiết).
+7. BẮT BUỘC: Nghĩa tiếng Việt (vietnamese) PHẢI LÀ MỘT NGHĨA DUY NHẤT, chuẩn xác nhất. Tuyệt đối KHÔNG dùng dấu gạch chéo (/), KHÔNG liệt kê nhiều nghĩa (Ví dụ: Sai: "Tống Cẩu / Tống Chó", Đúng: "Tống Cẩu").
+</requirements>
+
+<output_format>Trả về JSON chứa mảng "suggestions".</output_format>
+`;
+
+  const result = await generateStructured({
+    model: opts.model,
+    schema: trainingSchema,
+    system: "Bạn là chuyên gia biên soạn từ điển Trung-Việt.",
     prompt,
   });
 

@@ -85,6 +85,14 @@ const ALL_SOURCES: DictSource[] = [
   "names2",
   "phienam",
   "luatnhan",
+  "ngontinh",
+  "hiendai",
+  "tienhiep",
+  "huyenhuyen",
+  "dammi",
+  "hocduong",
+  "nsfw",
+  "hentai",
 ];
 
 const DICT_SOURCE_LABELS: Record<DictSource, string> = {
@@ -93,6 +101,23 @@ const DICT_SOURCE_LABELS: Record<DictSource, string> = {
   names2: "Names2",
   phienam: "Phiên âm",
   luatnhan: "Luật nhân",
+  ngontinh: "Ngôn tình",
+  hiendai: "Hiện đại",
+  tienhiep: "Tiên hiệp",
+  huyenhuyen: "Huyền huyễn",
+  dammi: "Đam mỹ",
+  hocduong: "Học đường",
+  nsfw: "NSFW",
+  hentai: "Hentai",
+  dongphuong: "Đông phương",
+  dothi: "Đô thị",
+  vongdu: "Võng du",
+  khoahuyen: "Khoa huyễn",
+  quybi: "Quỷ bí / Linh dị",
+  xuyenkhong: "Xuyên không",
+  hethong: "Hệ thống",
+  trinhtham: "Trinh thám",
+  lichsu: "Lịch sử",
 };
 
 /** Build page numbers with ellipsis: [0, 1, "ellipsis", 8, 9] */
@@ -124,6 +149,23 @@ const DICT_SOURCE_DESC: Record<DictSource, string> = {
   names2: "Tên bổ sung",
   phienam: "Phiên âm ký tự đơn",
   luatnhan: "Luật nhân xưng {0}",
+  ngontinh: "Từ vựng ngôn tình",
+  hiendai: "Từ vựng hiện đại",
+  tienhiep: "Tu chân, tu tiên",
+  huyenhuyen: "Kỳ ảo, ma pháp",
+  dammi: "Đam mỹ, bách hợp",
+  hocduong: "Vườn trường",
+  nsfw: "Từ ngữ nhạy cảm (18+)",
+  hentai: "Thể loại người lớn",
+  dongphuong: "Tiên hiệp phương Đông",
+  dothi: "Bối cảnh hiện đại đô thị",
+  vongdu: "Game thực tế ảo",
+  khoahuyen: "Khoa học viễn tưởng",
+  quybi: "Tâm linh, kinh dị",
+  xuyenkhong: "Xuyên không, trọng sinh",
+  hethong: "Hệ thống phụ trợ",
+  trinhtham: "Phá án, suy luận",
+  lichsu: "Dã sử, quân sự",
 };
 
 export function DictionaryManagement({ compact }: { compact?: boolean }) {
