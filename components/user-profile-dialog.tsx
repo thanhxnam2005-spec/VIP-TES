@@ -42,19 +42,24 @@ export function UserProfileDialog({ profile, open, onOpenChange, onProfileUpdate
     try {
       const supabase = createClient();
       
-      // Try upsert instead of update (in case row doesn't exist yet)
-      const { error } = await supabase
+      // Try update first
+      const { error, status, statusText } = await supabase
         .from("profiles")
-        .upsert({ 
-          id: profile.id, 
-          avatar_url: avatarUrl 
-        }, { 
-          onConflict: "id" 
-        });
+        .update({ avatar_url: avatarUrl })
+        .eq("id", profile.id);
 
       if (error) {
-        console.error("Avatar save error:", error);
-        toast.error(`Lỗi: ${error.message} (code: ${error.code})`);
+        const fullError = JSON.stringify(error, null, 2);
+        console.error("Avatar save error (full):", fullError, "status:", status, statusText);
+        
+        // If column doesn't exist, show helpful message
+        if (error.message?.includes("column") || error.code === "PGRST204" || error.code === "42703") {
+          toast.error("Cột 'avatar_url' chưa tồn tại. Chạy SQL: ALTER TABLE profiles ADD COLUMN avatar_url TEXT;");
+        } else if (!error.message) {
+          toast.error(`Lỗi Supabase (HTTP ${status}): ${statusText || "Không rõ"} — ${fullError}`);
+        } else {
+          toast.error(`Lỗi: ${error.message} (code: ${error.code})`);
+        }
       } else {
         toast.success("Cập nhật ảnh đại diện thành công!");
         onProfileUpdated();
