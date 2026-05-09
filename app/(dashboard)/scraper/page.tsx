@@ -329,10 +329,10 @@ export default function ScraperLibraryPage() {
                   </div>
 
                   <div className="space-y-3 mt-4">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase">📚 Nguồn tìm truyện Text</Label>
+                    <Label className="text-xs font-bold text-muted-foreground uppercase">📚 Tải truyện Text</Label>
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" className="border-amber-200 bg-amber-50 dark:bg-amber-950/20" asChild>
-                        <a href="https://www.zhihu.com/question/661752607/answer/2036424617104037236" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-amber-600"/> Zhihu — Danh sách truyện Text</a>
+                        <a href="https://www.zhihu.com/question/661752607/answer/2036424617104037236" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-amber-600"/> Zhihu — Tải truyện Text</a>
                       </Button>
                     </div>
                   </div>
