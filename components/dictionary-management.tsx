@@ -53,6 +53,7 @@ import {
   importDictFile,
   loadDictFromPublic,
   useDictMeta,
+  appendToDictSource,
 } from "@/lib/hooks/use-dict-entries";
 import { cn } from "@/lib/utils";
 import {
@@ -268,9 +269,15 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         return;
       }
       
-      const file = new File([text], filename, { type: "text/plain" });
-      const count = await importDictFile(file, source);
-      toast.success(`Đã nhập ${count.toLocaleString()} mục từ Drive cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
+      if (window.confirm(`Bạn có muốn GỘP từ điển (chỉ thêm từ mới) thay vì GHI ĐÈ toàn bộ không?\n\n- Chọn [OK]: Gộp chung (Merge)\n- Chọn [Cancel]: Ghi đè toàn bộ (Replace)`)) {
+        const entries = parseDictLines(text);
+        const count = await appendToDictSource(source, entries);
+        toast.success(`Đã gộp thêm ${count.toLocaleString()} mục mới từ Drive cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
+      } else {
+        const file = new File([text], filename, { type: "text/plain" });
+        const count = await importDictFile(file, source);
+        toast.success(`Đã ghi đè ${count.toLocaleString()} mục từ Drive cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
+      }
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }
