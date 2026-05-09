@@ -119,9 +119,8 @@ function buildPostEditPrompt(
   chineseText: string,
   dictTranslation: string,
   nameDict: Array<{ chinese: string; vietnamese: string }>,
-  novelCustomPrompt?: string,
 ): string {
-  let prompt = buildGenreAwareSystemPrompt(novelCustomPrompt);
+  let prompt = buildGenreAwareSystemPrompt();
 
   // Add name dictionary context
   const relevantNames = nameDict.filter(
@@ -243,7 +242,6 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
 
   // Fetch novel's custom translate prompt (from genre scan)
   const novel = await db.novels.get(novelId);
-  const novelCustomPrompt = novel?.customTranslatePrompt;
 
   let isFirst = true;
 
@@ -315,8 +313,6 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
         const titleRes = await convertText(chapter.title, {
           options: {
             activeDictSources: activeSources,
-            capitalizeNames: true,
-            prioritizeNames: true,
           }
         });
         dictTranslatedTitle = titleRes.plainText;
@@ -324,8 +320,6 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
         const contentRes = await convertText(cleanedContent, {
           options: {
             activeDictSources: activeSources,
-            capitalizeNames: true,
-            prioritizeNames: true,
           }
         });
         dictTranslatedContent = contentRes.plainText;
@@ -359,7 +353,6 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
         cleanedContent,
         dictTranslatedContent,
         nameDict,
-        novelCustomPrompt,
       );
 
       const userPrompt = buildPostEditUserPrompt(
@@ -456,7 +449,7 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
         if (existing) {
           const origContent = await getOriginalContent(scene.sceneId);
           await ensureInitialVersion(scene.sceneId, existing.novelId, origContent);
-          await createSceneVersion(scene.sceneId, existing.novelId, "pdf-converter", scene.content);
+          await createSceneVersion(scene.sceneId, existing.novelId, "hybrid-converter", scene.content);
         }
         await db.scenes.update(scene.sceneId, {
           content: scene.content,

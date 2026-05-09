@@ -9,14 +9,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { Textarea } from "@/components/ui/textarea";
 import { db, type Chapter } from "@/lib/db";
 import {
   runPdfTranslate,
   type HybridTranslateResult,
   type HybridTranslateError,
 } from "@/lib/chapter-tools/pdf-translate";
-import { scanNovelStyle } from "@/lib/chapter-tools/scan-novel-style";
 import { useAnalysisSettings } from "@/lib/hooks/use-analysis-settings";
 import { useChatSettings } from "@/lib/hooks/use-chat-settings";
 import {
@@ -76,8 +74,6 @@ export function PdfTranslateDialog({
   const [results, setResults] = useState<HybridTranslateResult[]>([]);
   const [currentPhase, setCurrentPhase] = useState<Phase>("idle");
   const [currentChapterTitle, setCurrentChapterTitle] = useState("");
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState("");
   const [targetGenre, setTargetGenre] = useState<string>("auto");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -133,37 +129,6 @@ export function PdfTranslateDialog({
     }
     return model;
   }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel, defaultProvider, chatSettings]);
-
-  // ── Scan novel style ──
-  const handleScan = useCallback(async () => {
-    const model = await resolveModel();
-    if (!model) return;
-
-    setIsScanning(true);
-    setScanProgress("Bắt đầu quét...");
-
-    try {
-      const result = await scanNovelStyle(novelId, model, undefined, (msg) => {
-        setScanProgress(msg);
-      });
-      toast.success("Đã quét phong cách + trích xuất tên thành công!");
-    } catch (err: any) {
-      toast.error("Quét thất bại: " + err.message);
-    } finally {
-      setIsScanning(false);
-      setScanProgress("");
-    }
-  }, [novelId, resolveModel]);
-
-  // ── Save edited prompt ──
-  const handleSavePrompt = async () => {
-    await db.novels.update(novelId, {
-      customTranslatePrompt: promptDraft.trim(),
-      updatedAt: new Date(),
-    });
-    setEditingPrompt(false);
-    toast.success("Đã lưu prompt!");
-  };
 
   const handleStart = useCallback(async () => {
     const model = await resolveModel();
