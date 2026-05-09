@@ -4,6 +4,7 @@ import { AnalysisDialog } from "@/components/analysis-dialog";
 import { EditNovelDialog } from "@/components/edit-novel-dialog";
 import { PdfTranslateDialog } from "@/components/novel/pdf-translate-dialog";
 import { HybridConverterDialog } from "@/components/novel/hybrid-converter-dialog";
+import { QtAiTranslateDialog } from "@/components/novel/qt-ai-translate-dialog";
 import { BulkTranslateDialog } from "@/components/bulk-translate-dialog";
 import { BulkReplaceDialog } from "@/components/novel/bulk-replace-dialog";
 import { BulkResplitDialog } from "@/components/novel/bulk-resplit-dialog";
@@ -116,6 +117,8 @@ export default function NovelDetailPage() {
   const [replaceChapterIds, setReplaceChapterIds] = useState<string[]>([]);
   const [convertOpen, setConvertOpen] = useState(false);
   const [convertChapterIds, setConvertChapterIds] = useState<string[]>([]);
+  const [qtAiOpen, setQtAiOpen] = useState(false);
+  const [qtAiChapterIds, setQtAiChapterIds] = useState<string[]>([]);
   const [resplitOpen, setResplitOpen] = useState(false);
   const [resplitChapterIds, setResplitChapterIds] = useState<string[]>([]);
 
@@ -159,6 +162,11 @@ export default function NovelDetailPage() {
   const handleConvert = (chapterIds: string[]) => {
     setConvertChapterIds(chapterIds);
     setConvertOpen(true);
+  };
+
+  const handleQtAiTranslate = (chapterIds: string[]) => {
+    setQtAiChapterIds(chapterIds);
+    setQtAiOpen(true);
   };
 
   const handlePdfTranslate = (chapterIds: string[]) => {
@@ -569,6 +577,7 @@ export default function NovelDetailPage() {
             onTranslate={handleTranslate}
             onReplace={handleReplace}
             onConvert={handleConvert}
+            onQtTranslate={handleQtAiTranslate}
             onPdfTranslate={handlePdfTranslate}
             onResplit={handleResplit}
           />
@@ -590,6 +599,15 @@ export default function NovelDetailPage() {
         onOpenChange={setConvertOpen}
         novelId={id}
         chapterIds={convertChapterIds}
+        chapters={chapters ?? []}
+      />
+
+      {/* QT AI Translate dialog */}
+      <QtAiTranslateDialog
+        open={qtAiOpen}
+        onOpenChange={setQtAiOpen}
+        novelId={id}
+        chapterIds={qtAiChapterIds}
         chapters={chapters ?? []}
       />
 

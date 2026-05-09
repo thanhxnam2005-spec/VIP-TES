@@ -114,6 +114,7 @@ export function ChaptersTab({
   onTranslate,
   onReplace,
   onConvert,
+  onQtTranslate,
   onPdfTranslate,
   onResplit,
 }: {
@@ -130,6 +131,7 @@ export function ChaptersTab({
   onTranslate: (chapterIds: string[]) => void;
   onReplace?: (chapterIds: string[]) => void;
   onConvert?: (chapterIds: string[]) => void;
+  onQtTranslate?: (chapterIds: string[]) => void;
   onPdfTranslate?: (chapterIds: string[]) => void;
   onResplit?: (chapterIds: string[]) => void;
 }) {
@@ -281,6 +283,15 @@ export function ChaptersTab({
                 >
                   <ZapIcon className="size-3.5" />
                   Converter AI đã chọn
+                </button>
+              )}
+              {onQtTranslate && (
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-emerald-600 dark:text-emerald-400"
+                  onClick={() => onQtTranslate(Array.from(selected))}
+                >
+                  <BookOpenIcon className="size-3.5" />
+                  Từ điển cục bộ + AI
                 </button>
               )}
               {onPdfTranslate && (
