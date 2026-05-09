@@ -252,7 +252,7 @@ async function stvFetchChapter(payload, sendResponse) {
     // Fanqie: no tab found → create new one
     if (!tabId && isFanqie && !isDynamicFanqie) {
       console.log("[Fanqie] Creating new tab for:", payload.chapterUrl);
-      const tab = await chrome.tabs.create({ url: payload.chapterUrl, active: true });
+      const tab = await chrome.tabs.create({ url: payload.chapterUrl, active: false });
       tabId = tab.id;
       persistentTabId = tab.id;
       didNavigate = true;
@@ -279,7 +279,7 @@ async function stvFetchChapter(payload, sendResponse) {
           console.log("[Fanqie] Navigating tab to chapter:", payload.chapterUrl);
           // Clear ALL cached content before navigating
           contentCache.delete(tabId);
-          await chrome.tabs.update(tabId, { url: payload.chapterUrl, active: true });
+          await chrome.tabs.update(tabId, { url: payload.chapterUrl });
           didNavigate = true;
           await waitForTabLoad(tabId, 20000);
           // Clear cache RIGHT AFTER page load (before content script sends new data)
@@ -405,11 +405,11 @@ async function handleFetch(url, waitSelector, clickSelector, timeout, reuseTab =
         tabId = persistentTabId;
         await chrome.tabs.update(tabId, { url });
       } catch {
-        const tab = await chrome.tabs.create({ url, active: true });
+        const tab = await chrome.tabs.create({ url, active: false });
         tabId = persistentTabId = tab.id;
       }
     } else {
-      const tab = await chrome.tabs.create({ url, active: true });
+      const tab = await chrome.tabs.create({ url, active: false });
       tabId = persistentTabId = tab.id;
     }
   } else {
