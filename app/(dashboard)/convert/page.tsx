@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TextCompareEditor } from "@/components/ui/text-compare-editor";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/lib/hooks/use-debounce";
 import { useTrainingStore, type ConvertTab } from "@/lib/stores/training-store";
 import { cn } from "@/lib/utils";
@@ -153,6 +154,7 @@ export default function ConvertPage() {
   // Use persisted extractedTerms from store
   const extractedTerms = store.extractedTerms;
   const [autoSave, setAutoSave] = useState(true);
+  const [trainPassword, setTrainPassword] = useState("");
 
   // Worker configs are persisted in the store
   const workerConfigs = store.workerConfigs;
@@ -359,12 +361,24 @@ export default function ConvertPage() {
                   variant="default"
                   size="sm"
                   onClick={handleStartQueue}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || trainPassword !== "159357"}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <SparklesIcon className="mr-1.5 size-3.5" />
                   Bắt đầu Cuốn chiếu Song song (15 dòng/Worker)
                 </Button>
+              )}
+              
+              {!isQueueRunning && (
+                <div className="flex items-center gap-2">
+                  <Input 
+                    type="password" 
+                    placeholder="Mật khẩu (159...)" 
+                    value={trainPassword}
+                    onChange={(e) => setTrainPassword(e.target.value)}
+                    className="h-8 w-32 text-xs"
+                  />
+                </div>
               )}
               
               <div className="flex items-center gap-2 border-l pl-2 ml-2">

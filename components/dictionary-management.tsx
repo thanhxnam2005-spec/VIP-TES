@@ -154,6 +154,15 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   const globalEntries = useGlobalNameEntries();
   const [isReloading, setIsReloading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email === "nthanhnam2005@gmail.com" || data.user?.email === "thanhxnam2005@gmail.com") {
+        setIsAdmin(true);
+      }
+    });
+  }, []);
   const [replacingSource, setReplacingSource] = useState<DictSource | null>(
     null,
   );
@@ -947,12 +956,6 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Input
-                type="password"
-                placeholder="Mật khẩu Admin"
-                className="w-32 h-8 text-xs"
-                onChange={(e) => setIsAdmin(e.target.value === "159357")}
-              />
               <Button
                 variant="outline"
                 size="sm"
