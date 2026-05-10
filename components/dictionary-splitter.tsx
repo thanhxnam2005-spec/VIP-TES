@@ -36,7 +36,7 @@ export function DictionarySplitter() {
 
   const handleStart = () => {
     configureSplitter({
-      workers: store.workerConfigs.filter(w => w.providerId && w.modelId),
+      workers: store.workerConfigs.filter(w => w.providerId && w.modelId && w.sourceDict && w.targetGenre),
       chunkSize: store.chunkSize,
       genreSequence: store.genreSequence || [],
     });

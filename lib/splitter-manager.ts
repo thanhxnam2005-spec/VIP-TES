@@ -113,7 +113,8 @@ async function runLoop() {
     
     // Check if all workers are fully done
     const allDone = workerStates.every(w => {
-      if (w.isProcessing || !w.sourceEntries) return false;
+      if (w.isProcessing) return false;
+      if (!w.sourceEntries) return true;
       if (w.currentIndex < w.sourceEntries.length) return false;
       // If auto_stt, it is done when genreIndex >= genreSequence.length
       if (w.targetGenre === "auto_stt" && w.genreIndex !== undefined && w.genreIndex < globalConfig!.genreSequence.length - 1) return false;
