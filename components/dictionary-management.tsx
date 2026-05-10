@@ -81,10 +81,12 @@ import {
   CloudUploadIcon,
   ServerIcon,
   SaveIcon,
+  BotIcon,
 } from "lucide-react";
 import { useGoogleDrive } from "@/lib/hooks/use-google-drive";
+import { DictionarySplitter } from "./dictionary-splitter";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 
 const ALL_SOURCES: DictSource[] = [
@@ -109,6 +111,8 @@ const DICT_SOURCE_LABELS: Record<DictSource, string> = {
   names2: "Names2",
   phienam: "Phiên âm",
   luatnhan: "Luật nhân",
+  luatnhan_tienhiep: "Luật nhân (Tiên hiệp)",
+  luatnhan_hiendai: "Luật nhân (Hiện đại)",
   ngontinh: "Ngôn tình",
   hiendai: "Hiện đại",
   tienhiep: "Tiên hiệp",
@@ -156,8 +160,10 @@ const DICT_SOURCE_DESC: Record<DictSource, string> = {
   names: "Tên nhân vật, địa danh",
   names2: "Tên bổ sung",
   phienam: "Phiên âm ký tự đơn",
-  luatnhan: "Luật nhân xưng {0}",
-  ngontinh: "Từ vựng ngôn tình",
+  luatnhan: "Luật nhân xưng (ta, ngươi, hắn...)",
+  luatnhan_tienhiep: "Luật nhân xưng (ta, ngươi, bổn tọa...)",
+  luatnhan_hiendai: "Luật nhân xưng (tôi, cậu, anh, em...)",
+  ngontinh: "Truyện ngôn tình",
   hiendai: "Từ vựng hiện đại",
   tienhiep: "Tu chân, tu tiên",
   huyenhuyen: "Kỳ ảo, ma pháp",
@@ -194,7 +200,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   const [replacingSource, setReplacingSource] = useState<DictSource | null>(
     null,
   );
-  const [activeTab, setActiveTab] = useState<"list" | "lookup">("list");
+  const [activeTab, setActiveTab] = useState<"list" | "lookup" | "splitter">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -918,6 +924,26 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         onChange={handleImportFromFile}
       />
 
+
+      {/* AI Dictionary Splitter */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <BotIcon className="size-4" />
+                AI Bóc Tách Từ Điển
+              </CardTitle>
+              <CardDescription>
+                Dùng đa luồng AI để phân loại tự động từ điển theo thể loại.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <DictionarySplitter />
+        </CardContent>
+      </Card>
 
       {/* Dict Status — per source breakdown */}
       <Card>

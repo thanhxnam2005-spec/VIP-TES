@@ -334,6 +334,8 @@ export type DictSource =
   | "names2"
   | "phienam"
   | "luatnhan"
+  | "luatnhan_tienhiep"
+  | "luatnhan_hiendai"
   | "ngontinh"
   | "hiendai"
   | "tienhiep"

@@ -22,6 +22,8 @@ const DICT_FILES: Record<DictSource, string> = {
   names2: "/dict/names2.txt",
   phienam: "/dict/phienam.txt",
   luatnhan: "/dict/luatnhan.txt",
+  luatnhan_tienhiep: "/dict/luatnhan.txt", // Placeholder
+  luatnhan_hiendai: "/dict/luatnhan.txt", // Placeholder
   ngontinh: "/dict/ngontinh.txt",
   hiendai: "/dict/hiendai.txt",
   tienhiep: "/dict/tienhiep.txt",
@@ -48,6 +50,8 @@ const ALL_SOURCES: DictSource[] = [
   "names2",
   "phienam",
   "luatnhan",
+  "luatnhan_tienhiep",
+  "luatnhan_hiendai",
   "ngontinh",
   "hiendai",
   "tienhiep",

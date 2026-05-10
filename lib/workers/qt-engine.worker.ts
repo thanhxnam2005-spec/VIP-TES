@@ -99,12 +99,12 @@ let namesMap: Map<string, string>;
 let vietPhraseMap: Map<string, string>;
 let phienAmMap: Map<string, string>;
 let genreDictMaps: Map<string, Map<string, string>>;
-let luatNhanPatterns: Array<{
+let luatNhanPatternsMap: Map<string, Array<{
   prefix: string;
   suffix: string;
   template: string;
-}>;
-let luatNhanPrefixIndex: Map<string, number[]>;
+}>>;
+let luatNhanPrefixIndexMap: Map<string, Map<string, number[]>>;
 let maxKeyLength = 0;
 let maxNameLength = 0;
 
@@ -114,8 +114,6 @@ function initDicts(dictData: Record<string, DictPair[]>): void {
   namesMap = new Map<string, string>();
   vietPhraseMap = new Map<string, string>();
   phienAmMap = new Map<string, string>();
-  luatNhanPatterns = [];
-  luatNhanPrefixIndex = new Map();
 
   for (const e of dictData.names ?? [])
     namesMap.set(e.chinese, capitalizeWords(pickPrimary(e.vietnamese)));
@@ -155,27 +153,40 @@ function initDicts(dictData: Record<string, DictPair[]>): void {
     }
   }
 
-  for (const e of dictData.luatnhan ?? []) {
-    const idx = e.chinese.indexOf("{0}");
-    if (idx < 0) continue;
-    const prefix = e.chinese.slice(0, idx);
-    const suffix = e.chinese.slice(idx + 3);
-    luatNhanPatterns.push({
-      prefix,
-      suffix,
-      template: pickPrimary(e.vietnamese),
-    });
-  }
+  luatNhanPatternsMap = new Map();
+  luatNhanPrefixIndexMap = new Map();
 
-  for (let i = 0; i < luatNhanPatterns.length; i++) {
-    const p = luatNhanPatterns[i];
-    if (p.prefix.length > 0) {
-      const firstChar = p.prefix[0];
-      if (!luatNhanPrefixIndex.has(firstChar)) {
-        luatNhanPrefixIndex.set(firstChar, []);
-      }
-      luatNhanPrefixIndex.get(firstChar)!.push(i);
+  const allLuatNhanSources = ["luatnhan", "luatnhan_tienhiep", "luatnhan_hiendai"];
+  
+  for (const src of allLuatNhanSources) {
+    const patterns: Array<{ prefix: string; suffix: string; template: string }> = [];
+    const prefixIndex = new Map<string, number[]>();
+
+    for (const e of dictData[src] ?? []) {
+      const idx = e.chinese.indexOf("{0}");
+      if (idx < 0) continue;
+      const prefix = e.chinese.slice(0, idx);
+      const suffix = e.chinese.slice(idx + 3);
+      patterns.push({
+        prefix,
+        suffix,
+        template: pickPrimary(e.vietnamese),
+      });
     }
+
+    for (let i = 0; i < patterns.length; i++) {
+      const p = patterns[i];
+      if (p.prefix.length > 0) {
+        const firstChar = p.prefix[0];
+        if (!prefixIndex.has(firstChar)) {
+          prefixIndex.set(firstChar, []);
+        }
+        prefixIndex.get(firstChar)!.push(i);
+      }
+    }
+
+    luatNhanPatternsMap.set(src, patterns);
+    luatNhanPrefixIndexMap.set(src, prefixIndex);
   }
 
   maxKeyLength = 0;
@@ -348,6 +359,8 @@ function scanLuatNhan(
   filteredVP: Map<string, string>,
   effectiveMaxName: number,
   mode: LuatNhanMode,
+  activePatterns: Array<{ prefix: string; suffix: string; template: string }>,
+  activePrefixIndex: Map<string, number[]>
 ): MatchedRegion[] {
   if (mode === "off") return [];
   const regions: MatchedRegion[] = [];
@@ -356,11 +369,11 @@ function scanLuatNhan(
   while (i < text.length) {
     let matched = false;
     const ch = text[i];
-    const patternIndices = luatNhanPrefixIndex.get(ch);
+    const patternIndices = activePrefixIndex.get(ch);
 
     if (patternIndices) {
       for (const pi of patternIndices) {
-        const pattern = luatNhanPatterns[pi];
+        const pattern = activePatterns[pi];
         if (!text.startsWith(pattern.prefix, i)) continue;
 
         const searchStart = i + pattern.prefix.length;
@@ -666,6 +679,33 @@ function convert(
     for (const k of autoDetected.keys())
       if (k.length > effectiveMaxName) effectiveMaxName = k.length;
 
+  // Build merged active luatnhan rules
+  const activePatterns: Array<{ prefix: string; suffix: string; template: string }> = [];
+  const activePrefixIndex = new Map<string, number[]>();
+  
+  const sourcesToMerge = ["luatnhan"];
+  if (o.activeDictSources?.length) {
+    for (const src of o.activeDictSources) {
+      sourcesToMerge.push(`luatnhan_${src}`);
+    }
+  }
+
+  for (const src of sourcesToMerge) {
+    const patterns = luatNhanPatternsMap.get(src);
+    if (patterns) {
+      const offset = activePatterns.length;
+      activePatterns.push(...patterns);
+      const prefixIndex = luatNhanPrefixIndexMap.get(src);
+      if (prefixIndex) {
+        for (const [ch, indices] of prefixIndex) {
+          const shifted = indices.map(idx => idx + offset);
+          if (!activePrefixIndex.has(ch)) activePrefixIndex.set(ch, []);
+          activePrefixIndex.get(ch)!.push(...shifted);
+        }
+      }
+    }
+  }
+
   // ── 2-Pass pipeline ──────────────────────────────────────────
   //
   const luatNhanRegions = scanLuatNhan(
@@ -674,6 +714,8 @@ function convert(
     filteredVP,
     effectiveMaxName,
     o.luatNhanMode,
+    activePatterns,
+    activePrefixIndex
   );
 
   const segments: ConvertSegment[] = [];
