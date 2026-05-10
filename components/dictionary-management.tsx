@@ -83,7 +83,7 @@ import {
   BotIcon,
 } from "lucide-react";
 import { useGoogleDrive } from "@/lib/hooks/use-google-drive";
-import { DictionarySplitter } from "./dictionary-splitter";
+
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRef, useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -900,25 +900,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       />
 
 
-      {/* AI Dictionary Splitter */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <BotIcon className="size-4" />
-                AI Bóc Tách Từ Điển
-              </CardTitle>
-              <CardDescription>
-                Dùng đa luồng AI để phân loại tự động từ điển theo thể loại.
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <DictionarySplitter />
-        </CardContent>
-      </Card>
+
 
       {/* Dict Status — per source breakdown */}
       <Card>
