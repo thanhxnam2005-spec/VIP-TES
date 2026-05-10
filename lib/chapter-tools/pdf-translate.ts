@@ -306,9 +306,30 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
       let dictTranslatedContent: string;
 
       try {
+        let autoGenres: string[] = [];
+        if (novel?.genre) {
+          const gLower = novel.genre.toLowerCase();
+          const GENRE_LABELS: Record<string, string> = {
+            ngontinh: "Ngôn tình", hiendai: "Hiện đại", tienhiep: "Tiên hiệp",
+            huyenhuyen: "Huyền huyễn", dammi: "Đam mỹ", hocduong: "Học đường",
+            nsfw: "NSFW (18+)", hentai: "Hentai", dongphuong: "Đông phương",
+            dothi: "Đô thị", vongdu: "Võng du", khoahuyen: "Khoa huyễn",
+            quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
+            trinhtham: "Trinh thám", lichsu: "Lịch sử"
+          };
+          let matchedKey = "tienhiep";
+          for (const [key, label] of Object.entries(GENRE_LABELS)) {
+            if (gLower === label.toLowerCase() || gLower.includes(label.toLowerCase())) {
+              matchedKey = key;
+              break;
+            }
+          }
+          autoGenres = [matchedKey];
+        }
+
         const finalGenres = targetGenres && targetGenres.length > 0 && !targetGenres.includes("auto") 
           ? targetGenres 
-          : (novel?.genre ? [novel.genre] : []);
+          : autoGenres;
         const activeSources = finalGenres;
         
         const titleRes = await convertText(chapter.title, {

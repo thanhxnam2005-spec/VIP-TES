@@ -43,7 +43,7 @@ import {
   FileTextIcon,
   TagIcon,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Label } from "@/components/ui/label";
@@ -117,6 +117,21 @@ export function QtAiTranslateDialog({
 
   // Per-novel model settings
   const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
+  
+  // Auto-detect genre and set as default dictionary
+  useEffect(() => {
+    if (novel?.genre) {
+      const gLower = novel.genre.toLowerCase();
+      let matchedKey = "tienhiep"; // fallback
+      for (const [key, label] of Object.entries(GENRE_LABELS)) {
+        if (gLower === label.toLowerCase() || gLower.includes(label.toLowerCase())) {
+          matchedKey = key;
+          break;
+        }
+      }
+      setQtDictSources([matchedKey]);
+    }
+  }, [novel?.genre]);
   const currentModel = useMemo(() => {
     if (novel?.customTranslateProviderId) {
       return {
