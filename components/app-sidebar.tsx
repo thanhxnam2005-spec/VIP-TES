@@ -60,6 +60,7 @@ export const navConfig = [
   { title: "Convert nhanh", href: "/convert", icon: Wand2Icon },
   { title: "Import Truyện", href: "/scraper", icon: GlobeIcon },
   { title: "Tạo Prompt Scraper", href: "/scraper/generator", icon: GitCompareArrowsIcon },
+  { title: "Quản lý từ điển", href: "/dictionary", icon: BookOpenIcon },
   { title: "Nhà cung cấp AI", href: "/settings/providers", icon: ServerIcon },
   {
     title: "Quản lý dữ liệu",

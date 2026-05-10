@@ -363,6 +363,65 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
     }
   };
 
+  const handleUploadAllToSupabase = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Vui lòng đăng nhập để lưu lên đám mây");
+      return;
+    }
+    const toastId = toast.loading("Đang tải toàn bộ từ điển lên Kho chung...");
+    try {
+      let uploadedCount = 0;
+      for (const source of ALL_SOURCES) {
+        const records = await db.dictEntries.where("source").equals(source).toArray();
+        if (records.length === 0) continue;
+        const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+        const filename = `${source}.txt`;
+        const { error } = await supabase.storage
+          .from("dictionaries")
+          .upload(filename, text, {
+            contentType: 'text/plain;charset=UTF-8',
+            upsert: true,
+          });
+        if (error) throw error;
+        uploadedCount++;
+      }
+      toast.success(`Đã tải lên ${uploadedCount} bộ từ điển thành công!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(`Lỗi tải lên toàn bộ: ${err.message}`, { id: toastId });
+    }
+  };
+
+  const handleDownloadAllFromSupabase = async () => {
+    const toastId = toast.loading("Đang tải toàn bộ từ điển từ Kho chung...");
+    try {
+      const supabase = createClient();
+      let downloadedCount = 0;
+      let newEntriesCount = 0;
+      for (const source of ALL_SOURCES) {
+        const filename = `${source}.txt`;
+        const { data: publicUrlData } = supabase.storage
+          .from("dictionaries")
+          .getPublicUrl(filename);
+        
+        const res = await fetch(`${publicUrlData.publicUrl}?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) continue;
+        
+        const text = await res.text();
+        const entries = parseDictLines(text);
+        if (entries.length > 0) {
+          const count = await appendToDictSource(source, entries);
+          newEntriesCount += count;
+          downloadedCount++;
+        }
+      }
+      toast.success(`Đã gộp ${newEntriesCount.toLocaleString()} mục từ ${downloadedCount} bộ từ điển!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(`Lỗi tải xuống toàn bộ: ${err.message}`, { id: toastId });
+    }
+  };
+
   const handleUploadGlobalToDrive = async () => {
     if (!drive.accessToken) {
       toast.error("Vui lòng kết nối Google Drive trước (Nút trên cùng)");
@@ -875,7 +934,27 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                   : "Chưa tải"}
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadAllFromSupabase}
+                className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
+              >
+                <CloudDownloadIcon className="mr-2 size-3.5" />
+                Tải về tất cả từ Kho chung
+              </Button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUploadAllToSupabase}
+                  className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
+                >
+                  <CloudUploadIcon className="mr-2 size-3.5" />
+                  Tải lên tất cả (Admin)
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -883,7 +962,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                 disabled={isReloading}
               >
                 <RefreshCwIcon className="mr-2 size-3.5" />
-                {isReloading ? "Đang tải..." : "Tải lại tất cả"}
+                {isReloading ? "Đang tải..." : "Tải lại tất cả (File txt)"}
               </Button>
             </div>
           </div>

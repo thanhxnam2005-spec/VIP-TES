@@ -400,11 +400,6 @@ export function DataSettings() {
           />
         </TabsContent>
 
-        <TabsContent value="dictionary">
-          <PasswordGate>
-            <DictionaryManagement />
-          </PasswordGate>
-        </TabsContent>
       </Tabs>
       {/* ─── Progress Dialog ──────────────────────────────── */}
       <ProgressDialog
