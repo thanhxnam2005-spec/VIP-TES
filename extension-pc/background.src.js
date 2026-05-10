@@ -261,14 +261,14 @@ async function handleFetch(url, waitSelector, clickSelector, timeout) {
             func: (s) => { const el = document.querySelector(s); if (el) el.click(); },
           });
         } catch {}
-        if (!(await waitForSelector(tabId, waitSelector, Math.floor(timeout / 3), 200))) {
+        if (!(await waitForSelector(tabId, waitSelector, Math.floor(timeout / 3), 1))) {
           timedOut = false; break;
         }
         timedOut = true;
         await delay(humanDelay(500));
       }
     } else if (waitSelector) {
-      timedOut = await waitForSelector(tabId, waitSelector, timeout, 200);
+      timedOut = await waitForSelector(tabId, waitSelector, timeout, 1);
     } else {
       await waitForStableContent(tabId, timeout);
     }
