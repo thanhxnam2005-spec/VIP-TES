@@ -534,9 +534,12 @@ export default function ConvertPage() {
         {activeTab === "train" && (
           <div className="flex flex-col gap-4 h-[calc(100vh-200px)] min-h-[500px] overflow-y-auto pr-2 pb-10">
             <div className="flex flex-col rounded-xl border bg-background shadow-sm overflow-hidden shrink-0">
-              <div className="bg-muted px-4 py-2 font-semibold text-sm border-b shrink-0 flex justify-between">
+              <div className="bg-muted px-4 py-2 font-semibold text-sm border-b shrink-0 flex justify-between items-center flex-wrap gap-2">
                 <span>Văn bản gốc chờ phân tích</span>
-                <span className="text-xs font-normal text-muted-foreground">Tự động cắt 15 dòng cho mỗi luồng</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-normal text-muted-foreground">15 dòng/luồng</span>
+                  <span className="text-[10px] text-muted-foreground/60 hidden sm:inline">• Giảm luồng nếu bị lag</span>
+                </div>
               </div>
               <Textarea
                 value={input}
@@ -547,7 +550,30 @@ export default function ConvertPage() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <h3 className="font-semibold text-sm text-muted-foreground pl-1">Công nhân AI (Workers)</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm text-muted-foreground pl-1">Công nhân AI (Workers)</h3>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="xs" 
+                    className="h-6 text-[10px]"
+                    disabled={isQueueRunning || workerConfigs.length >= 5}
+                    onClick={() => store.setWorkerConfigs([...workerConfigs, { id: workerConfigs.length + 1, providerId: workerConfigs[0]?.providerId || "", modelId: workerConfigs[0]?.modelId || "" }])}
+                  >
+                    + Thêm luồng
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="xs" 
+                    className="h-6 text-[10px]"
+                    disabled={isQueueRunning || workerConfigs.length <= 1}
+                    onClick={() => store.setWorkerConfigs(workerConfigs.slice(0, -1))}
+                  >
+                    − Bớt luồng
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground">{workerConfigs.length} luồng</span>
+                </div>
+              </div>
               <div className="flex flex-col gap-2">
                 {displayWorkers.map((worker) => (
                   <WorkerCard 
@@ -672,8 +698,12 @@ function WorkerCard({
   );
 }
 
+const ITEMS_PER_PAGE = 20;
+
 function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSuggestion[], onRemove: (term: TrainingSuggestion) => void, isAdmin?: boolean }) {
-  const grouped = terms.reduce((acc, curr) => {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  
+  const grouped = useMemo(() => terms.reduce((acc, curr) => {
     const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     const c = curr.category || "tuvung";
     const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
@@ -682,10 +712,10 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
       const mappedGenre = g === "global" ? "core" : g;
       const key = `${mappedGenre}_${mappedCat}`;
       if (!acc[key]) acc[key] = [];
-      acc[key].push({...curr, genre: g}); // override genre for display purposes
+      acc[key].push({...curr, genre: g});
     }
     return acc;
-  }, {} as Record<string, TrainingSuggestion[]>);
+  }, {} as Record<string, TrainingSuggestion[]>), [terms]);
 
   const handleDownloadDict = async (targetSource: string) => {
     try {
@@ -702,9 +732,13 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
         const [g, c] = targetSource.split("_");
         const catLabel = c === "names" ? "Tên nhân vật, địa danh" : c === "names2" ? "Tên bổ sung" : c === "phienam" ? "Phiên âm" : c === "luatnhan" ? "Luật nhân xưng" : c === "tuvung" ? "Từ vựng thể loại" : c === "ngucanh" ? "Ngữ cảnh & Quy tắc" : "Từ điển chính";
         const label = `${GENRE_LABELS[g] || g} - ${catLabel} (${targetSource})`;
+        const isExpanded = expandedGroups.has(targetSource);
+        const visibleItems = isExpanded ? items : items.slice(0, ITEMS_PER_PAGE);
+        const hasMore = items.length > ITEMS_PER_PAGE && !isExpanded;
+        
         return (
         <div key={targetSource} className="space-y-2 bg-background border p-4 rounded-xl shadow-sm">
-          <h4 className="font-bold text-[13px] text-primary border-b pb-2 uppercase flex justify-between items-center">
+          <h4 className="font-bold text-[13px] text-primary border-b pb-2 uppercase flex justify-between items-center flex-wrap gap-1">
             <div className="flex items-center gap-2">
               <span>{label}</span>
             </div>
@@ -718,7 +752,7 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
             </div>
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-[400px] overflow-y-auto pr-1">
-            {items.map((term, idx) => (
+            {visibleItems.map((term, idx) => (
                <div key={`${term.chinese}-${idx}`} className="flex flex-col gap-1.5 p-2 bg-muted/20 rounded-md border hover:border-emerald-500/50 transition-colors">
                  <div className="flex items-center justify-between">
                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 bg-background">{term.category}</Badge>
@@ -731,6 +765,14 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
                  </div>
                </div>
             ))}
+            {hasMore && (
+              <button
+                onClick={() => setExpandedGroups(prev => { const n = new Set(prev); n.add(targetSource); return n; })}
+                className="col-span-full text-xs text-primary hover:text-primary/80 py-2 border border-dashed rounded-md hover:bg-primary/5 transition-colors"
+              >
+                Xem thêm {items.length - ITEMS_PER_PAGE} từ nữa...
+              </button>
+            )}
           </div>
         </div>
         );

@@ -4,6 +4,12 @@
  * Architecture: Self-dispatching workers
  * Each worker, upon finishing a task, immediately grabs the next chunk.
  * No central polling loop — zero idle time between tasks.
+ * 
+ * Mobile optimizations:
+ * - Throttled UI notifications (max 1 update per 500ms)
+ * - Batched auto-save with deferred Supabase upload
+ * - Yielding to main thread between heavy operations
+ * - Limited extractedTerms accumulation (cap at 300)
  */
 
 import { db, type DictSource, type AIProvider } from "@/lib/db";
@@ -19,6 +25,12 @@ const GENRE_DICTS = [
   "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen",
   "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
 ];
+
+// ─── Limits ──────────────────────────────────────────────────
+const MAX_EXTRACTED_TERMS = 300; // Prevent localStorage/render bloat on mobile
+const NOTIFY_THROTTLE_MS = 500;  // Max 2 UI updates per second
+const AUTOSAVE_DEBOUNCE_MS = 3000; // Batch saves every 3 seconds
+const SUPABASE_UPLOAD_DEBOUNCE_MS = 15000; // Upload to cloud at most every 15s
 
 export interface TrainingWorkerConfig {
   id: number;
@@ -46,6 +58,164 @@ let _activeWorkerCount = 0;
 // Mutex-like lock for taking chunks from input (prevents two workers grabbing same lines)
 let _chunkLock = false;
 
+// ─── Throttled Notification ──────────────────────────────────
+let _notifyScheduled = false;
+let _lastNotifyTime = 0;
+
+function notifyListeners() {
+  const now = Date.now();
+  if (now - _lastNotifyTime < NOTIFY_THROTTLE_MS) {
+    // Schedule a deferred notification if not already scheduled
+    if (!_notifyScheduled) {
+      _notifyScheduled = true;
+      setTimeout(() => {
+        _notifyScheduled = false;
+        _lastNotifyTime = Date.now();
+        _listeners.forEach(fn => fn());
+      }, NOTIFY_THROTTLE_MS);
+    }
+    return;
+  }
+  _lastNotifyTime = now;
+  _listeners.forEach(fn => fn());
+}
+
+/** Force-flush a notification immediately (for stop/start events) */
+function notifyListenersImmediate() {
+  _lastNotifyTime = Date.now();
+  _listeners.forEach(fn => fn());
+}
+
+// ─── Batched Auto-Save ───────────────────────────────────────
+let _pendingSuggestions: TrainingSuggestion[] = [];
+let _autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let _supabaseUploadTimer: ReturnType<typeof setTimeout> | null = null;
+let _dirtySourcesForUpload: Set<string> = new Set();
+
+function queueAutoSave(suggestions: TrainingSuggestion[]) {
+  _pendingSuggestions.push(...suggestions);
+  
+  // Debounce the actual save
+  if (_autoSaveTimer) clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    flushAutoSave();
+  }, AUTOSAVE_DEBOUNCE_MS);
+}
+
+async function flushAutoSave() {
+  if (_pendingSuggestions.length === 0) return;
+  
+  const toSave = [..._pendingSuggestions];
+  _pendingSuggestions = [];
+  
+  try {
+    await processAutoSaveLocal(toSave);
+  } catch (err) {
+    console.error("Auto-save failed:", err);
+    // Re-queue failed items for retry
+    _pendingSuggestions.push(...toSave);
+  }
+}
+
+/** Save to local IndexedDB only; cloud upload is deferred */
+async function processAutoSaveLocal(suggestions: TrainingSuggestion[]) {
+  const grouped = suggestions.reduce((acc, curr) => {
+    const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    const c = curr.category || "tuvung";
+    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
+    
+    for (const g of genres) {
+      let mappedGenre = g === "global" ? "core" : g;
+      const targetSource = `${mappedGenre}_${mappedCat}`;
+      if (!acc[targetSource]) acc[targetSource] = [];
+      acc[targetSource].push(curr);
+    }
+    return acc;
+  }, {} as Record<string, TrainingSuggestion[]>);
+
+  let totalSaved = 0;
+
+  for (const [targetSource, terms] of Object.entries(grouped)) {
+    // Yield to main thread between saves to prevent UI freeze
+    await yieldToMain();
+    
+    const savedCount = await appendToDictSource(targetSource as any, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
+    
+    if (savedCount > 0) {
+      totalSaved += savedCount;
+      _dirtySourcesForUpload.add(targetSource);
+    }
+  }
+  
+  if (totalSaved > 0) {
+    toast.success(`Đã lưu ${totalSaved} từ vào từ điển.`);
+    // Schedule deferred cloud upload
+    scheduleSupabaseUpload();
+  }
+}
+
+function scheduleSupabaseUpload() {
+  if (_supabaseUploadTimer) return; // Already scheduled
+  _supabaseUploadTimer = setTimeout(async () => {
+    _supabaseUploadTimer = null;
+    await flushSupabaseUpload();
+  }, SUPABASE_UPLOAD_DEBOUNCE_MS);
+}
+
+async function flushSupabaseUpload() {
+  if (_dirtySourcesForUpload.size === 0) return;
+  
+  const sources = Array.from(_dirtySourcesForUpload);
+  _dirtySourcesForUpload.clear();
+  
+  const supabase = createClient();
+  let uploadedCount = 0;
+  
+  for (const targetSource of sources) {
+    try {
+      // Yield to main thread
+      await yieldToMain();
+      
+      const records = await db.dictEntries.where("source").equals(targetSource).toArray();
+      const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+      const filename = `${targetSource}.txt`;
+      
+      await supabase.storage
+        .from("dictionaries")
+        .upload(filename, text, {
+          contentType: 'text/plain;charset=UTF-8',
+          upsert: true,
+        });
+      uploadedCount++;
+    } catch (err) {
+      console.error(`Lỗi tải lên ${targetSource}:`, err);
+      // Re-mark as dirty for next upload cycle
+      _dirtySourcesForUpload.add(targetSource);
+    }
+  }
+  
+  if (uploadedCount > 0) {
+    toast.success(`Đã đồng bộ ${uploadedCount} từ điển lên server.`);
+  }
+  
+  // If there are still dirty sources, schedule another upload
+  if (_dirtySourcesForUpload.size > 0) {
+    scheduleSupabaseUpload();
+  }
+}
+
+// ─── Yield to Main Thread ────────────────────────────────────
+/** Yield control back to the browser so UI can update and not freeze */
+function yieldToMain(): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(() => resolve(), { timeout: 100 });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
 // ─── Public API ──────────────────────────────────────────────
 
 export function isTrainingRunning(): boolean {
@@ -54,10 +224,6 @@ export function isTrainingRunning(): boolean {
 
 export function getWorkerStates(): RunningWorkerState[] {
   return _workerStates;
-}
-
-function notifyListeners() {
-  _listeners.forEach(fn => fn());
 }
 
 export function subscribeTrainingManager(listener: () => void): () => void {
@@ -86,55 +252,25 @@ export function stopTraining() {
   _activeWorkerCount = 0;
   _chunkLock = false;
   _workerStates = _workerStates.map(w => ({ ...w, isProcessing: false, currentChunk: "" }));
-  notifyListeners();
+  
+  // Flush any pending saves before stopping
+  if (_autoSaveTimer) {
+    clearTimeout(_autoSaveTimer);
+    _autoSaveTimer = null;
+  }
+  flushAutoSave();
+  
+  // Also flush cloud upload
+  if (_supabaseUploadTimer) {
+    clearTimeout(_supabaseUploadTimer);
+    _supabaseUploadTimer = null;
+  }
+  flushSupabaseUpload();
+  
+  notifyListenersImmediate();
 }
 
 // ─── Internal helpers ────────────────────────────────────────
-
-async function processAutoSave(suggestions: TrainingSuggestion[]) {
-  const grouped = suggestions.reduce((acc, curr) => {
-    const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-    const c = curr.category || "tuvung";
-    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
-    
-    for (const g of genres) {
-      let mappedGenre = g === "global" ? "core" : g;
-      const targetSource = `${mappedGenre}_${mappedCat}`;
-      if (!acc[targetSource]) acc[targetSource] = [];
-      acc[targetSource].push(curr);
-    }
-    return acc;
-  }, {} as Record<string, TrainingSuggestion[]>);
-
-  let totalSaved = 0;
-  const supabase = createClient();
-
-  for (const [targetSource, terms] of Object.entries(grouped)) {
-    const savedCount = await appendToDictSource(targetSource as any, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
-    
-    if (savedCount > 0) {
-      totalSaved += savedCount;
-      
-      try {
-        const records = await db.dictEntries.where("source").equals(targetSource).toArray();
-        const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
-        const filename = `${targetSource}.txt`;
-        
-        await supabase.storage
-          .from("dictionaries")
-          .upload(filename, text, {
-            contentType: 'text/plain;charset=UTF-8',
-            upsert: true,
-          });
-      } catch (err) {
-        console.error(`Lỗi tải lên ${targetSource}:`, err);
-      }
-    }
-  }
-  if (totalSaved > 0) {
-    toast.success(`Đã lưu tự động ${totalSaved} từ vào từ điển và đồng bộ lên server.`);
-  }
-}
 
 async function getProviderById(id: string): Promise<AIProvider | undefined> {
   return db.aiProviders.get(id);
@@ -152,9 +288,11 @@ function requeueChunk(chunkText: string) {
  * Returns null if no text available.
  */
 async function takeNextChunk(): Promise<string | null> {
-  // Wait for lock
+  // Wait for lock with exponential backoff instead of busy-wait
+  let waitTime = 10;
   while (_chunkLock) {
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise(r => setTimeout(r, waitTime));
+    waitTime = Math.min(waitTime * 2, 200); // Exponential backoff, max 200ms
     if (!_isRunning) return null;
   }
   _chunkLock = true;
@@ -241,8 +379,10 @@ export async function startTraining() {
   _isRunning = true;
   _activeWorkerCount = 0;
   _chunkLock = false;
+  _pendingSuggestions = [];
+  _dirtySourcesForUpload.clear();
   _workerStates = _workers.map(w => ({ id: w.id, isProcessing: false, currentChunk: "" }));
-  notifyListeners();
+  notifyListenersImmediate();
 
   // Launch all workers concurrently — each one self-dispatches
   for (const worker of _workers) {
@@ -262,6 +402,9 @@ async function workerLoop(worker: TrainingWorkerConfig) {
   _activeWorkerCount++;
 
   while (_isRunning) {
+    // Yield to main thread before grabbing next chunk
+    await yieldToMain();
+    
     const chunk = await takeNextChunk();
 
     if (!chunk) {
@@ -293,7 +436,7 @@ async function workerLoop(worker: TrainingWorkerConfig) {
 }
 
 async function processChunk(worker: TrainingWorkerConfig, chunkText: string) {
-  // Update UI state
+  // Update UI state (throttled)
   _workerStates = _workerStates.map(w =>
     w.id === worker.id ? { ...w, isProcessing: true, currentChunk: chunkText } : w
   );
@@ -314,9 +457,19 @@ async function processChunk(worker: TrainingWorkerConfig, chunkText: string) {
     });
 
     if (suggestions.length > 0) {
-      useTrainingStore.getState().addExtractedTerms(suggestions);
+      // Add to store with a cap to prevent memory bloat on mobile
+      const store = useTrainingStore.getState();
+      const existingKeys = new Set(store.extractedTerms.map(t => t.chinese));
+      const newTerms = suggestions.filter(t => !existingKeys.has(t.chinese));
+      
+      if (newTerms.length > 0) {
+        const combined = [...newTerms, ...store.extractedTerms];
+        // Cap at MAX_EXTRACTED_TERMS to prevent UI lag
+        store.setExtractedTerms(combined.slice(0, MAX_EXTRACTED_TERMS));
+      }
+      
       if (_autoSave) {
-        await processAutoSave(suggestions);
+        queueAutoSave(suggestions);
       }
     }
   } catch (err) {
@@ -325,9 +478,11 @@ async function processChunk(worker: TrainingWorkerConfig, chunkText: string) {
 
     if (_isRunning) {
       requeueChunk(chunkText);
+      // Add a small delay on error to prevent rapid retry loops on mobile
+      await new Promise(r => setTimeout(r, 2000));
     }
   } finally {
-    // Clear UI state
+    // Clear UI state (throttled)
     _workerStates = _workerStates.map(w =>
       w.id === worker.id ? { ...w, isProcessing: false, currentChunk: "" } : w
     );

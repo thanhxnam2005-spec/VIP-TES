@@ -349,24 +349,41 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       toast.error("Vui lòng đăng nhập để lưu lên đám mây");
       return;
     }
-    const toastId = toast.loading("Đang tải toàn bộ từ điển lên Kho chung...");
+    const toastId = toast.loading("Đang tải từ điển lên Kho chung (0%)...");
     try {
       let uploadedCount = 0;
-      for (const source of ALL_SOURCES) {
-        if (source === "core_vietphrase") continue;
-        const records = await db.dictEntries.where("source").equals(source).toArray();
-        if (records.length === 0) continue;
-        const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
-        const filename = `${source}.txt`;
-        const { error } = await supabase.storage
-          .from("dictionaries")
-          .upload(filename, text, {
-            contentType: 'text/plain;charset=UTF-8',
-            upsert: true,
-          });
-        if (error) throw error;
-        uploadedCount++;
+      const sources = ALL_SOURCES.filter(s => s !== "core_vietphrase");
+      const total = sources.length;
+      
+      // Process in batches of 3 (upload is heavier than download)
+      const CONCURRENCY = 3;
+      
+      for (let i = 0; i < total; i += CONCURRENCY) {
+        const batch = sources.slice(i, i + CONCURRENCY);
+        
+        await Promise.allSettled(
+          batch.map(async (source) => {
+            const records = await db.dictEntries.where("source").equals(source).toArray();
+            if (records.length === 0) return;
+            const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+            const filename = `${source}.txt`;
+            const { error } = await supabase.storage
+              .from("dictionaries")
+              .upload(filename, text, {
+                contentType: 'text/plain;charset=UTF-8',
+                upsert: true,
+              });
+            if (!error) uploadedCount++;
+          })
+        );
+        
+        // Yield to main thread and update progress
+        const done = Math.min(i + CONCURRENCY, total);
+        const percent = Math.round((done / total) * 100);
+        toast.loading(`Đang tải từ điển lên Kho chung (${percent}%)...`, { id: toastId });
+        await new Promise(r => setTimeout(r, 0));
       }
+      
       toast.success(`Đã tải lên ${uploadedCount} bộ từ điển thành công!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi tải lên toàn bộ: ${err.message}`, { id: toastId });
@@ -374,29 +391,54 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   };
 
   const handleDownloadAllFromSupabase = async () => {
-    const toastId = toast.loading("Đang tải toàn bộ từ điển từ Kho chung...");
+    const toastId = toast.loading("Đang tải từ điển từ Kho chung (0%)...");
     try {
       const supabase = createClient();
       let downloadedCount = 0;
       let newEntriesCount = 0;
-      for (const source of ALL_SOURCES) {
-        if (source === "core_vietphrase") continue;
-        const filename = `${source}.txt`;
-        const { data: publicUrlData } = supabase.storage
-          .from("dictionaries")
-          .getPublicUrl(filename);
+      
+      // Filter out core_vietphrase
+      const sources = ALL_SOURCES.filter(s => s !== "core_vietphrase");
+      const total = sources.length;
+      
+      // Process in parallel batches of 5 to speed up while not overwhelming mobile
+      const CONCURRENCY = 5;
+      
+      for (let i = 0; i < total; i += CONCURRENCY) {
+        const batch = sources.slice(i, i + CONCURRENCY);
         
-        const res = await fetch(`${publicUrlData.publicUrl}?t=${Date.now()}`, { cache: "no-store" });
-        if (!res.ok) continue;
+        const results = await Promise.allSettled(
+          batch.map(async (source) => {
+            const filename = `${source}.txt`;
+            const { data: publicUrlData } = supabase.storage
+              .from("dictionaries")
+              .getPublicUrl(filename);
+            
+            const res = await fetch(`${publicUrlData.publicUrl}?t=${Date.now()}`, { cache: "no-store" });
+            if (!res.ok) return { source, entries: [] as { chinese: string; vietnamese: string }[] };
+            
+            const text = await res.text();
+            const entries = parseDictLines(text);
+            return { source, entries };
+          })
+        );
         
-        const text = await res.text();
-        const entries = parseDictLines(text);
-        if (entries.length > 0) {
-          const count = await appendToDictSource(source, entries);
-          newEntriesCount += count;
-          downloadedCount++;
+        // Process successful results
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.entries.length > 0) {
+            const count = await appendToDictSource(result.value.source, result.value.entries);
+            newEntriesCount += count;
+            if (count > 0) downloadedCount++;
+          }
         }
+        
+        // Yield to main thread and update progress
+        const done = Math.min(i + CONCURRENCY, total);
+        const percent = Math.round((done / total) * 100);
+        toast.loading(`Đang tải từ điển từ Kho chung (${percent}%)...`, { id: toastId });
+        await new Promise(r => setTimeout(r, 0));
       }
+      
       toast.success(`Đã gộp ${newEntriesCount.toLocaleString()} mục từ ${downloadedCount} bộ từ điển!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi tải xuống toàn bộ: ${err.message}`, { id: toastId });

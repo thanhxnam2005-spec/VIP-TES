@@ -218,50 +218,87 @@ export function NovelImportWizard() {
       const now = new Date();
       const novelId = crypto.randomUUID();
 
-      await db.transaction(
-        "rw",
-        [db.novels, db.chapters, db.scenes],
-        async () => {
-          await db.novels.add({
-            id: novelId,
-            title: novelTitle.trim(),
-            description: novelDescription.trim(),
-            createdAt: now,
-            updatedAt: now,
-          });
+      // Pre-generate all IDs and objects outside of the transaction
+      const chapterRecords: Array<{
+        id: string;
+        novelId: string;
+        title: string;
+        order: number;
+        createdAt: Date;
+        updatedAt: Date;
+      }> = [];
+      const sceneRecords: Array<{
+        id: string;
+        chapterId: string;
+        novelId: string;
+        title: string;
+        content: string;
+        order: number;
+        wordCount: number;
+        version: number;
+        versionType: "manual";
+        isActive: number;
+        createdAt: Date;
+        updatedAt: Date;
+      }> = [];
 
-          for (let i = 0; i < chapters.length; i++) {
-            const ch = chapters[i];
-            const chapterId = crypto.randomUUID();
-            await db.chapters.add({
-              id: chapterId,
-              novelId,
-              title: ch.title,
-              order: i,
-              createdAt: now,
-              updatedAt: now,
-            });
+      for (let i = 0; i < chapters.length; i++) {
+        const ch = chapters[i];
+        const chapterId = crypto.randomUUID();
+        chapterRecords.push({
+          id: chapterId,
+          novelId,
+          title: ch.title,
+          order: i,
+          createdAt: now,
+          updatedAt: now,
+        });
+        sceneRecords.push({
+          id: crypto.randomUUID(),
+          chapterId,
+          novelId,
+          title: ch.title,
+          content: ch.content,
+          order: 0,
+          wordCount: ch.wordCount,
+          version: 0,
+          versionType: "manual",
+          isActive: 1,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
 
-            // One scene per chapter with full content
-            await db.scenes.add({
-              id: crypto.randomUUID(),
-              chapterId,
-              novelId,
-              title: ch.title,
-              content: ch.content,
-              order: 0,
-              wordCount: ch.wordCount,
-              version: 0,
-              versionType: "manual",
-              isActive: 1,
-              createdAt: now,
-              updatedAt: now,
-            });
-          }
-        },
-      );
+      // Insert in batches to avoid blocking mobile main thread
+      const BATCH = 50;
+      const toastId = toast.loading(`Đang nhập 0/${chapters.length} chương...`);
+      
+      await db.novels.add({
+        id: novelId,
+        title: novelTitle.trim(),
+        description: novelDescription.trim(),
+        createdAt: now,
+        updatedAt: now,
+      });
 
-      toast.success(`Đã nhập "${novelTitle}" với ${chapters.length} chương`);
+      for (let i = 0; i < chapterRecords.length; i += BATCH) {
+        const chBatch = chapterRecords.slice(i, i + BATCH);
+        const scBatch = sceneRecords.slice(i, i + BATCH);
+        
+        await db.transaction("rw", [db.chapters, db.scenes], async () => {
+          await db.chapters.bulkAdd(chBatch);
+          await db.scenes.bulkAdd(scBatch);
+        });
+
+        // Update progress and yield to main thread
+        const done = Math.min(i + BATCH, chapterRecords.length);
+        toast.loading(`Đang nhập ${done}/${chapters.length} chương...`, { id: toastId });
+        
+        // Yield to main thread to keep UI responsive
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      toast.success(`Đã nhập "${novelTitle}" với ${chapters.length} chương`, { id: toastId });
       router.push("/dashboard");
     } catch (error) {
       toast.error(
