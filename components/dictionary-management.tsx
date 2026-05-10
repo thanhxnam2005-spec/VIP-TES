@@ -165,7 +165,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email === "nthanhnam2005@gmail.com") {
+      if (data.user?.email === "nthanhnam2005@gmail.com" || data.user?.email === "thanhxnam2005@gmail.com") {
         setIsAdmin(true);
       }
     });

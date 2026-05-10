@@ -94,7 +94,7 @@ export function AppSidebar() {
     import("@/lib/supabase/client").then(({ createClient }) => {
       const supabase = createClient();
       supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user?.email === "nthanhnam2005@gmail.com") {
+        if (user?.email === "nthanhnam2005@gmail.com" || user?.email === "thanhxnam2005@gmail.com") {
           setIsAdmin(true);
         }
       });
