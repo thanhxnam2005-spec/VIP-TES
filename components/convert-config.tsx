@@ -24,6 +24,8 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { ArrowUpIcon, ArrowDownIcon } from "lucide-react";
+import { TYPE_LABELS } from "./dictionary-management";
 
 // ─── Option Button Group ──────────────────────────────────────
 
@@ -61,6 +63,58 @@ function OptionGroup<T extends string>({
   );
 }
 
+// ─── Dictionary Priority Editor ────────────────────────────────
+
+function DictionaryPriorityEditor({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const moveUp = (idx: number) => {
+    if (idx <= 0) return;
+    const next = [...value];
+    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    onChange(next);
+  };
+  const moveDown = (idx: number) => {
+    if (idx >= value.length - 1) return;
+    const next = [...value];
+    [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs font-medium">Thứ tự ưu tiên từ điển (STT)</Label>
+      <div className="space-y-1 bg-muted/30 p-2 rounded-md border max-h-[200px] overflow-y-auto">
+        {value.map((src, idx) => (
+          <div key={src} className="flex items-center justify-between bg-background border px-2 py-1 rounded text-xs">
+            <span className="truncate flex-1">{(TYPE_LABELS as Record<string, string>)[src] || src}</span>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => moveUp(idx)} 
+                disabled={idx === 0}
+                className="p-1 hover:bg-muted rounded disabled:opacity-30"
+              >
+                <ArrowUpIcon className="size-3" />
+              </button>
+              <button 
+                onClick={() => moveDown(idx)} 
+                disabled={idx === value.length - 1}
+                className="p-1 hover:bg-muted rounded disabled:opacity-30"
+              >
+                <ArrowDownIcon className="size-3" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────
 
 export function ConvertConfig() {
@@ -88,13 +142,18 @@ export function ConvertConfig() {
   return (
     <div className="space-y-3">
       <OptionGroup<NameVsPriority>
-        label="Ưu tiên từ điển"
+        label="Ưu tiên từ điển cũ (Dùng trong engine QT)"
         value={settings.nameVsPriority}
         onChange={(v) => update({ nameVsPriority: v })}
         options={[
           { value: "name-first", label: "Name > VP" },
           { value: "vp-first", label: "VP > Name" },
         ]}
+      />
+
+      <DictionaryPriorityEditor
+        value={settings.dictPriority || ["luatnhan", "names", "names2", "ngucanh", "tuvung", "vietphrase", "phienam"]}
+        onChange={(v) => update({ dictPriority: v })}
       />
 
       <OptionGroup<ScopePriority>

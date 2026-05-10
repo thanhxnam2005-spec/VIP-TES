@@ -335,6 +335,7 @@ export const DICT_TYPES = [
   "phienam",
   "luatnhan",
   "tuvung",
+  "ngucanh",
 ] as const;
 export type DictType = typeof DICT_TYPES[number];
 

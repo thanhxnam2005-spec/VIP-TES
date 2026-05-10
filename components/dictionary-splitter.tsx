@@ -18,11 +18,13 @@ import { Card, CardContent } from "./ui/card";
 import { BotIcon, Loader2Icon, PlayIcon, SquareIcon, ArrowRightIcon } from "lucide-react";
 import { useDictMeta } from "@/lib/hooks/use-dict-entries";
 
+const EMPTY_WORKERS: never[] = [];
+
 export function DictionarySplitter() {
   const store = useSplitterStore();
   
   const isRunning = useSyncExternalStore(subscribeSplitterManager, isSplitterRunning, () => false);
-  const managerWorkers = useSyncExternalStore(subscribeSplitterManager, getSplitterWorkerStates, () => []);
+  const managerWorkers = useSyncExternalStore(subscribeSplitterManager, getSplitterWorkerStates, () => EMPTY_WORKERS);
 
   const providers = useAIProviders();
   const availableProviders = useMemo(() => providers?.filter((p) => p.isActive) || [], [providers]);

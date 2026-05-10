@@ -30,6 +30,7 @@ import {
   ArrowRightLeftIcon,
   BotIcon,
   LibraryIcon,
+  SettingsIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback, useMemo, useSyncExternalStore } from "react";
 import { convertText, useQTEngineReady } from "@/lib/hooks/use-qt-engine";
@@ -52,6 +53,8 @@ import {
   getWorkerStates,
   type TrainingWorkerConfig,
 } from "@/lib/training-manager";
+import { TYPE_LABELS } from "@/components/dictionary-management";
+import { ConvertConfig } from "@/components/convert-config";
 import { createClient } from "@/lib/supabase/client";
 
 const GENRE_DICTS = [
@@ -68,6 +71,8 @@ const GENRE_LABELS: Record<string, string> = {
   quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
   trinhtham: "Trinh thám", lichsu: "Lịch sử"
 };
+
+const EMPTY_WORKER_STATES: never[] = [];
 
 interface WorkerState {
   id: number;
@@ -110,13 +115,18 @@ export default function ConvertPage() {
   }, []);
 
   const dictMeta = useDictMeta();
-  const dynamicSources = dictMeta 
-    ? Object.keys(dictMeta.sources).filter(s => 
-        !["vietphrase", "names", "names2", "phienam", "luatnhan"].includes(s) &&
-        !GENRE_DICTS.includes(s)
-      ) 
-    : [];
-  const allGenreSources = [...GENRE_DICTS, ...dynamicSources];
+  const dynamicGenres = useMemo(() => {
+    if (!dictMeta) return [];
+    const genres = new Set<string>();
+    for (const source of Object.keys(dictMeta.sources)) {
+      const g = source.split("_")[0];
+      if (g && g !== "core" && !GENRE_DICTS.includes(g)) {
+        genres.add(g);
+      }
+    }
+    return Array.from(genres);
+  }, [dictMeta]);
+  const allGenreSources = [...GENRE_DICTS, ...dynamicGenres];
 
   // Subscribe to global training manager state
   const isQueueRunning = useSyncExternalStore(
@@ -127,7 +137,7 @@ export default function ConvertPage() {
   const managerWorkerStates = useSyncExternalStore(
     subscribeTrainingManager,
     getWorkerStates,
-    () => [] // server snapshot
+    () => EMPTY_WORKER_STATES // server snapshot
   );
 
   // Load chapter text when selected
@@ -486,6 +496,19 @@ export default function ConvertPage() {
                   </PopoverContent>
                 </Popover>
               )}
+              
+              {activeTab === "qt" && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="xs" className="h-6 text-[10px] ml-1">
+                      <SettingsIcon className="size-3 mr-1" /> Cài đặt STT
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 p-3">
+                    <ConvertConfig />
+                  </PopoverContent>
+                </Popover>
+              )}
             </div>
           </div>
         </Tabs>
@@ -649,7 +672,7 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
     const g = curr.genre || "global";
     const mappedGenre = g === "global" ? "core" : g;
     const c = curr.category || "tuvung";
-    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung"].includes(c) ? c : "tuvung";
+    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"].includes(c) ? c : "tuvung";
     const key = `${mappedGenre}_${mappedCat}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(curr);
@@ -669,7 +692,7 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
     <div className="space-y-6">
       {Object.entries(grouped).map(([targetSource, items]) => {
         const [g, c] = targetSource.split("_");
-        const catLabel = c === "names" ? "Tên nhân vật, địa danh" : c === "names2" ? "Tên bổ sung" : c === "phienam" ? "Phiên âm" : c === "luatnhan" ? "Luật nhân xưng" : c === "tuvung" ? "Từ vựng thể loại" : "Từ điển chính";
+        const catLabel = c === "names" ? "Tên nhân vật, địa danh" : c === "names2" ? "Tên bổ sung" : c === "phienam" ? "Phiên âm" : c === "luatnhan" ? "Luật nhân xưng" : c === "tuvung" ? "Từ vựng thể loại" : c === "ngucanh" ? "Ngữ cảnh & Quy tắc" : "Từ điển chính";
         const label = `${GENRE_LABELS[g] || g} - ${catLabel} (${targetSource})`;
         return (
         <div key={targetSource} className="space-y-2 bg-background border p-4 rounded-xl shadow-sm">

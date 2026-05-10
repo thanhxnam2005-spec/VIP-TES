@@ -71,6 +71,8 @@ export interface ConvertOptions {
   trainingProviderId?: string;
   /** Model ID for AI training/completion services */
   trainingModelId?: string;
+  /** Priority order for dictionary merging */
+  dictPriority?: string[];
 }
 
 export const DEFAULT_CONVERT_OPTIONS: ConvertOptions = {
@@ -88,6 +90,7 @@ export const DEFAULT_CONVERT_OPTIONS: ConvertOptions = {
   fixOrdinals: true,
   trainingProviderId: "",
   trainingModelId: "",
+  dictPriority: ["luatnhan", "names", "names2", "ngucanh", "tuvung", "vietphrase", "phienam"],
 };
 
 // Main → Worker

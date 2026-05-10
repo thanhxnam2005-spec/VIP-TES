@@ -622,14 +622,33 @@ function convert(
     }
   }
 
-  if (o.nameVsPriority === "name-first") {
-    priorityMaps.push(...orderedNameMaps);
-    priorityMaps.push(...activeGenreMaps);
-    priorityMaps.push(["vietphrase", filteredVP]);
+  if (o.dictPriority && o.dictPriority.length > 0) {
+    let namesAdded = false;
+    for (const dp of o.dictPriority) {
+      if ((dp === "names" || dp === "names2") && !namesAdded) {
+        priorityMaps.push(...orderedNameMaps);
+        namesAdded = true;
+      } else if (dp === "tuvung") {
+        priorityMaps.push(...activeGenreMaps);
+      } else if (dp === "vietphrase") {
+        priorityMaps.push(["vietphrase", filteredVP]);
+      }
+    }
+    // Fallback if they were excluded from the STT
+    if (!namesAdded) priorityMaps.push(...orderedNameMaps);
+    if (!priorityMaps.some(m => m[0].includes("tuvung"))) priorityMaps.push(...activeGenreMaps);
+    if (!priorityMaps.some(m => m[0] === "vietphrase")) priorityMaps.push(["vietphrase", filteredVP]);
   } else {
-    priorityMaps.push(...activeGenreMaps);
-    priorityMaps.push(["vietphrase", filteredVP]);
-    priorityMaps.push(...orderedNameMaps);
+    // Fallback to old behavior
+    if (o.nameVsPriority === "name-first") {
+      priorityMaps.push(...orderedNameMaps);
+      priorityMaps.push(...activeGenreMaps);
+      priorityMaps.push(["vietphrase", filteredVP]);
+    } else {
+      priorityMaps.push(...activeGenreMaps);
+      priorityMaps.push(["vietphrase", filteredVP]);
+      priorityMaps.push(...orderedNameMaps);
+    }
   }
 
   const allNames = new Map(namesMap);

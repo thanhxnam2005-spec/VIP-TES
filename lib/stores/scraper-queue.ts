@@ -262,7 +262,7 @@ export const useScraperQueueStore = create<ScraperQueueState>()(
           nextJob.abortController?.signal,
           async (entry) => {
             // Increment warnings if needed
-            if (entry.timedOut || entry.parsed.content.length < 100 || entry.parsed.warning) {
+            if (entry.timedOut || entry.parsed.content.length < 1 || entry.parsed.warning) {
               set((s) => {
                 const j = s.jobs[nextJob.id];
                 if (!j) return s;

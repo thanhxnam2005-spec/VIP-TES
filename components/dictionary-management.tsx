@@ -117,8 +117,9 @@ export const TYPE_LABELS: Record<DictType, string> = {
   names: "Tên nhân vật, địa danh",
   names2: "Tên bổ sung",
   phienam: "Phiên âm ký tự đơn",
-  luatnhan: "Luật nhân xưng",
+  luatnhan: "Luật nhân xưng {0}",
   tuvung: "Từ vựng thể loại",
+  ngucanh: "Ngữ cảnh & Quy tắc",
 };
 
 /** Build page numbers with ellipsis: [0, 1, "ellipsis", 8, 9] */

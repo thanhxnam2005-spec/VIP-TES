@@ -6,7 +6,7 @@ export interface TrainingSuggestion {
   chinese: string;
   vietnamese: string;
   reason: string;
-  category: "names" | "names2" | "phienam" | "luatnhan" | "tuvung";
+  category: "names" | "names2" | "phienam" | "luatnhan" | "tuvung" | "ngucanh";
   genre: string;
   context_zh?: string;
   context_vi_before?: string;
@@ -24,7 +24,7 @@ const trainingSchema = jsonSchema<{ suggestions: TrainingSuggestion[] }>({
           chinese: { type: "string" },
           vietnamese: { type: "string" },
           reason: { type: "string" },
-          category: { type: "string", enum: ["names", "names2", "phienam", "luatnhan", "tuvung"] },
+          category: { type: "string", enum: ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"] },
           genre: { type: "string" },
           context_zh: { type: "string" },
           context_vi_before: { type: "string" },
@@ -126,6 +126,7 @@ ${opts.sourceText.slice(0, 3000)}
    - "phienam": Phiên âm tên riêng, danh từ riêng (chỉ 1 chữ Hán).
    - "luatnhan": Đại từ nhân xưng, xưng hô (VD: ta/ngươi/hắn/nàng, lão phu/bản tọa, tiền bối/hậu bối, sư huynh...).
    - "tuvung": Từ vựng thể loại (Thuật ngữ tu luyện, kỹ năng, đan dược, công pháp...).
+   - "ngucanh": Ngữ cảnh & Quy tắc dịch (Quy tắc đặc thù khi dịch từ/cụm từ cụ thể trong bối cảnh truyện).
 ${genreInstruction}
 6. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó) và context_vi_before/after (có thể để trống nếu không cần thiết).
 7. BẮT BUỘC: Nghĩa tiếng Việt (vietnamese) PHẢI LÀ MỘT NGHĨA DUY NHẤT, chuẩn xác nhất. Tuyệt đối KHÔNG dùng dấu gạch chéo (/), KHÔNG liệt kê nhiều nghĩa (Ví dụ: Sai: "Tống Cẩu / Tống Chó", Đúng: "Tống Cẩu").
@@ -140,6 +141,6 @@ ${genreInstruction}
     system: "Bạn là chuyên gia biên soạn từ điển Trung-Việt.",
     prompt,
   });
-
+  
   return result.object.suggestions;
 }

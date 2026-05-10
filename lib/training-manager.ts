@@ -96,7 +96,7 @@ async function processAutoSave(suggestions: TrainingSuggestion[]) {
     const g = curr.genre || "global";
     const mappedGenre = g === "global" ? "core" : g;
     const c = curr.category || "tuvung";
-    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung"].includes(c) ? c : "tuvung";
+    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"].includes(c) ? c : "tuvung";
     const key = `${mappedGenre}_${mappedCat}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(curr);

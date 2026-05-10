@@ -383,14 +383,8 @@ export async function deduplicateDictSource(source: DictSource): Promise<number>
 
 /** Deduplicate ALL dict sources */
 export async function deduplicateAllDictSources(): Promise<number> {
-  const allSources: DictSource[] = [
-    "names", "names2", "vietphrase", "luatnhan", "phienam",
-    "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
-    "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen",
-    "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
-  ];
   let total = 0;
-  for (const source of allSources) {
+  for (const source of ALL_SOURCES) {
     total += await deduplicateDictSource(source);
   }
   return total;

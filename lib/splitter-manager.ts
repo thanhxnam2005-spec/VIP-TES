@@ -18,6 +18,7 @@ export interface SplitterState {
   currentChunk: string;
   sourceEntries?: Array<{ chinese: string; vietnamese: string }>;
   currentIndex: number;
+  genreIndex?: number;
 }
 
 let isRunning = false;
@@ -173,6 +174,7 @@ async function processChunk(worker: SplitterState, chunk: Array<{ chinese: strin
   try {
     const model = await resolveChapterToolModel(
       { providerId: worker.providerId, modelId: worker.modelId },
+      undefined,
       undefined,
     );
     if (!model) throw new Error("Model not found");

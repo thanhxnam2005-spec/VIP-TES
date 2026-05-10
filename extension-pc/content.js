@@ -23,7 +23,7 @@
       let box = null;
       for (const sel of selectors) {
         box = document.querySelector(sel);
-        if (box && box.textContent.trim().length > 100) break;
+        if (box && box.textContent.trim().length > 0) break;
       }
       if (!box) {
         console.log('[STV] Fanqie: No content container found');
@@ -62,7 +62,7 @@
   };
 
   const sendToBackground = (content) => {
-    if (content.length < 200) return;
+    if (content.length < 1) return;
     const newHash = content.substring(0, 100);
     if (sent && lastContentHash === newHash) return;
     sent = true;
@@ -169,7 +169,7 @@
 
   const autoExtract = () => {
     const content = doExtract();
-    if (content.length > 200) {
+    if (content.length > 0) {
       const newHash = content.substring(0, 100);
       if (sent && lastContentHash === newHash) return;
       console.log('[STV] autoExtract found content, length:', content.length);
@@ -222,7 +222,7 @@
           return;
         }
         const content = doExtract();
-        if (content.length > 200) {
+        if (content.length > 0) {
           console.log('[STV] EXTRACT_NOW success, length:', content.length);
           const title = getTitle();
           sendResponse({ content, title, length: content.length, url: location.href });
