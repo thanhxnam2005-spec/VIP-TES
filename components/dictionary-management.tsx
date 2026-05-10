@@ -233,8 +233,9 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   const handleSyncToLocalCode = async (source: DictSource) => {
     const toastId = toast.loading(`Đang đồng bộ ${DICT_SOURCE_LABELS[source]} vào mã nguồn...`);
     try {
-      const records = await db.dictEntries.where("source").equals(source).toArray();
-      const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+      // Read from dictCache (fast) instead of dictEntries (slow)
+      const cached = await db.dictCache.get(source);
+      const text = cached?.rawText || "";
       
       const res = await fetch("/api/dev/sync-dict", {
         method: "POST",
@@ -258,8 +259,9 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
     }
     const toastId = toast.loading(`Đang tải ${DICT_SOURCE_LABELS[source]} lên Drive...`);
     try {
-      const records = await db.dictEntries.where("source").equals(source).toArray();
-      const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+      // Read from dictCache (fast) instead of dictEntries (slow)
+      const cached = await db.dictCache.get(source);
+      const text = cached?.rawText || "";
       const filename = `${source}.txt`;
       await drive.uploadFile(filename, text);
       toast.success(`Đã tải ${filename} lên Google Drive!`, { id: toastId });
@@ -299,8 +301,9 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
     }
     const toastId = toast.loading(`Đang tải ${DICT_SOURCE_LABELS[source]} lên Kho chung...`);
     try {
-      const records = await db.dictEntries.where("source").equals(source).toArray();
-      const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+      // Read from dictCache (fast) instead of dictEntries (slow)
+      const cached = await db.dictCache.get(source);
+      const text = cached?.rawText || "";
       const filename = `${source}.txt`;
       
       const { error } = await supabase.storage
@@ -363,13 +366,13 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         
         await Promise.allSettled(
           batch.map(async (source) => {
-            const records = await db.dictEntries.where("source").equals(source).toArray();
-            if (records.length === 0) return;
-            const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+            // Read from dictCache (fast) instead of dictEntries (slow)
+            const cached = await db.dictCache.get(source);
+            if (!cached?.rawText) return;
             const filename = `${source}.txt`;
             const { error } = await supabase.storage
               .from("dictionaries")
-              .upload(filename, text, {
+              .upload(filename, cached.rawText, {
                 contentType: 'text/plain;charset=UTF-8',
                 upsert: true,
               });

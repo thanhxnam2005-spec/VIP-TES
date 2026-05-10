@@ -318,7 +318,7 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
   const cached = await db.dictCache.get(source);
   let currentText = cached?.rawText || "";
   
-  // Deduplicate existing keys
+  // Deduplicate against existing keys
   const existingKeys = new Set<string>();
   const lines = currentText.split("\n");
   for (const line of lines) {
@@ -331,15 +331,50 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
   const newEntries = entries.filter(e => !existingKeys.has(e.chinese));
   if (newEntries.length === 0) return 0;
 
+  // Also deduplicate within new entries themselves
+  const seenNew = new Set<string>();
+  const uniqueNewEntries = newEntries.filter(e => {
+    if (seenNew.has(e.chinese)) return false;
+    seenNew.add(e.chinese);
+    return true;
+  });
+  if (uniqueNewEntries.length === 0) return 0;
+
+  // 1. Append new lines to cache text (fast, O(k))
   if (currentText && !currentText.endsWith("\n")) {
     currentText += "\n";
   }
+  const newLines = uniqueNewEntries.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
+  const updatedText = currentText + newLines + "\n";
+  
+  // 2. Update dictCache with new text (1 IDB write)
+  await db.dictCache.put({ source, rawText: updatedText });
 
-  const newLines = newEntries.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
-  const newText = currentText + newLines + "\n";
+  // 3. Directly add ONLY new entries to dictEntries (O(k) instead of O(N) delete+reinsert)
+  const newRecords = uniqueNewEntries.map(e => ({
+    id: crypto.randomUUID(),
+    source: source as DictSource,
+    chinese: e.chinese,
+    vietnamese: e.vietnamese,
+  }));
+  
+  if (newRecords.length > 0) {
+    // Insert in chunks to stay responsive on mobile
+    const CHUNK = 5000;
+    for (let i = 0; i < newRecords.length; i += CHUNK) {
+      await db.dictEntries.bulkAdd(newRecords.slice(i, i + CHUNK));
+    }
+  }
 
-  await saveDictSource(source, newText);
-  return newEntries.length;
+  // 4. Update meta count (1 IDB write)
+  const meta = await db.dictMeta.get("dict-meta");
+  if (meta) {
+    meta.sources[source] = (meta.sources[source] || 0) + uniqueNewEntries.length;
+    meta.loadedAt = new Date();
+    await db.dictMeta.put(meta);
+  }
+
+  return uniqueNewEntries.length;
 }
 
 export async function clearDictSource(source: DictSource): Promise<void> {

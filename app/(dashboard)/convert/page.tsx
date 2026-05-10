@@ -279,18 +279,18 @@ export default function ConvertPage() {
       if (savedCount > 0) {
         totalSaved += savedCount;
         
-        // Auto-upload to Supabase
+        // Auto-upload to Supabase — read from dictCache (fast) instead of dictEntries (slow)
         try {
-          const records = await db.dictEntries.where("source").equals(targetSource).toArray();
-          const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
-          const filename = `${targetSource}.txt`;
-          
-          await supabase.storage
-            .from("dictionaries")
-            .upload(filename, text, {
-              contentType: 'text/plain;charset=UTF-8',
-              upsert: true,
-            });
+          const cached = await db.dictCache.get(targetSource as DictSource);
+          if (cached?.rawText) {
+            const filename = `${targetSource}.txt`;
+            await supabase.storage
+              .from("dictionaries")
+              .upload(filename, cached.rawText, {
+                contentType: 'text/plain;charset=UTF-8',
+                upsert: true,
+              });
+          }
         } catch (err) {
           console.error(`Lỗi tải lên ${targetSource}:`, err);
         }

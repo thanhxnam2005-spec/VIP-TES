@@ -176,13 +176,15 @@ async function flushSupabaseUpload() {
       // Yield to main thread
       await yieldToMain();
       
-      const records = await db.dictEntries.where("source").equals(targetSource).toArray();
-      const text = records.map(r => `${r.chinese}=${r.vietnamese}`).join("\n");
+      // Read from dictCache (1 row) instead of dictEntries (50k+ rows) — MUCH faster
+      const cached = await db.dictCache.get(targetSource as any);
+      if (!cached?.rawText) continue;
+      
       const filename = `${targetSource}.txt`;
       
       await supabase.storage
         .from("dictionaries")
-        .upload(filename, text, {
+        .upload(filename, cached.rawText, {
           contentType: 'text/plain;charset=UTF-8',
           upsert: true,
         });
