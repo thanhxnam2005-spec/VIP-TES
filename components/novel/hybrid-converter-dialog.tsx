@@ -288,7 +288,7 @@ export function HybridConverterDialog({
               )}
 
               <p className="text-[10px] text-muted-foreground">
-                AI quét 2 chương đầu → phát hiện thể loại, trích xuất tên nhân vật/địa danh/vũ khí → 
+                AI quét 10 chương đầu → phát hiện thể loại, trích xuất tên nhân vật/địa danh/vũ khí → 
                 tự động lưu vào từ điển + tạo prompt dịch riêng cho truyện này.
               </p>
 

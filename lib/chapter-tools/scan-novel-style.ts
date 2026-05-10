@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import type { Scene } from "@/lib/db";
 import { getOriginalContent } from "@/lib/hooks/use-scene-versions";
 
-const SCAN_CHAPTER_COUNT = 2;
+const SCAN_CHAPTER_COUNT = 10;
 const MAX_CHARS_PER_CHAPTER = 1000;
 
 async function collectSampleText(novelId: string): Promise<{
