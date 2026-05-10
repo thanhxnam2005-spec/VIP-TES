@@ -272,6 +272,7 @@ export default function ConvertPage() {
 
     let totalSaved = 0;
     const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     
     for (const [targetSource, terms] of Object.entries(grouped)) {
       const savedCount = await appendToDictSource(targetSource as DictSource, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
@@ -280,19 +281,22 @@ export default function ConvertPage() {
         totalSaved += savedCount;
         
         // Auto-upload to Supabase — read from dictCache (fast) instead of dictEntries (slow)
-        try {
-          const cached = await db.dictCache.get(targetSource as DictSource);
-          if (cached?.rawText) {
-            const filename = `${targetSource}.txt`;
-            await supabase.storage
-              .from("dictionaries")
-              .upload(filename, cached.rawText, {
-                contentType: 'text/plain;charset=UTF-8',
-                upsert: true,
-              });
+        if (user) {
+          try {
+            const cached = await db.dictCache.get(targetSource as DictSource);
+            if (cached?.rawText) {
+              const filename = `${targetSource}.txt`;
+              const { error } = await supabase.storage
+                .from("dictionaries")
+                .upload(filename, cached.rawText, {
+                  contentType: 'text/plain;charset=UTF-8',
+                  upsert: true,
+                });
+              if (error) throw error;
+            }
+          } catch (err: any) {
+            console.error(`Lỗi tải lên ${targetSource}:`, err.message || err);
           }
-        } catch (err) {
-          console.error(`Lỗi tải lên ${targetSource}:`, err);
         }
       }
     }

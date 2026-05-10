@@ -169,6 +169,9 @@ async function flushSupabaseUpload() {
   _dirtySourcesForUpload.clear();
   
   const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return; // Ignore if not logged in
+
   let uploadedCount = 0;
   
   for (const targetSource of sources) {
@@ -182,15 +185,16 @@ async function flushSupabaseUpload() {
       
       const filename = `${targetSource}.txt`;
       
-      await supabase.storage
+      const { error } = await supabase.storage
         .from("dictionaries")
         .upload(filename, cached.rawText, {
           contentType: 'text/plain;charset=UTF-8',
           upsert: true,
         });
+      if (error) throw error;
       uploadedCount++;
-    } catch (err) {
-      console.error(`Lỗi tải lên ${targetSource}:`, err);
+    } catch (err: any) {
+      console.error(`Lỗi tải lên ${targetSource}:`, err.message || err);
       // Re-mark as dirty for next upload cycle
       _dirtySourcesForUpload.add(targetSource);
     }
