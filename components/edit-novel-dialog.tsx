@@ -23,18 +23,14 @@ import { ImagePicker } from "@/components/ui/image-picker";
 import { PlusIcon, XIcon, CheckIcon } from "lucide-react";
 
 const GENRE_DICTS = [
-  "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
-  "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", 
-  "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+  "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
+  "dothi", "vongdu", "dongnhan", "ngontinh"
 ];
 
 const GENRE_LABELS: Record<string, string> = {
-  ngontinh: "Ngôn tình", hiendai: "Hiện đại", tienhiep: "Tiên hiệp",
-  huyenhuyen: "Huyền huyễn", dammi: "Đam mỹ", hocduong: "Học đường",
-  nsfw: "NSFW (18+)", hentai: "Hentai", dongphuong: "Đông phương",
-  dothi: "Đô thị", vongdu: "Võng du", khoahuyen: "Khoa huyễn",
-  quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
-  trinhtham: "Trinh thám", lichsu: "Lịch sử"
+  hiendai: "Hiện đại", tienhiep: "Tiên hiệp", huyenhuyen: "Huyền huyễn",
+  dammi: "Đam mỹ", hocduong: "Học đường", dothi: "Đô thị",
+  vongdu: "Võng du", dongnhan: "Đồng nhân", ngontinh: "Ngôn tình"
 };
 
 const PRESET_COLORS = [

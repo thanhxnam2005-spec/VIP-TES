@@ -21,6 +21,7 @@ export const DICT_FILES: Record<DictSource, string> = {} as Record<DictSource, s
 
 for (const genre of DICT_GENRES) {
   for (const type of DICT_TYPES) {
+    if (genre === "core" && type !== "vietphrase" && type !== "phienam") continue;
     const src = `${genre}_${type}` as DictSource;
     ALL_SOURCES.push(src);
     // Determine the URL for the default files

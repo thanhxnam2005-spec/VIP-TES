@@ -100,6 +100,8 @@ let rawDictData: Record<string, DictPair[]> = {};
 let lastActiveSourcesKey = "INITIAL";
 let namesMap: Map<string, string>;
 let vietPhraseMap: Map<string, string>;
+let coreVietPhraseMap: Map<string, string>;
+let genreVietPhraseMap: Map<string, string>;
 let phienAmMap: Map<string, string>;
 let genreDictMaps: Map<string, Map<string, string>>;
 let luatNhanPatternsMap: Map<string, Array<{
@@ -128,6 +130,8 @@ function ensureActiveDicts(activeSources: string[] = []) {
   
   namesMap = new Map<string, string>();
   vietPhraseMap = new Map<string, string>();
+  coreVietPhraseMap = new Map<string, string>();
+  genreVietPhraseMap = new Map<string, string>();
   phienAmMap = new Map<string, string>();
   genreDictMaps = new Map();
   luatNhanPatternsMap = new Map();
@@ -140,10 +144,12 @@ function ensureActiveDicts(activeSources: string[] = []) {
       namesMap.set(e.chinese, capitalizeWords(pickPrimary(e.vietnamese)));
 
     for (const e of rawDictData[`${genre}_vietphrase`] ?? []) {
-      if (e.chinese in FULLWIDTH_PUNCT) {
-        vietPhraseMap.set(e.chinese, FULLWIDTH_PUNCT[e.chinese]);
+      const val = e.chinese in FULLWIDTH_PUNCT ? FULLWIDTH_PUNCT[e.chinese] : pickPrimary(e.vietnamese);
+      vietPhraseMap.set(e.chinese, val);
+      if (genre === "core") {
+        coreVietPhraseMap.set(e.chinese, val);
       } else {
-        vietPhraseMap.set(e.chinese, pickPrimary(e.vietnamese));
+        genreVietPhraseMap.set(e.chinese, val);
       }
     }
 
@@ -580,21 +586,28 @@ function convert(
     : null;
 
   let filteredVP = vietPhraseMap;
+  let genreFilteredVP = genreVietPhraseMap;
+  let coreFilteredVP = coreVietPhraseMap;
+
   if (o.vpLengthPriority !== "none") {
     const minLen =
-      o.vpLengthPriority === "vp-gt-3"
-        ? 4
-        : o.vpLengthPriority === "vp-gt-4"
-          ? 5
-          : 0;
+      o.vpLengthPriority === "vp-gt-3" ? 4 : o.vpLengthPriority === "vp-gt-4" ? 5 : 0;
+    
     if (minLen > 0) {
-      filteredVP = new Map();
-      for (const [k, v] of vietPhraseMap) {
-        if (k.length >= minLen) filteredVP.set(k, v);
-      }
-      for (const [k, v] of vietPhraseMap) {
-        if (k.length === 1 && !filteredVP.has(k)) filteredVP.set(k, v);
-      }
+      const filterMap = (map: Map<string, string>) => {
+        const filtered = new Map<string, string>();
+        for (const [k, v] of map) {
+          if (k.length >= minLen) filtered.set(k, v);
+        }
+        for (const [k, v] of map) {
+          if (k.length === 1 && !filtered.has(k)) filtered.set(k, v);
+        }
+        return filtered;
+      };
+
+      filteredVP = filterMap(vietPhraseMap);
+      genreFilteredVP = filterMap(genreVietPhraseMap);
+      coreFilteredVP = filterMap(coreVietPhraseMap);
     }
   }
 
@@ -631,22 +644,28 @@ function convert(
       } else if (dp === "tuvung") {
         priorityMaps.push(...activeGenreMaps);
       } else if (dp === "vietphrase") {
-        priorityMaps.push(["vietphrase", filteredVP]);
+        priorityMaps.push(["genre-vietphrase", genreFilteredVP]);
+        priorityMaps.push(["core-vietphrase", coreFilteredVP]);
       }
     }
     // Fallback if they were excluded from the STT
     if (!namesAdded) priorityMaps.push(...orderedNameMaps);
     if (!priorityMaps.some(m => m[0].includes("tuvung"))) priorityMaps.push(...activeGenreMaps);
-    if (!priorityMaps.some(m => m[0] === "vietphrase")) priorityMaps.push(["vietphrase", filteredVP]);
+    if (!priorityMaps.some(m => m[0] === "core-vietphrase")) {
+      priorityMaps.push(["genre-vietphrase", genreFilteredVP]);
+      priorityMaps.push(["core-vietphrase", coreFilteredVP]);
+    }
   } else {
     // Fallback to old behavior
     if (o.nameVsPriority === "name-first") {
       priorityMaps.push(...orderedNameMaps);
       priorityMaps.push(...activeGenreMaps);
-      priorityMaps.push(["vietphrase", filteredVP]);
+      priorityMaps.push(["genre-vietphrase", genreFilteredVP]);
+      priorityMaps.push(["core-vietphrase", coreFilteredVP]);
     } else {
       priorityMaps.push(...activeGenreMaps);
-      priorityMaps.push(["vietphrase", filteredVP]);
+      priorityMaps.push(["genre-vietphrase", genreFilteredVP]);
+      priorityMaps.push(["core-vietphrase", coreFilteredVP]);
       priorityMaps.push(...orderedNameMaps);
     }
   }

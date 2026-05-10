@@ -21,9 +21,8 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 
 const GENRE_DICTS = [
-  "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
-  "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen",
-  "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+  "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
+  "dothi", "vongdu", "dongnhan", "ngontinh"
 ];
 
 // ─── Limits ──────────────────────────────────────────────────
@@ -124,7 +123,9 @@ async function processAutoSaveLocal(suggestions: TrainingSuggestion[]) {
     const c = curr.category || "tuvung";
     const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
     
-    for (const g of genres) {
+    const effectiveGenres = mappedCat === "vietphrase" ? ["global"] : genres;
+
+    for (const g of effectiveGenres) {
       let mappedGenre = g === "global" ? "core" : g;
       const targetSource = `${mappedGenre}_${mappedCat}`;
       if (!acc[targetSource]) acc[targetSource] = [];

@@ -188,12 +188,15 @@ function WorkerCard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="auto_stt" className="text-[10px] font-bold text-blue-600">Tuần tự (Auto STT)</SelectItem>
-            <SelectItem value="tienhiep" className="text-[10px]">Tiên Hiệp</SelectItem>
             <SelectItem value="hiendai" className="text-[10px]">Hiện Đại</SelectItem>
-            <SelectItem value="ngontinh" className="text-[10px]">Ngôn Tình</SelectItem>
+            <SelectItem value="tienhiep" className="text-[10px]">Tiên Hiệp</SelectItem>
             <SelectItem value="huyenhuyen" className="text-[10px]">Huyền Huyễn</SelectItem>
+            <SelectItem value="dammi" className="text-[10px]">Đam Mỹ</SelectItem>
+            <SelectItem value="hocduong" className="text-[10px]">Học Đường</SelectItem>
             <SelectItem value="dothi" className="text-[10px]">Đô Thị</SelectItem>
-            <SelectItem value="khoahuyen" className="text-[10px]">Khoa Huyễn</SelectItem>
+            <SelectItem value="vongdu" className="text-[10px]">Võng Du</SelectItem>
+            <SelectItem value="dongnhan" className="text-[10px]">Đồng Nhân</SelectItem>
+            <SelectItem value="ngontinh" className="text-[10px]">Ngôn Tình</SelectItem>
             <SelectItem value="khac" className="text-[10px]">Khác</SelectItem>
           </SelectContent>
         </Select>

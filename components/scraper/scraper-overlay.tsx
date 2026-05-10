@@ -24,6 +24,7 @@ export function ScraperOverlay() {
     setMinimized,
     pauseJob,
     resumeJob,
+    skipChapterJob,
     cancelJob,
     clearDone
   } = useScraperQueueStore();
@@ -140,15 +141,25 @@ export function ScraperOverlay() {
                   {!isFinished && (
                     <div className="shrink-0 flex items-center gap-1.5">
                       {isError ? (
-                        <Button 
-                          variant="default" 
-                          size="sm" 
-                          className="h-8 text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white gap-1.5 px-3 rounded-lg shadow-sm active:scale-95 transition-transform"
-                          onClick={() => resumeJob(job.id)}
-                        >
-                          <PlayIcon className="size-3" />
-                          Tiếp tục
-                        </Button>
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="h-8 text-[11px] font-bold gap-1.5 px-3 rounded-lg shadow-sm active:scale-95 transition-transform"
+                            onClick={() => skipChapterJob(job.id)}
+                          >
+                            Bỏ qua
+                          </Button>
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            className="h-8 text-[11px] font-bold bg-green-600 hover:bg-green-700 text-white gap-1.5 px-3 rounded-lg shadow-sm active:scale-95 transition-transform"
+                            onClick={() => resumeJob(job.id)}
+                          >
+                            <PlayIcon className="size-3" />
+                            Tiếp tục
+                          </Button>
+                        </>
                       ) : isPaused ? (
                         <Button variant="outline" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => resumeJob(job.id)}>
                           <PlayIcon className="size-3.5 text-primary" />

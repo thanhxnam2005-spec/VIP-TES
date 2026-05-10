@@ -58,18 +58,14 @@ import { ConvertConfig } from "@/components/convert-config";
 import { createClient } from "@/lib/supabase/client";
 
 const GENRE_DICTS = [
-  "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
-  "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", 
-  "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+  "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
+  "dothi", "vongdu", "dongnhan", "ngontinh"
 ];
 
 const GENRE_LABELS: Record<string, string> = {
-  ngontinh: "Ngôn tình", hiendai: "Hiện đại", tienhiep: "Tiên hiệp",
-  huyenhuyen: "H Huyền huyễn", dammi: "Đam mỹ", hocduong: "Học đường",
-  nsfw: "NSFW (18+)", hentai: "Hentai", dongphuong: "Đông phương",
-  dothi: "Đô thị", vongdu: "Võng du", khoahuyen: "Khoa huyễn",
-  quybi: "Quỷ bí", xuyenkhong: "Xuyên không", hethong: "Hệ thống",
-  trinhtham: "Trinh thám", lichsu: "Lịch sử"
+  hiendai: "Hiện đại", tienhiep: "Tiên hiệp", huyenhuyen: "Huyền huyễn",
+  dammi: "Đam mỹ", hocduong: "Học đường", dothi: "Đô thị",
+  vongdu: "Võng du", dongnhan: "Đồng nhân", ngontinh: "Ngôn tình"
 };
 
 const EMPTY_WORKER_STATES: never[] = [];
@@ -261,7 +257,9 @@ export default function ConvertPage() {
       const c = curr.category || "tuvung";
       const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
       
-      for (const g of genres) {
+      const effectiveGenres = mappedCat === "vietphrase" ? ["global"] : genres;
+
+      for (const g of effectiveGenres) {
         let mappedGenre = g === "global" ? "core" : g;
         const targetSource = `${mappedGenre}_${mappedCat}`;
         if (!acc[targetSource]) acc[targetSource] = [];
@@ -712,7 +710,9 @@ function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSu
     const c = curr.category || "tuvung";
     const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
     
-    for (const g of genres) {
+    const effectiveGenres = mappedCat === "vietphrase" ? ["global"] : genres;
+
+    for (const g of effectiveGenres) {
       const mappedGenre = g === "global" ? "core" : g;
       const key = `${mappedGenre}_${mappedCat}`;
       if (!acc[key]) acc[key] = [];

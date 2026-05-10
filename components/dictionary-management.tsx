@@ -93,27 +93,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const GENRE_LABELS: Record<DictGenre, string> = {
   core: "Cơ Bản (Core)",
-  ngontinh: "Ngôn Tình",
   hiendai: "Hiện Đại",
   tienhiep: "Tiên Hiệp",
   huyenhuyen: "Huyền Huyễn",
   dammi: "Đam Mỹ",
   hocduong: "Học Đường",
-  nsfw: "NSFW",
-  hentai: "Hentai",
-  dongphuong: "Đông Phương",
   dothi: "Đô Thị",
   vongdu: "Võng Du",
-  khoahuyen: "Khoa Huyễn",
-  quybi: "Quỷ Bí",
-  xuyenkhong: "Xuyên Không",
-  hethong: "Hệ Thống",
-  trinhtham: "Trinh Thám",
-  lichsu: "Lịch Sử",
+  dongnhan: "Đồng Nhân",
+  ngontinh: "Ngôn Tình",
 };
 
 export const TYPE_LABELS: Record<DictType, string> = {
-  vietphrase: "Từ Điển Chính (VietPhrase)",
+  vietphrase: "Từ Điển Chính (Thể Loại)",
   names: "Tên nhân vật, địa danh",
   names2: "Tên bổ sung",
   phienam: "Phiên âm ký tự đơn",
@@ -151,6 +143,7 @@ const DICT_SOURCE_LABELS: Record<string, string> = new Proxy({}, { get: (_, prop
 const ALL_SOURCES: DictSource[] = [];
 for (const g of DICT_GENRES) {
   for (const t of DICT_TYPES) {
+    if (g === "core" && t !== "vietphrase" && t !== "phienam") continue;
     ALL_SOURCES.push(`${g}_${t}` as DictSource);
   }
 }
@@ -1020,13 +1013,17 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {DICT_TYPES.map((type) => {
+                      {DICT_TYPES.filter((type) => 
+                        (genre === "core" && (type === "vietphrase" || type === "phienam")) ||
+                        (genre !== "core")
+                      ).map((type) => {
                         const source = `${genre}_${type}` as DictSource;
                         const count = dictMeta?.sources[source] ?? 0;
                         return (
                           <TableRow key={source}>
                             <TableCell className="font-medium text-xs">
-                              {TYPE_LABELS[type]}
+                              {source === "core_vietphrase" ? "Từ Điển Chính (Phụ trợ)" : 
+                               source === "core_phienam" ? "Phiên âm (Phụ trợ)" : TYPE_LABELS[type]}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-[10px]">
                               {source}
@@ -1040,28 +1037,32 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => handleDownloadFromSupabase(source)}
-                                  title="Cập nhật từ điển mới nhất"
-                                  className="text-violet-500 hover:text-violet-600"
-                                >
-                                  <ServerIcon className="size-3.5" />
-                                </Button>
-                                {isAdmin && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => handleUploadToSupabase(source)}
-                                    disabled={count === 0}
-                                    title="Tải lên Kho chung (Admin)"
-                                    className="text-violet-500 hover:text-violet-600"
-                                  >
-                                    <ServerIcon className="size-3.5" />
-                                  </Button>
+                                {source !== "core_vietphrase" && source !== "core_phienam" && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleDownloadFromSupabase(source)}
+                                      title="Cập nhật từ điển mới nhất"
+                                      className="text-violet-500 hover:text-violet-600"
+                                    >
+                                      <ServerIcon className="size-3.5" />
+                                    </Button>
+                                    {isAdmin && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        onClick={() => handleUploadToSupabase(source)}
+                                        disabled={count === 0}
+                                        title="Tải lên Kho chung (Admin)"
+                                        className="text-violet-500 hover:text-violet-600"
+                                      >
+                                        <ServerIcon className="size-3.5" />
+                                      </Button>
+                                    )}
+                                    <div className="w-px h-4 bg-border my-auto mx-1" />
+                                  </>
                                 )}
-                                <div className="w-px h-4 bg-border my-auto mx-1" />
                                 {isAdmin && (
                                   <Button
                                     variant="ghost"

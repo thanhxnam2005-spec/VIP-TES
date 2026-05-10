@@ -341,23 +341,15 @@ export type DictType = typeof DICT_TYPES[number];
 
 export const DICT_GENRES = [
   "core",
-  "ngontinh",
   "hiendai",
   "tienhiep",
   "huyenhuyen",
   "dammi",
   "hocduong",
-  "nsfw",
-  "hentai",
-  "dongphuong",
   "dothi",
   "vongdu",
-  "khoahuyen",
-  "quybi",
-  "xuyenkhong",
-  "hethong",
-  "trinhtham",
-  "lichsu",
+  "dongnhan",
+  "ngontinh",
 ] as const;
 export type DictGenre = typeof DICT_GENRES[number];
 

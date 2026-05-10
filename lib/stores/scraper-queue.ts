@@ -47,6 +47,7 @@ interface ScraperQueueState {
   removeJob: (id: string) => void;
   pauseJob: (id: string) => void;
   resumeJob: (id: string) => void;
+  skipChapterJob: (id: string) => void;
   cancelJob: (id: string) => void;
   clearDone: () => void;
   updateJobTitle: (id: string, newTitle: string) => void;
@@ -423,6 +424,35 @@ export const useScraperQueueStore = create<ScraperQueueState>()(
     if (needsProcess) {
       get().processQueue();
     }
+  },
+
+  skipChapterJob: (id) => {
+    set((state) => {
+      const j = state.jobs[id];
+      if (!j) return state;
+      if (j.chaptersToScrape.length > 0) {
+        toast.info(`Đã bỏ qua chương: ${j.chaptersToScrape[0].title}`);
+        return {
+          jobs: {
+            ...state.jobs,
+            [id]: {
+              ...j,
+              chaptersToScrape: j.chaptersToScrape.slice(1),
+              // Calculate progress correctly
+              progress: {
+                ...j.progress,
+                completed: j.progress.completed + 1 // mark skipped as completed to advance progress bar
+              },
+              status: "pending",
+              error: undefined,
+              abortController: new AbortController()
+            }
+          }
+        };
+      }
+      return state;
+    });
+    get().processQueue();
   },
 
   cancelJob: (id) => {

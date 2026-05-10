@@ -73,7 +73,7 @@ ${opts.aiTranslated.slice(0, 3000)}
    - "luatnhan": Luật nhân xưng (VD: ta/ngươi/hắn/nàng, lão phu/bản tọa, sư huynh...).
    - "tuvung": Từ vựng thể loại (Thuật ngữ tu luyện, kỹ năng, đan dược, công pháp...).
    - "ngucanh": Ngữ cảnh & Quy tắc dịch (Quy tắc đặc thù khi dịch từ/cụm từ cụ thể trong bối cảnh truyện).
-   - "vietphrase": Từ điển chính (Các từ vựng thông thường, đại từ, cụm động từ/tính từ phổ biến).
+   - "vietphrase": Từ điển phụ (Bổ sung từ vựng thông dụng đặc thù của thể loại, độ ưu tiên thấp hơn tên riêng/thuật ngữ).
 3. Chú trọng vào việc sử dụng từ Hán-Việt cho các thuật ngữ tu tiên, chiêu thức và tên riêng để giữ đúng phong cách tiên hiệp/huyền huyễn.
 4. Tránh dịch quá "thuần Việt" (quá hiện đại hoặc bình dân) cho các bối cảnh cổ đại/tu tiên.
 5. Với mỗi đề xuất, hãy trích dẫn câu văn gốc chứa từ đó (context_zh), bản dịch hiện tại của QT cho câu đó (context_vi_before) và bản dịch đề xuất của bạn cho câu đó (context_vi_after) để người dùng đối chiếu.
@@ -100,9 +100,14 @@ export async function extractDictionaryEntries(opts: {
 }): Promise<TrainingSuggestion[]> {
   const hasSpecificGenres = opts.targetGenres && opts.targetGenres.length > 0 && !opts.targetGenres.includes("auto");
   const genresStr = hasSpecificGenres ? opts.targetGenres!.join('", "') : "";
+  const mappingRules = `
+6. QUY TẮC KHỚP THỂ LOẠI VÀ TỪ ĐIỂN (CỰC KỲ QUAN TRỌNG):
+   - Bạn BẮT BUỘC phải chọn một thể loại cụ thể (VD: "tienhiep", "hocduong"...). 
+   - Tuyệt đối KHÔNG ĐƯỢC dùng "global". Mọi từ vựng trích xuất đều phải thuộc về một thể loại truyện cụ thể.`;
+
   const genreInstruction = hasSpecificGenres 
-    ? `5. BẮT BUỘC phân loại "genre": Bạn CHỈ ĐƯỢC CHỌN "global" (nếu là tên riêng, danh xưng chung) hoặc một trong các thể loại sau: "${genresStr}". TUYỆT ĐỐI KHÔNG chọn các thể loại khác.`
-    : `5. BẮT BUỘC phân loại "genre" dựa trên bối cảnh của từ vựng đó. Bạn có thể chọn các thể loại chuẩn như: "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu", hoặc "global" (nếu là từ dùng chung). ĐẶC BIỆT: Nếu từ vựng phù hợp với nhiều thể loại hoặc thuộc một thể loại mới hoàn toàn chưa có trong danh sách, bạn CÓ THỂ tự do tạo và trả về chuỗi thể loại mới đó (ví dụ "hiendai,ngontinh" hoặc "haihuoc"). Vui lòng viết liền không dấu hoặc cách nhau bằng dấu phẩy.`;
+    ? `5. BẮT BUỘC phân loại "genre": BẠN CHỈ ĐƯỢC CHỌN một trong các thể loại sau: "${genresStr}". TUYỆT ĐỐI KHÔNG SÁNG TẠO THỂ LOẠI MỚI.${mappingRules}`
+    : `5. BẮT BUỘC phân loại "genre": Bạn có thể chọn các thể loại chuẩn như: "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", "dothi", "vongdu", "dongnhan", "ngontinh". TUYỆT ĐỐI KHÔNG SÁNG TẠO THỂ LOẠI MỚI.${mappingRules}`;
 
   const prompt = `
 <role>
@@ -129,9 +134,10 @@ ${opts.sourceText.slice(0, 3000)}
    - "luatnhan": Đại từ nhân xưng, xưng hô (VD: ta/ngươi/hắn/nàng, lão phu/bản tọa, tiền bối/hậu bối, sư huynh...).
    - "tuvung": Từ vựng thể loại (Thuật ngữ tu luyện, kỹ năng, đan dược, công pháp...).
    - "ngucanh": Ngữ cảnh & Quy tắc dịch (Quy tắc đặc thù khi dịch từ/cụm từ cụ thể trong bối cảnh truyện).
+   - "vietphrase": Từ điển phụ (Bổ sung từ vựng thông dụng đặc thù của thể loại, độ ưu tiên thấp hơn tên riêng/thuật ngữ).
 ${genreInstruction}
-6. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó) và context_vi_before/after (có thể để trống nếu không cần thiết).
-7. BẮT BUỘC: Nghĩa tiếng Việt (vietnamese) PHẢI LÀ MỘT NGHĨA DUY NHẤT, chuẩn xác nhất. Tuyệt đối KHÔNG dùng dấu gạch chéo (/), KHÔNG liệt kê nhiều nghĩa (Ví dụ: Sai: "Tống Cẩu / Tống Chó", Đúng: "Tống Cẩu").
+7. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó) và context_vi_before/after (có thể để trống nếu không cần thiết).
+8. BẮT BUỘC: Nghĩa tiếng Việt (vietnamese) PHẢI LÀ MỘT NGHĨA DUY NHẤT, chuẩn xác nhất. Tuyệt đối KHÔNG dùng dấu gạch chéo (/), KHÔNG liệt kê nhiều nghĩa (Ví dụ: Sai: "Tống Cẩu / Tống Chó", Đúng: "Tống Cẩu").
 </requirements>
 
 <output_format>Trả về JSON chứa mảng "suggestions".</output_format>
