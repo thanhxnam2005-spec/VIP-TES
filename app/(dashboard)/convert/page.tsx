@@ -257,19 +257,24 @@ export default function ConvertPage() {
 
   const processAutoSave = async (suggestions: TrainingSuggestion[]) => {
     const grouped = suggestions.reduce((acc, curr) => {
-      const g = curr.genre || "global";
-      if (!acc[g]) acc[g] = [];
-      acc[g].push(curr);
+      const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const c = curr.category || "tuvung";
+      const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
+      
+      for (const g of genres) {
+        let mappedGenre = g === "global" ? "core" : g;
+        const targetSource = `${mappedGenre}_${mappedCat}`;
+        if (!acc[targetSource]) acc[targetSource] = [];
+        acc[targetSource].push(curr);
+      }
       return acc;
     }, {} as Record<string, TrainingSuggestion[]>);
 
     let totalSaved = 0;
     const supabase = createClient();
     
-    for (const [genre, terms] of Object.entries(grouped)) {
-      let mappedGenre = genre === "global" ? "core" : genre;
-      const targetSource = `${mappedGenre}_names` as DictSource;
-      const savedCount = await appendToDictSource(targetSource, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
+    for (const [targetSource, terms] of Object.entries(grouped)) {
+      const savedCount = await appendToDictSource(targetSource as DictSource, terms.map(t => ({ chinese: t.chinese, vietnamese: t.vietnamese })));
       
       if (savedCount > 0) {
         totalSaved += savedCount;
@@ -669,13 +674,16 @@ function WorkerCard({
 
 function GroupedExtractionList({ terms, onRemove, isAdmin }: { terms: TrainingSuggestion[], onRemove: (term: TrainingSuggestion) => void, isAdmin?: boolean }) {
   const grouped = terms.reduce((acc, curr) => {
-    const g = curr.genre || "global";
-    const mappedGenre = g === "global" ? "core" : g;
+    const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     const c = curr.category || "tuvung";
-    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"].includes(c) ? c : "tuvung";
-    const key = `${mappedGenre}_${mappedCat}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(curr);
+    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
+    
+    for (const g of genres) {
+      const mappedGenre = g === "global" ? "core" : g;
+      const key = `${mappedGenre}_${mappedCat}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({...curr, genre: g}); // override genre for display purposes
+    }
     return acc;
   }, {} as Record<string, TrainingSuggestion[]>);
 
