@@ -6,7 +6,7 @@ export interface TrainingSuggestion {
   chinese: string;
   vietnamese: string;
   reason: string;
-  category: "names" | "names2" | "phienam" | "luatnhan" | "tuvung" | "ngucanh";
+  category: "names" | "names2" | "phienam" | "luatnhan" | "tuvung" | "ngucanh" | "vietphrase";
   genre: string;
   context_zh?: string;
   context_vi_before?: string;
@@ -24,7 +24,7 @@ const trainingSchema = jsonSchema<{ suggestions: TrainingSuggestion[] }>({
           chinese: { type: "string" },
           vietnamese: { type: "string" },
           reason: { type: "string" },
-          category: { type: "string", enum: ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"] },
+          category: { type: "string", enum: ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"] },
           genre: { type: "string" },
           context_zh: { type: "string" },
           context_vi_before: { type: "string" },
@@ -66,12 +66,14 @@ ${opts.aiTranslated.slice(0, 3000)}
 </ai_professional_translation>
 
 <requirements>
-2. Phân loại bắt buộc vào một trong các loại từ điển sau:
-   - "names": Tên nhân vật, địa danh, tên riêng.
-   - "names2": Tên bổ sung (như tên chiêu thức, tên công pháp, tên vũ khí).
-   - "phienam": Phiên âm cho một Hán tự đơn lẻ đặc biệt.
-   - "luatnhan": Luật nhân xưng (ví dụ: {0} ca ca, đại lão {0}, với {0} là tên nhân vật).
-   - "tuvung": Từ vựng chuyên ngành, ngữ cảnh chung của thể loại.
+2. Phân loại bắt buộc vào một trong các loại từ điển sau (trường "category"):
+   - "names": Tên riêng (nhân vật, tông môn, bí cảnh, thành phố...).
+   - "names2": Bí danh, danh hiệu, tên khác.
+   - "phienam": Phiên âm cho một Hán tự đơn lẻ đặc biệt (Phiên âm ký tự đơn).
+   - "luatnhan": Luật nhân xưng (VD: ta/ngươi/hắn/nàng, lão phu/bản tọa, sư huynh...).
+   - "tuvung": Từ vựng thể loại (Thuật ngữ tu luyện, kỹ năng, đan dược, công pháp...).
+   - "ngucanh": Ngữ cảnh & Quy tắc dịch (Quy tắc đặc thù khi dịch từ/cụm từ cụ thể trong bối cảnh truyện).
+   - "vietphrase": Từ điển chính (Các từ vựng thông thường, đại từ, cụm động từ/tính từ phổ biến).
 3. Chú trọng vào việc sử dụng từ Hán-Việt cho các thuật ngữ tu tiên, chiêu thức và tên riêng để giữ đúng phong cách tiên hiệp/huyền huyễn.
 4. Tránh dịch quá "thuần Việt" (quá hiện đại hoặc bình dân) cho các bối cảnh cổ đại/tu tiên.
 5. Với mỗi đề xuất, hãy trích dẫn câu văn gốc chứa từ đó (context_zh), bản dịch hiện tại của QT cho câu đó (context_vi_before) và bản dịch đề xuất của bạn cho câu đó (context_vi_after) để người dùng đối chiếu.
