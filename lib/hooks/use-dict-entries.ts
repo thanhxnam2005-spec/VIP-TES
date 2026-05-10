@@ -378,6 +378,55 @@ export async function clearDictSource(source: DictSource): Promise<void> {
   await db.dictCache.delete(source);
 }
 
+/** Deduplicate a dict source — remove entries with the same chinese key, keeping the first occurrence */
+export async function deduplicateDictSource(source: DictSource): Promise<number> {
+  const cached = await db.dictCache.get(source);
+  if (!cached?.rawText) return 0;
+
+  const lines = cached.rawText.split("\n");
+  const seen = new Set<string>();
+  const dedupedLines: string[] = [];
+  let removedCount = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx <= 0) {
+      dedupedLines.push(trimmed);
+      continue;
+    }
+    const key = trimmed.slice(0, eqIdx).trim();
+    if (seen.has(key)) {
+      removedCount++;
+      continue;
+    }
+    seen.add(key);
+    dedupedLines.push(trimmed);
+  }
+
+  if (removedCount > 0) {
+    const newText = dedupedLines.join("\n") + "\n";
+    await saveDictSource(source, newText);
+  }
+  return removedCount;
+}
+
+/** Deduplicate ALL dict sources */
+export async function deduplicateAllDictSources(): Promise<number> {
+  const allSources: DictSource[] = [
+    "names", "names2", "vietphrase", "luatnhan", "phienam",
+    "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
+    "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen",
+    "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu"
+  ];
+  let total = 0;
+  for (const source of allSources) {
+    total += await deduplicateDictSource(source);
+  }
+  return total;
+}
+
 /** Export a dict source as a downloadable .txt file (chinese=vietnamese per line) */
 export async function exportDictSource(source: DictSource): Promise<void> {
   // Try from cache first (fast)

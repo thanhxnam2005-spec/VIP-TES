@@ -90,10 +90,12 @@ ${opts.aiTranslated.slice(0, 3000)}
 export async function extractDictionaryEntries(opts: {
   model: LanguageModel;
   sourceText: string;
-  targetGenre?: string;
+  targetGenres?: string[];
 }): Promise<TrainingSuggestion[]> {
-  const genreInstruction = opts.targetGenre 
-    ? `5. BẮT BUỘC phân loại "genre": Vì đây là truyện thể loại "${opts.targetGenre}", bạn CHỈ ĐƯỢC CHỌN "global" (nếu là tên riêng, danh xưng chung) hoặc "${opts.targetGenre}" (nếu là từ đặc thù của thể loại này). TUYỆT ĐỐI KHÔNG chọn các thể loại khác.`
+  const hasSpecificGenres = opts.targetGenres && opts.targetGenres.length > 0 && !opts.targetGenres.includes("auto");
+  const genresStr = hasSpecificGenres ? opts.targetGenres!.join('", "') : "";
+  const genreInstruction = hasSpecificGenres 
+    ? `5. BẮT BUỘC phân loại "genre": Bạn CHỈ ĐƯỢC CHỌN "global" (nếu là tên riêng, danh xưng chung) hoặc một trong các thể loại sau: "${genresStr}". TUYỆT ĐỐI KHÔNG chọn các thể loại khác.`
     : `5. BẮT BUỘC phân loại "genre" vào MỘT trong các thể loại sau dựa trên bối cảnh của từ vựng đó: "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", "nsfw", "hentai", "dongphuong", "dothi", "vongdu", "khoahuyen", "quybi", "xuyenkhong", "hethong", "trinhtham", "lichsu", hoặc "global" (nếu là từ dùng chung).`;
 
   const prompt = `

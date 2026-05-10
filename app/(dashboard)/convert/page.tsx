@@ -19,7 +19,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TextCompareEditor } from "@/components/ui/text-compare-editor";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebouncedValue } from "@/lib/hooks/use-debounce";
-import { useTrainingStore } from "@/lib/stores/training-store";
+import { useTrainingStore, type ConvertTab } from "@/lib/stores/training-store";
 import { cn } from "@/lib/utils";
 import {
   FileUpIcon,
@@ -31,18 +31,27 @@ import {
   BotIcon,
   LibraryIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, useSyncExternalStore } from "react";
 import { convertText, useQTEngineReady } from "@/lib/hooks/use-qt-engine";
 import { useConvertSettings } from "@/lib/hooks/use-convert-settings";
 import { useAIProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
-import { extractDictionaryEntries, type TrainingSuggestion } from "@/lib/ai/training-tools";
-import { getModel } from "@/lib/ai/provider";
-import { appendToDictSource } from "@/lib/hooks/use-dict-entries";
+import { type TrainingSuggestion } from "@/lib/ai/training-tools";
+import { appendToDictSource, exportDictSource, deduplicateAllDictSources } from "@/lib/hooks/use-dict-entries";
 import { type DictSource, db } from "@/lib/db";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useNovels } from "@/lib/hooks/use-novels";
 import { useChapters } from "@/lib/hooks/use-chapters";
+import {
+  isTrainingRunning,
+  startTraining,
+  stopTraining,
+  configureTraining,
+  updateSelectedChapterId,
+  subscribeTrainingManager,
+  getWorkerStates,
+  type TrainingWorkerConfig,
+} from "@/lib/training-manager";
 
 const GENRE_DICTS = [
   "ngontinh", "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
@@ -74,20 +83,32 @@ export default function ConvertPage() {
   
   const { input = "", setInput } = store;
   const [qtOut, setQtOut] = useState("");
-  const [activeTab, setActiveTab] = useState<"qt" | "train" | "results">("qt");
+  const activeTab = store.activeTab;
+  const setActiveTab = store.setActiveTab;
   const [activeDictSources, setActiveDictSources] = useState<string[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [isConvertingQT, setIsConvertingQT] = useState(false);
   
-  // Library selection state
+  // Library selection state — persisted in store
   const novels = useNovels();
-  const [selectedNovelId, setSelectedNovelId] = useState<string>("");
+  const selectedNovelId = store.selectedNovelId;
+  const setSelectedNovelId = store.setSelectedNovelId;
   const chapters = useChapters(selectedNovelId);
-  const [selectedChapterId, setSelectedChapterId] = useState<string>("");
-  const [targetGenre, setTargetGenre] = useState<string>("auto");
-  
-  const selectedChapterIdRef = useRef(selectedChapterId);
-  useEffect(() => { selectedChapterIdRef.current = selectedChapterId; }, [selectedChapterId]);
+  const selectedChapterId = store.selectedChapterId;
+  const setSelectedChapterId = store.setSelectedChapterId;
+  const targetGenres = store.targetGenres || ["auto"];
+
+  // Subscribe to global training manager state
+  const isQueueRunning = useSyncExternalStore(
+    subscribeTrainingManager,
+    isTrainingRunning,
+    () => false // server snapshot
+  );
+  const managerWorkerStates = useSyncExternalStore(
+    subscribeTrainingManager,
+    getWorkerStates,
+    () => [] // server snapshot
+  );
 
   // Load chapter text when selected
   useEffect(() => {
@@ -103,40 +124,52 @@ export default function ConvertPage() {
   const aiProviders = useAIProviders();
   const availableProviders = useMemo(() => aiProviders?.filter(p => p.isActive && p.providerType !== "webgpu") || [], [aiProviders]);
   
-  const [extractedTerms, setExtractedTerms] = useState<TrainingSuggestion[]>([]);
+  // Use persisted extractedTerms from store
+  const extractedTerms = store.extractedTerms;
   const [autoSave, setAutoSave] = useState(true);
 
-  // Multi-worker state
-  const [workers, setWorkers] = useState<WorkerState[]>(() => 
-    Array.from({ length: 5 }).map((_, i) => ({
-      id: i + 1,
-      providerId: "",
-      modelId: "",
+  // Worker configs are persisted in the store
+  const workerConfigs = store.workerConfigs;
+
+  // Build WorkerState[] for UI from persisted configs
+  const workers: WorkerState[] = useMemo(() => 
+    workerConfigs.map(wc => ({
+      ...wc,
       isProcessing: false,
       currentChunk: "",
     }))
-  );
-  
-  const [isQueueRunning, setIsQueueRunning] = useState(false);
-  const isQueueRunningRef = useRef(false);
+  , [workerConfigs]);
 
-  // Auto-select first provider/model for all workers initially
+  const setWorkers = useCallback((updater: (prev: WorkerState[]) => WorkerState[]) => {
+    // Apply updater to get new state, then extract just config fields to store
+    const newWorkers = updater(workers);
+    store.setWorkerConfigs(newWorkers.map(w => ({ id: w.id, providerId: w.providerId, modelId: w.modelId })));
+  }, [workers, store]);
+
+  // Auto-select first provider/model for workers that don't have one yet
   useEffect(() => {
     if (availableProviders.length > 0) {
       const pId = availableProviders[0].id;
-      setWorkers(prev => {
-        let changed = false;
-        const next = prev.map(w => {
-          if (!w.providerId) {
-            changed = true;
-            return { ...w, providerId: pId };
-          }
-          return w;
-        });
-        return changed ? next : prev;
-      });
+      const needsUpdate = workerConfigs.some(w => !w.providerId);
+      if (needsUpdate) {
+        store.setWorkerConfigs(
+          workerConfigs.map(w => w.providerId ? w : { ...w, providerId: pId })
+        );
+      }
     }
-  }, [availableProviders]);
+  }, [availableProviders, workerConfigs, store]);
+
+  // Merge manager worker states into local display
+  const displayWorkers = useMemo(() => {
+    if (managerWorkerStates.length === 0) return workers;
+    return workers.map(w => {
+      const ms = managerWorkerStates.find(m => m.id === w.id);
+      if (ms) {
+        return { ...w, isProcessing: ms.isProcessing, currentChunk: ms.currentChunk };
+      }
+      return w;
+    });
+  }, [workers, managerWorkerStates]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debouncedInput = useDebouncedValue(input, 500);
@@ -173,7 +206,7 @@ export default function ConvertPage() {
     reader.onload = (event) => {
       const buffer = event.target?.result as ArrayBuffer;
       let text = new TextDecoder("utf-8").decode(buffer);
-      if (text.includes("")) {
+      if (text.includes("\uFFFD")) {
         text = new TextDecoder("gb18030").decode(buffer);
       }
       setInput(text);
@@ -186,11 +219,11 @@ export default function ConvertPage() {
   const handleClear = useCallback(() => {
     setInput("");
     setQtOut("");
-    setExtractedTerms([]);
+    store.setExtractedTerms([]);
     setSelectedNovelId("");
     setSelectedChapterId("");
-    stopQueue();
-  }, [setInput]);
+    stopTraining();
+  }, [setInput, store]);
 
   const processAutoSave = async (suggestions: TrainingSuggestion[]) => {
     const grouped = suggestions.reduce((acc, curr) => {
@@ -211,111 +244,26 @@ export default function ConvertPage() {
     }
   };
 
-  const stopQueue = () => {
-    isQueueRunningRef.current = false;
-    setIsQueueRunning(false);
-  };
-
-  const workersRef = useRef(workers);
-  useEffect(() => {
-    workersRef.current = workers;
-  }, [workers]);
-
-  const startQueue = async () => {
+  const handleStartQueue = () => {
     if (!input.trim()) return;
-    setIsQueueRunning(true);
-    isQueueRunningRef.current = true;
-
-    const processingWorkerIds = new Set<number>();
-
-    while (isQueueRunningRef.current) {
-      const idleWorkers = workersRef.current.filter(
-        w => !processingWorkerIds.has(w.id) && !w.isProcessing && w.providerId && w.modelId
-      );
-      
-      if (idleWorkers.length === 0) {
-        await new Promise(r => setTimeout(r, 500));
-        continue;
-      }
-
-      let currentInput = useTrainingStore.getState().input;
-
-      if (!currentInput.trim()) {
-        const currentChId = selectedChapterIdRef.current;
-        if (currentChId) {
-           const currCh = await db.chapters.get(currentChId);
-           if (currCh) {
-             const nextCh = await db.chapters.where("novelId").equals(currCh.novelId)
-               .filter(c => c.order > currCh.order)
-               .sortBy("order")
-               .then(arr => arr[0]);
-               
-             if (nextCh) {
-               const scenes = await db.scenes.where("[chapterId+isActive]").equals([nextCh.id, 1]).sortBy("order");
-               const text = scenes.map(s => s.content).join("\n");
-               useTrainingStore.getState().setInput(text);
-               setSelectedChapterId(nextCh.id);
-               toast.info(`Tự động chuyển sang chương tiếp theo: ${nextCh.title}`);
-               await new Promise(r => setTimeout(r, 1000));
-               continue;
-             }
-           }
-        }
-        
-        toast.success("Đã phân tích xong toàn bộ văn bản!");
-        stopQueue();
-        break;
-      }
-
-      // Lấy 15 dòng cho mỗi worker
-      const lines = currentInput.split('\n');
-      const chunkLines = lines.slice(0, 15);
-      const remainingLines = lines.slice(15);
-      
-      const chunkText = chunkLines.join('\n');
-      
-      useTrainingStore.getState().setInput(remainingLines.join('\n'));
-
-      if (!chunkText.trim()) continue;
-
-      const workerToUse = idleWorkers[0];
-      processingWorkerIds.add(workerToUse.id);
-      
-      setWorkers(prev => prev.map(w => w.id === workerToUse.id ? { ...w, isProcessing: true, currentChunk: chunkText } : w));
-
-      runWorkerTask(workerToUse, chunkText).finally(() => {
-        processingWorkerIds.delete(workerToUse.id);
-        setWorkers(prev => prev.map(w => w.id === workerToUse.id ? { ...w, isProcessing: false, currentChunk: "" } : w));
-      });
-      
-      await new Promise(r => setTimeout(r, 100));
-    }
+    // Configure and start the global training manager
+    const workerConfigs: TrainingWorkerConfig[] = workers
+      .filter(w => w.providerId && w.modelId)
+      .map(w => ({ id: w.id, providerId: w.providerId, modelId: w.modelId }));
+    
+    configureTraining({
+      workers: workerConfigs,
+      autoSave,
+      targetGenres,
+      selectedChapterId,
+    });
+    startTraining();
   };
 
-  const runWorkerTask = async (worker: WorkerState, chunkText: string) => {
-    if (!isQueueRunningRef.current) return;
-    try {
-      const provider = availableProviders.find(p => p.id === worker.providerId);
-      if (!provider) return;
-      const model = await getModel(provider, worker.modelId);
-
-      const suggestions = await extractDictionaryEntries({
-        model,
-        sourceText: chunkText,
-        targetGenre: targetGenre && targetGenre !== "auto" ? targetGenre : undefined,
-      });
-
-      if (suggestions.length > 0) {
-        setExtractedTerms(prev => [...suggestions, ...prev]);
-        if (autoSave) {
-          await processAutoSave(suggestions);
-        }
-      }
-    } catch (err) {
-      console.error(`Worker ${worker.id} error:`, err);
-      toast.error(`Worker ${worker.id} lỗi: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
+  // Update the manager whenever selectedChapterId changes
+  useEffect(() => {
+    updateSelectedChapterId(selectedChapterId);
+  }, [selectedChapterId]);
 
   return (
     <main className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden px-6 py-4">
@@ -343,7 +291,7 @@ export default function ConvertPage() {
           {activeTab === "train" && (
             <>
               {isQueueRunning ? (
-                <Button variant="destructive" size="sm" onClick={stopQueue} className="animate-pulse">
+                <Button variant="destructive" size="sm" onClick={stopTraining} className="animate-pulse">
                   <LoaderIcon className="mr-1.5 size-3.5 animate-spin" />
                   Dừng Phân tích
                 </Button>
@@ -351,7 +299,7 @@ export default function ConvertPage() {
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={startQueue}
+                  onClick={handleStartQueue}
                   disabled={!input.trim()}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
@@ -381,7 +329,7 @@ export default function ConvertPage() {
       </div>
 
       <div className="flex-1 min-h-[600px] flex flex-col">
-        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as any)} className="mb-2 w-full">
+        <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as ConvertTab)} className="mb-2 w-full">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-muted/30 p-1 rounded-md border gap-2">
             <TabsList className="bg-transparent border-none h-8 shrink-0">
               <TabsTrigger value="qt" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Từ điển QT (Live)</TabsTrigger>
@@ -418,17 +366,48 @@ export default function ConvertPage() {
 
                 <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
                 
-                <Select value={targetGenre} onValueChange={setTargetGenre} disabled={isQueueRunning}>
-                  <SelectTrigger className="h-7 text-xs w-[140px] bg-emerald-500/5 border-emerald-500/20 text-emerald-700">
-                    <SelectValue placeholder="Tất cả thể loại (AI tự chọn)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto" className="text-xs font-semibold text-muted-foreground">Tất cả thể loại (AI tự chọn)</SelectItem>
-                    {GENRE_DICTS.map(genre => (
-                      <SelectItem key={genre} value={genre} className="text-xs">{GENRE_LABELS[genre]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="xs" disabled={isQueueRunning} className="h-7 text-xs bg-emerald-500/5 border-emerald-500/20 text-emerald-700">
+                      {targetGenres.includes("auto") || targetGenres.length === 0
+                        ? "Tất cả thể loại (AI tự chọn)"
+                        : `Đã chọn: ${targetGenres.length} thể loại`}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 p-3">
+                    <h4 className="font-semibold text-xs mb-2 text-muted-foreground">Chọn thể loại lưu từ vựng</h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        onClick={() => store.setTargetGenres(["auto"])}
+                        className={cn(
+                          "text-[10px] px-2 py-1 rounded-md border transition-colors",
+                          targetGenres.includes("auto") ? "bg-emerald-500 text-white border-emerald-500" : "bg-background hover:bg-muted"
+                        )}
+                      >
+                        Tất cả thể loại (AI tự chọn)
+                      </button>
+                      {GENRE_DICTS.map(genre => {
+                        const isActive = targetGenres.includes(genre) && !targetGenres.includes("auto");
+                        return (
+                          <button
+                            key={genre}
+                            onClick={() => {
+                              const newGenres = targetGenres.filter(g => g !== "auto" && g !== genre);
+                              if (!isActive) newGenres.push(genre);
+                              store.setTargetGenres(newGenres.length > 0 ? newGenres : ["auto"]);
+                            }}
+                            className={cn(
+                              "text-[10px] px-2 py-1 rounded-md border transition-colors",
+                              isActive ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                            )}
+                          >
+                            {GENRE_LABELS[genre]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
             
@@ -500,7 +479,7 @@ export default function ConvertPage() {
             <div className="flex flex-col gap-2">
               <h3 className="font-semibold text-sm text-muted-foreground pl-1">Công nhân AI (Workers)</h3>
               <div className="flex flex-col gap-2">
-                {workers.map((worker) => (
+                {displayWorkers.map((worker) => (
                   <WorkerCard 
                     key={worker.id} 
                     worker={worker} 
@@ -517,9 +496,27 @@ export default function ConvertPage() {
           <div className="flex flex-col rounded-xl border bg-background shadow-sm overflow-hidden h-[calc(100vh-200px)] min-h-[500px]">
             <div className="bg-muted px-4 py-2 font-semibold text-sm border-b shrink-0 flex justify-between items-center">
               <span>Các Thể Loại Từ Điển Đã Train ({extractedTerms.length} từ)</span>
-              {extractedTerms.length > 0 && !autoSave && (
-                 <Button size="xs" variant="secondary" onClick={() => processAutoSave(extractedTerms)}>Lưu toàn bộ</Button>
-              )}
+              <div className="flex items-center gap-2">
+                {extractedTerms.length > 0 && !autoSave && (
+                  <Button size="xs" variant="secondary" onClick={() => processAutoSave(extractedTerms)}>Lưu toàn bộ</Button>
+                )}
+                {extractedTerms.length > 0 && (
+                  <Button size="xs" variant="outline" onClick={() => {
+                    const seen = new Set<string>();
+                    const deduped = extractedTerms.filter(t => {
+                      if (seen.has(t.chinese)) return false;
+                      seen.add(t.chinese);
+                      return true;
+                    });
+                    const removed = extractedTerms.length - deduped.length;
+                    store.setExtractedTerms(deduped);
+                    toast.success(`Đã lọc ${removed} từ trùng lặp.`);
+                  }}>Lọc trùng ({extractedTerms.length - new Set(extractedTerms.map(t => t.chinese)).size})</Button>
+                )}
+                {extractedTerms.length > 0 && (
+                  <Button size="xs" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => { if(confirm('Xóa toàn bộ kết quả đã train?')) store.setExtractedTerms([]); }}>Xóa tất cả</Button>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10">
               {extractedTerms.length === 0 ? (
@@ -529,7 +526,7 @@ export default function ConvertPage() {
                   ) : "Kết quả từ các AI sẽ được phân loại vào từng ngăn kéo tương ứng ở đây."}
                 </div>
               ) : (
-                <GroupedExtractionList terms={extractedTerms} onRemove={(term) => setExtractedTerms(extractedTerms.filter(t => t !== term))} />
+                <GroupedExtractionList terms={extractedTerms} onRemove={(term) => store.removeExtractedTerm(term)} />
               )}
             </div>
           </div>
@@ -616,21 +613,7 @@ function GroupedExtractionList({ terms, onRemove }: { terms: TrainingSuggestion[
   const handleDownloadDict = async (genre: string) => {
     try {
       const targetSource = genre === "global" ? "names" : (GENRE_DICTS.includes(genre) ? genre as DictSource : "names");
-      const cached = await db.dictCache.get(targetSource);
-      if (!cached || !cached.rawText) {
-        toast.error("Từ điển này hiện đang trống!");
-        return;
-      }
-      
-      const blob = new Blob([cached.rawText], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${targetSource}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await exportDictSource(targetSource);
       toast.success(`Đã tải xuống kho từ điển ${targetSource}.txt`);
     } catch (err) {
       toast.error("Lỗi khi tải từ điển");

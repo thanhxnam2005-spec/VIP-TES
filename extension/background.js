@@ -5,25 +5,24 @@
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let hiddenWindowId = null;
+let hiddenTabId = null;
 
-async function getOrCreateHiddenWindow() {
-  if (hiddenWindowId !== null) {
+async function getOrCreateHiddenTab() {
+  if (hiddenTabId !== null) {
     try {
-      const win = await chrome.windows.get(hiddenWindowId);
-      if (win) return win;
+      const tab = await chrome.tabs.get(hiddenTabId);
+      if (tab) return tab.id;
     } catch {
-      hiddenWindowId = null;
+      hiddenTabId = null;
     }
   }
-  const win = await chrome.windows.create({
+  // Create a background tab (active: false) instead of a window for Kiwi Browser
+  const tab = await chrome.tabs.create({
     url: "about:blank",
-    type: "popup",
-    state: "minimized",
-    focused: false,
+    active: false,
   });
-  hiddenWindowId = win.id;
-  return win;
+  hiddenTabId = tab.id;
+  return tab.id;
 }
 
 async function handleFetch(url, options = {}) {
@@ -56,15 +55,14 @@ async function handleFetch(url, options = {}) {
     }
   }
 
-  // 2. Fallback to real hidden window
+  // 2. Fallback to real hidden tab (background tab for Kiwi)
   let tabId;
   try {
-    const win = await getOrCreateHiddenWindow();
-    tabId = win.tabs[0].id;
+    tabId = await getOrCreateHiddenTab();
     
-    // Navigate the hidden window's tab to the new URL
+    // Navigate the hidden tab to the new URL
     await chrome.tabs.update(tabId, { url });
-    log(`Navigating hidden window tab (id=${tabId}) to ${url}`);
+    log(`Navigating hidden tab (id=${tabId}) to ${url}`);
 
     // Wait for initial page load
     await delay(3000); 

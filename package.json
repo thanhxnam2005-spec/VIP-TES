@@ -8,8 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "zip:android": "powershell -Command \"Compress-Archive -Path extension\\manifest.json, extension\\background.js -DestinationPath public\\novel-studio-connector-android.zip -Force\"",
-    "zip:pc": "powershell -Command \"Compress-Archive -Path extension-pc\\manifest.json, extension-pc\\background.js, extension-pc\\content.js -DestinationPath public\\novel-studio-connector-pc.zip -Force\"",
+    "zip:android": "powershell -Command \"Compress-Archive -Path extension\\* -DestinationPath public\\novel-studio-connector-android.zip -Force\"",
+    "zip:pc": "powershell -Command \"Compress-Archive -Path extension-pc\\* -DestinationPath public\\novel-studio-connector-pc.zip -Force\"",
     "zip:all": "npm run zip:android && npm run zip:pc",
     "postinstall": "node scripts/postinstall.js",
     "prepare": "husky"

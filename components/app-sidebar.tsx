@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -39,6 +39,7 @@ import {
   Wand2Icon,
   LogOutIcon,
   LockIcon,
+  SparklesIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -46,6 +47,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useProfile } from "@/lib/hooks/use-profile";
 import { UserProfileDialog } from "@/components/user-profile-dialog";
 import { createClient } from "@/lib/supabase/client";
+import {
+  isTrainingRunning,
+  subscribeTrainingManager,
+} from "@/lib/training-manager";
+import { useTrainingStore } from "@/lib/stores/training-store";
 
 export const navConfig = [
   { title: "Trang chủ", href: "/dashboard", icon: HomeIcon },
@@ -307,6 +313,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
+      <TrainingStatusFooter />
       <DictLoadingFooter />
       <SidebarRail />
     </Sidebar>
@@ -320,6 +327,34 @@ const SOURCE_LABELS: Record<string, string> = {
   luatnhan: "Luật nhân",
   vietphrase: "VietPhrase",
 };
+
+function TrainingStatusFooter() {
+  const running = useSyncExternalStore(
+    subscribeTrainingManager,
+    isTrainingRunning,
+    () => false
+  );
+  const extractedCount = useTrainingStore(s => s.extractedTerms.length);
+
+  if (!running) return null;
+
+  return (
+    <SidebarFooter className="border-t px-3 py-2 bg-emerald-500/5">
+      <Link href="/convert" className="block">
+        <div className="flex items-center gap-2">
+          <SparklesIcon className="size-3.5 shrink-0 text-emerald-500 animate-pulse" />
+          <span className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+            Đang train từ điển...
+          </span>
+          <span className="ml-auto text-xs text-emerald-600 font-mono">
+            {extractedCount} từ
+          </span>
+        </div>
+      </Link>
+    </SidebarFooter>
+  );
+}
+
 
 function DictLoadingFooter() {
   const { phase, loadingSource, loadingPercent } = useQTEngineStatus();
