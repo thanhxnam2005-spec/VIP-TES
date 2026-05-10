@@ -93,13 +93,16 @@ export function stopTraining() {
 
 async function processAutoSave(suggestions: TrainingSuggestion[]) {
   const grouped = suggestions.reduce((acc, curr) => {
-    const g = curr.genre || "global";
-    const mappedGenre = g === "global" ? "core" : g;
+    const genres = (curr.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
     const c = curr.category || "tuvung";
-    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh"].includes(c) ? c : "tuvung";
-    const key = `${mappedGenre}_${mappedCat}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(curr);
+    const mappedCat = ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"].includes(c) ? c : "tuvung";
+    
+    for (const g of genres) {
+      let mappedGenre = g === "global" ? "core" : g;
+      const targetSource = `${mappedGenre}_${mappedCat}`;
+      if (!acc[targetSource]) acc[targetSource] = [];
+      acc[targetSource].push(curr);
+    }
     return acc;
   }, {} as Record<string, TrainingSuggestion[]>);
 
