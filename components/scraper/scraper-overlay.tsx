@@ -22,6 +22,7 @@ export function ScraperOverlay() {
   const { 
     jobs,
     isOverlayMinimized,
+    fetchingInfo,
     setMinimized,
     pauseJob,
     resumeJob,
@@ -32,7 +33,7 @@ export function ScraperOverlay() {
 
   const activeJobs = Object.values(jobs);
   
-  if (activeJobs.length === 0) return null;
+  if (activeJobs.length === 0 && !fetchingInfo.visible) return null;
 
   const allDone = activeJobs.every(j => j.status === "done" || j.status === "error");
 
@@ -46,13 +47,15 @@ export function ScraperOverlay() {
       {/* Header */}
       <div className="flex h-12 items-center justify-between px-4 border-b shrink-0">
         <div className="flex items-center gap-2 overflow-hidden">
-          {allDone ? (
+          {fetchingInfo.visible ? (
+            <Loader2Icon className="size-4 text-blue-500 shrink-0 animate-spin" />
+          ) : allDone ? (
             <CheckCircle2Icon className="size-4 text-green-500 shrink-0" />
           ) : (
             <Loader2Icon className="size-4 text-primary shrink-0 animate-spin" />
           )}
           <span className="text-xs font-semibold truncate">
-            {allDone ? "Đã hoàn tất tất cả" : `Đang tải ${activeJobs.length} truyện...`}
+            {fetchingInfo.visible ? "Đang quét truyện mới..." : allDone ? "Đã hoàn tất tất cả" : `Đang tải ${activeJobs.length} truyện...`}
           </span>
         </div>
         <div className="flex items-center gap-1">
@@ -78,6 +81,27 @@ export function ScraperOverlay() {
       {/* Body */}
       {!isOverlayMinimized && (
         <div className="p-3 space-y-3 overflow-y-auto overscroll-contain">
+          {fetchingInfo.visible && (
+            <div className="rounded-xl border p-3.5 space-y-3 relative transition-colors shadow-sm bg-blue-50/50 border-blue-100 dark:bg-blue-950/10 dark:border-blue-900/30">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold truncate pr-4 text-foreground/90">Đang quét danh sách chương...</span>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] font-medium text-muted-foreground">
+                  <span>{fetchingInfo.count} chương đã tìm thấy</span>
+                </div>
+                <Progress value={undefined} className="h-2 rounded-full [&>div]:bg-blue-500 bg-blue-500/20" />
+              </div>
+              <div className="flex items-start justify-between gap-3 min-h-[1.5rem]">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] leading-tight font-medium break-words text-blue-600 dark:text-blue-400">
+                    Đang tìm kiếm thêm trang... {new URL(fetchingInfo.url).hostname}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeJobs.map(job => {
             const percentage = job.progress.total > 0 
               ? Math.round((job.progress.completed / job.progress.total) * 100) 

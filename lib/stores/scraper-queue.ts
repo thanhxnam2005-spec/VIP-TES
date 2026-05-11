@@ -34,7 +34,9 @@ export interface ScraperJob {
 interface ScraperQueueState {
   jobs: Record<string, ScraperJob>;
   isOverlayMinimized: boolean;
+  fetchingInfo: { visible: boolean; url: string; count: number };
 
+  setFetchingInfo: (info: { visible: boolean; url: string; count: number }) => void;
   addJob: (
     novelId: string,
     title: string,
@@ -62,7 +64,9 @@ export const useScraperQueueStore = create<ScraperQueueState>()(
     (set, get) => ({
       jobs: {},
       isOverlayMinimized: false,
+      fetchingInfo: { visible: false, url: "", count: 0 },
 
+      setFetchingInfo: (info) => set({ fetchingInfo: info }),
       setMinimized: (min) => set({ isOverlayMinimized: min }),
 
   addJob: async (novelId, title, url, chapters, delayMs, coverImage, adapterName) => {

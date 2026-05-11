@@ -81,6 +81,7 @@ export default function ScraperLibraryPage() {
   const handleAdd = async () => {
     if (!url.trim()) return;
     setIsAdding(true);
+    useScraperQueueStore.getState().setFetchingInfo({ visible: true, url, count: 0 });
     try {
       // ── Server-side fetch for supported sites (no extension needed) ──
       if (isServerFetchable(url)) {
@@ -123,6 +124,7 @@ export default function ScraperLibraryPage() {
       setScannedCount(0);
       const novelInfo = await adapter.getNovelInfo(html, url, (count) => {
         setScannedCount(count);
+        useScraperQueueStore.getState().setFetchingInfo({ visible: true, url, count });
       });
       if (novelInfo.chapters.length === 0) throw new Error("Không tìm thấy chương nào");
 
@@ -137,6 +139,7 @@ export default function ScraperLibraryPage() {
       toast.error(error.message || "Có lỗi xảy ra");
     } finally {
       setIsAdding(false);
+      useScraperQueueStore.getState().setFetchingInfo({ visible: false, url: "", count: 0 });
     }
   };
 

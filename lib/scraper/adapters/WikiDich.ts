@@ -89,30 +89,41 @@ export const WikiDichAdapter: SiteAdapter = {
         let hasMore = true;
 
         while (hasMore) {
-          try {
-            const rawSign = fuzzySign(signKey + currentStart + pageSize);
-            const sign = await sha256(rawSign);
-            const ajaxUrl = new URL(`/book/index?bookId=${bookId}&start=${currentStart}&size=${pageSize}&signKey=${signKey}&sign=${sign}`, base).toString();
-            
-            console.log(`[WikiDich] Fetching chapters ${currentStart} to ${currentStart + pageSize}...`);
-            const res = await extensionFetch(ajaxUrl, { timeout: 10000 });
-            
-            if (res.html && res.html.trim().length > 0) {
-              const pDoc = new DOMParser().parseFromString(res.html, "text/html");
-              const oldLength = chapters.length;
-              extractChapters(pDoc);
+          let success = false;
+          let retries = 3;
+          while (retries > 0 && !success) {
+            try {
+              const rawSign = fuzzySign(signKey + currentStart + pageSize);
+              const sign = await sha256(rawSign);
+              const ajaxUrl = new URL(`/book/index?bookId=${bookId}&start=${currentStart}&size=${pageSize}&signKey=${signKey}&sign=${sign}`, base).toString();
               
-              if (chapters.length - oldLength === 0) {
-                hasMore = false; // No new chapters found
+              console.log(`[WikiDich] Fetching chapters ${currentStart} to ${currentStart + pageSize}... (Retries left: ${retries})`);
+              const res = await extensionFetch(ajaxUrl, { timeout: 15000 });
+              
+              if (res.html && res.html.trim().length > 0) {
+                const pDoc = new DOMParser().parseFromString(res.html, "text/html");
+                const oldLength = chapters.length;
+                extractChapters(pDoc);
+                
+                if (chapters.length - oldLength === 0) {
+                  hasMore = false; // No new chapters found
+                } else {
+                  currentStart += pageSize;
+                }
+                success = true;
               } else {
-                currentStart += pageSize;
+                hasMore = false;
+                success = true;
               }
-            } else {
-              hasMore = false;
+            } catch (e) {
+              console.warn(`[WikiDich] Failed to fetch AJAX page ${currentStart}:`, e);
+              retries--;
+              if (retries === 0) {
+                hasMore = false;
+              } else {
+                await new Promise(r => setTimeout(r, 2000)); // wait 2s before retry
+              }
             }
-          } catch (e) {
-            console.warn(`[WikiDich] Failed to fetch AJAX page ${currentStart}:`, e);
-            hasMore = false;
           }
         }
       } catch (e) {
