@@ -114,12 +114,13 @@ export async function extensionDownloadSTVChapter(
   chapterId: string | number,
   chapterUrl: string,
   allowNext: boolean = true,
-  navigateFirst: boolean = false
+  navigateFirst: boolean = false,
+  delayMs: number = 2000
 ): Promise<any> {
   const id = getExtensionId();
   const response = await sendMessage(id, {
     action: "downloadChapter",
-    payload: { chapterId, chapterUrl, allowNext, navigateFirst },
+    payload: { chapterId, chapterUrl, allowNext, navigateFirst, delayMs },
   });
   return response;
 }

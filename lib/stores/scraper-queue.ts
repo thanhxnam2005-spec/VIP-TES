@@ -55,7 +55,7 @@ interface ScraperQueueState {
   processQueue: () => Promise<void>;
 }
 
-const MAX_CONCURRENCY = 2;
+const MAX_CONCURRENCY = 999;
 
 export const useScraperQueueStore = create<ScraperQueueState>()(
   persist(
@@ -427,6 +427,11 @@ export const useScraperQueueStore = create<ScraperQueueState>()(
   },
 
   skipChapterJob: (id) => {
+    const j = get().jobs[id];
+    if (j && j.abortController) {
+      j.abortController.abort();
+    }
+
     set((state) => {
       const j = state.jobs[id];
       if (!j) return state;

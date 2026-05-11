@@ -11,7 +11,8 @@ import {
   CheckCircle2Icon,
   AlertTriangleIcon,
   XCircleIcon,
-  LaptopIcon
+  LaptopIcon,
+  SkipForwardIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -161,13 +162,23 @@ export function ScraperOverlay() {
                           </Button>
                         </>
                       ) : isPaused ? (
-                        <Button variant="outline" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => resumeJob(job.id)}>
-                          <PlayIcon className="size-3.5 text-primary" />
-                        </Button>
+                        <>
+                          <Button variant="outline" title="Bỏ qua chương này" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => skipChapterJob(job.id)}>
+                            <SkipForwardIcon className="size-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button variant="outline" title="Tiếp tục" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => resumeJob(job.id)}>
+                            <PlayIcon className="size-3.5 text-primary" />
+                          </Button>
+                        </>
                       ) : (
-                        <Button variant="outline" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => pauseJob(job.id)}>
-                          <PauseIcon className="size-3.5" />
-                        </Button>
+                        <>
+                          <Button variant="outline" title="Bỏ qua chương này" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => skipChapterJob(job.id)}>
+                            <SkipForwardIcon className="size-3.5 text-muted-foreground" />
+                          </Button>
+                          <Button variant="outline" title="Tạm dừng" size="icon-xs" className="h-7 w-7 rounded-lg" onClick={() => pauseJob(job.id)}>
+                            <PauseIcon className="size-3.5" />
+                          </Button>
+                        </>
                       )}
                     </div>
                   )}

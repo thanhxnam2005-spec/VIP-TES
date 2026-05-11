@@ -81,7 +81,9 @@ export async function scrapeChapters(
       signal?.throwIfAborted();
 
       // Wait BEFORE starting the next chapter to ensure tab switching is synced with delay
-      if (i > 0) {
+      // Only do this for standard fetch. STV/Fanqie extension handles its own delay now.
+      const isTabBased = adapter.name === "STV" || adapter.name === "Fanqie Novel";
+      if (i > 0 && !isTabBased) {
         await delay(safeDelayMs);
       }
 
@@ -114,7 +116,8 @@ export async function scrapeChapters(
               chapter.url,
               // For Fanqie real URLs: don't send allowNext (we navigate directly)
               isFanqieRealUrl ? false : (i < chapters.length - 1 && !signal?.aborted),
-              false
+              false,
+              safeDelayMs
             );
             html = res.data ?? "";
             contentText = (res as any).contentText ?? res.content ?? undefined;

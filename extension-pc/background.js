@@ -187,37 +187,94 @@ chrome.runtime.onMessageExternal.addListener((request, _sender, sendResponse) =>
 // ══════════════════════════════════════════════════════════════
 // 5. STV CHAPTER FETCHING (unchanged)
 // ══════════════════════════════════════════════════════════════
-async function findSTVTab() {
-  const tabs = await chrome.tabs.query({ url: ["*://sangtacviet.com/*", "*://sangtacviet.app/*", "*://sangtacviet.vip/*"] });
-  return tabs.length > 0 ? tabs[0].id : null;
+async function findSTVTab(targetUrl) {
+  const tabs = await chrome.tabs.query({ url: ["*://sangtacviet.com/*", "*://sangtacviet.app/*", "*://sangtacviet.vip/*", "*://fanqienovel.com/*"] });
+  if (tabs.length === 0) return null;
+  
+  // Try to find the tab that is closest to our target URL (same host + same novel path)
+  if (targetUrl) {
+    try {
+      const targetObj = new URL(targetUrl);
+      const targetPathParts = targetObj.pathname.split('/').filter(Boolean); // e.g. ['truyen', 'uukanshu', '1', 'novelid', 'chapterid']
+      
+      // We assume the first 4 parts usually identify the novel on STV: /truyen/host/1/novelid
+      const targetNovelPrefix = targetPathParts.slice(0, 4).join('/');
+
+      for (const t of tabs) {
+        if (!t.url) continue;
+        const tObj = new URL(t.url);
+        if (tObj.hostname === targetObj.hostname) {
+          if (tObj.pathname.includes(targetNovelPrefix)) {
+            return t.id;
+          }
+        }
+      }
+      
+      // Fallback: Just match hostname
+      const hostMatch = tabs.find(t => t.url && new URL(t.url).hostname === targetObj.hostname);
+      if (hostMatch) return hostMatch.id;
+    } catch (e) {}
+  }
+  
+  return tabs[0].id;
 }
 
 async function stvFetchChapter(payload, sendResponse) {
   try {
-    const tabId = await findSTVTab();
+    const tabId = await findSTVTab(payload.chapterUrl);
     if (!tabId) { sendResponse({ success: false, error: "Mở 1 tab SangTacViet trước!" }); return; }
-    let content = "", title = "";
-    for (let i = 0; i < 40; i++) {
+    
+    // 1. Wait for the user-specified delay BEFORE extracting.
+    // The user wants to wait e.g. 5 seconds (out of 7) to let the page fully load.
+    const userDelay = payload.delayMs || 7000;
+    const waitBeforeExtract = Math.max(1000, userDelay - 2000); // e.g. 5000ms
+    
+    console.log(`[STV] Waiting ${waitBeforeExtract}ms before extracting text to ensure full load...`);
+    for (let i = 0; i < waitBeforeExtract / 500; i++) {
       if (!stvScrapeActive) break;
-      const cached = contentCache.get(tabId);
-      if (cached && cached.length > 200) { content = cached.content; title = cached.title; contentCache.delete(tabId); break; }
-      if (i === 2 || i === 5 || i === 8) {
-        try {
-          const resp = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_NOW" });
-          if (resp && resp.length > 200) { content = resp.content; title = resp.title; break; }
-        } catch {}
-      }
       await delay(500);
     }
+
+    if (!stvScrapeActive) {
+      sendResponse({ success: false, stopped: true });
+      return;
+    }
+
+    let content = "", title = "";
+    
+    // Clear any stale cache that might have been captured too early
     contentCache.delete(tabId);
+
+    // 2. Extract NOW
+    for (let i = 0; i < 10; i++) {
+      if (!stvScrapeActive) break;
+      try {
+        const resp = await chrome.tabs.sendMessage(tabId, { type: "EXTRACT_NOW" });
+        if (resp && resp.length > 200) { 
+          content = resp.content; 
+          title = resp.title; 
+          break; 
+        }
+      } catch {}
+      await delay(500);
+    }
+    
+    // 3. Trigger GO_NEXT for the next iteration
     const shouldNext = payload.allowNext !== false && stvScrapeActive;
     if (shouldNext && content.length > 200) {
       try {
         await chrome.tabs.sendMessage(tabId, { type: "GO_NEXT" });
-        await waitForTabLoad(tabId, 25000);
-        for (let i = 0; i < 30; i++) { if (!stvScrapeActive || contentCache.has(tabId)) break; await delay(500); }
+        // We let the page navigate, but we should wait the REMAINING time of the user's delay
+        // before returning, so the total interval respects the user's setting (e.g. 7s).
+        const remainingDelay = Math.max(0, userDelay - waitBeforeExtract);
+        console.log(`[STV] GO_NEXT triggered, waiting remaining ${remainingDelay}ms...`);
+        for (let i = 0; i < remainingDelay / 500; i++) {
+          if (!stvScrapeActive) break;
+          await delay(500);
+        }
       } catch (e) { console.log("[STV] GO_NEXT Error:", e.message); }
     }
+    
     sendResponse({ success: true, content, contentText: content, data: "", length: content.length, title, timedOut: content.length < 200, stopped: !stvScrapeActive });
   } catch (error) { sendResponse({ success: false, error: error.message }); }
 }
