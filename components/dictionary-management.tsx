@@ -322,7 +322,8 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         .from("dictionaries")
         .getPublicUrl(filename);
       
-      const res = await fetch(`${publicUrlData.publicUrl}?t=${Date.now()}`, { cache: "no-store" });
+      // Dùng cache để tải nhanh hơn qua CDN, chỉ bypass cache khi cần dữ liệu mới nhất
+      const res = await fetch(publicUrlData.publicUrl);
 
       if (!res.ok) {
         toast.error(`Từ điển ${filename} chưa có trên Kho chung!`, { id: toastId });
@@ -410,7 +411,8 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
               .from("dictionaries")
               .getPublicUrl(filename);
             
-            const res = await fetch(`${publicUrlData.publicUrl}?t=${Date.now()}`, { cache: "no-store" });
+            // Dùng CDN cache để tải nhanh hơn
+            const res = await fetch(publicUrlData.publicUrl);
             if (!res.ok) return { source, entries: [] as { chinese: string; vietnamese: string }[] };
             
             const text = await res.text();
