@@ -15,7 +15,7 @@ import { extensionFetch, checkExtensionStatus, getExtensionId, setExtensionId } 
 import { serverAnalyzeNovel } from "@/lib/scraper/server-scraper-client";
 import { createCustomAdapter, type CustomScraperConfig } from "@/lib/scraper/adapters/Universal";
 import { useScraperQueueStore } from "@/lib/stores/scraper-queue";
-import { SettingsIcon, BookIcon, PauseIcon, PlayIcon, TrashIcon, DownloadIcon, CheckCircleIcon, GlobeIcon, ZapIcon, LoaderIcon, SlidersHorizontalIcon } from "lucide-react";
+import { SettingsIcon, BookIcon, PauseIcon, PlayIcon, TrashIcon, DownloadIcon, CheckCircleIcon, GlobeIcon, ZapIcon, LoaderIcon, SlidersHorizontalIcon, SkipForwardIcon } from "lucide-react";
 
 /** URLs that can be fetched server-side (no extension needed) */
 const SERVER_FETCH_DOMAINS = [
@@ -41,6 +41,7 @@ export default function ScraperLibraryPage() {
   const resumeJob = useScraperQueueStore((s) => s.resumeJob);
   const cancelJob = useScraperQueueStore((s) => s.cancelJob);
   const clearDone = useScraperQueueStore((s) => s.clearDone);
+  const skipChapterJob = useScraperQueueStore((s) => s.skipChapterJob);
 
   const [extId, setExtId] = useState("");
   const [extVersion, setExtVersion] = useState<string | null>(null);
@@ -512,14 +513,17 @@ export default function ScraperLibraryPage() {
                       </div>
                       
                       <div className="flex gap-0.5 shrink-0">
+                        {(job.status !== "done") && (
+                           <Button size="icon" variant="ghost" title="Bỏ qua chương này" className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted" onClick={() => skipChapterJob(job.id)}><SkipForwardIcon className="w-3.5 h-3.5" /></Button>
+                        )}
                         {(job.status === "pending" || job.status === "paused" || job.status === "error") && (
-                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => resumeJob(job.id)}><PlayIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Tiếp tục" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => resumeJob(job.id)}><PlayIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {job.status === "scraping" && (
-                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => pauseJob(job.id)}><PauseIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Tạm dừng" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => pauseJob(job.id)}><PauseIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {(job.status !== "done") && (
-                           <Button size="icon" variant="ghost" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => cancelJob(job.id)}><TrashIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Hủy bỏ" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => cancelJob(job.id)}><TrashIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {job.status === "done" && (
                            <CheckCircleIcon className="w-5 h-5 text-green-500 mr-1" />
