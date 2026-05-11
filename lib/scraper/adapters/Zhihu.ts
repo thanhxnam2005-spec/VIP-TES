@@ -8,10 +8,12 @@ function getPathHash(glyph: any): string {
   return glyph.path.commands
     .map((cmd: any) => {
       let s = cmd.type;
-      if (cmd.x !== undefined) s += Math.round(cmd.x);
-      if (cmd.y !== undefined) s += Math.round(cmd.y);
       if (cmd.x1 !== undefined) s += Math.round(cmd.x1);
       if (cmd.y1 !== undefined) s += Math.round(cmd.y1);
+      if (cmd.x2 !== undefined) s += Math.round(cmd.x2);
+      if (cmd.y2 !== undefined) s += Math.round(cmd.y2);
+      if (cmd.x !== undefined) s += Math.round(cmd.x);
+      if (cmd.y !== undefined) s += Math.round(cmd.y);
       return s;
     })
     .join("");
@@ -75,7 +77,7 @@ export const ZhihuAdapter: SiteAdapter = {
 
     // 1. Font Decryption
     let fontMap = new Map<string, string>();
-    const fontMatch = html.match(/base64,(AAEAAAA[A-Za-z0-9+/=]+)/);
+    const fontMatch = html.match(/base64,(AAEAAAA[A-Za-z0-9+/=]+|d09GRg[A-Za-z0-9+/=]+)/);
     if (fontMatch) {
       try {
         const b64 = fontMatch[1];
@@ -103,43 +105,24 @@ export const ZhihuAdapter: SiteAdapter = {
     let textContent = "";
 
     if (contentEl) {
-      // Trích xuất các đoạn văn (p) và xuống dòng
-      const paragraphs = contentEl.querySelectorAll("p");
-      if (paragraphs.length > 0) {
-        paragraphs.forEach(p => {
-          const text = p.textContent?.trim();
-          if (text) {
-            textContent += text + "\n\n";
-          }
-        });
-      } else {
-        // Fallback nếu không có thẻ p (hiếm)
-        textContent = contentEl.textContent?.trim() || "Nội dung rỗng";
-      }
-    } else {
-      // Fallback: Tìm thẻ div có nhiều thẻ p nhất
-      const allDivs = doc.querySelectorAll("div");
-      let maxPCount = 0;
-      let bestDiv: Element | null = null;
-      for (const div of Array.from(allDivs)) {
-        const pCount = div.querySelectorAll("p").length;
-        if (pCount > maxPCount) {
-          maxPCount = pCount;
-          bestDiv = div;
-        }
-      }
+      // Create a clone to avoid mutating the document
+      const clone = contentEl.cloneNode(true) as Element;
+      
+      // Replace <br> with newlines
+      const brs = clone.querySelectorAll("br");
+      brs.forEach(br => br.replaceWith("\n"));
 
-      if (bestDiv && maxPCount > 0) {
-        const paragraphs = bestDiv.querySelectorAll("p");
-        paragraphs.forEach(p => {
-          const text = p.textContent?.trim();
-          if (text) {
-            textContent += text + "\n\n";
-          }
-        });
-      } else {
-        return { content: "Không tìm thấy nội dung bài viết Zhihu.", title: "Toàn bộ bài viết" };
-      }
+      // Replace </p> and </div> with newlines
+      const blocks = clone.querySelectorAll("p, div");
+      blocks.forEach(block => {
+        block.appendChild(doc.createTextNode("\n\n"));
+      });
+
+      textContent = clone.textContent?.trim() || "Nội dung rỗng";
+      // Normalize multiple newlines
+      textContent = textContent.replace(/\n{3,}/g, "\n\n");
+    } else {
+      return { content: "Không tìm thấy nội dung bài viết Zhihu.", title: "Toàn bộ bài viết" };
     }
 
     if (fontMap.size > 0 && textContent) {
