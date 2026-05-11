@@ -35,7 +35,8 @@ export default function AdminPage() {
   const loadData = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (user?.email !== "nthanhnam2005@gmail.com" && user?.email !== "thanhxnam2005@gmail.com") {
+    const email = user?.email?.toLowerCase();
+    if (email !== "nthanhnam2005@gmail.com" && email !== "thanhxnam2005@gmail.com") {
       setIsAdmin(false);
       setLoading(false);
       return;

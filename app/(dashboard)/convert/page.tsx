@@ -105,7 +105,8 @@ export default function ConvertPage() {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email === "nthanhnam2005@gmail.com" || data.user?.email === "thanhxnam2005@gmail.com") {
+      const email = data.user?.email?.toLowerCase();
+      if (email === "nthanhnam2005@gmail.com" || email === "thanhxnam2005@gmail.com") {
         setIsAdmin(true);
       }
     });
@@ -154,7 +155,6 @@ export default function ConvertPage() {
   // Use persisted extractedTerms from store
   const extractedTerms = store.extractedTerms;
   const [autoSave, setAutoSave] = useState(true);
-  const [trainPassword, setTrainPassword] = useState("");
 
   // Worker configs are persisted in the store
   const workerConfigs = store.workerConfigs;
@@ -361,24 +361,12 @@ export default function ConvertPage() {
                   variant="default"
                   size="sm"
                   onClick={handleStartQueue}
-                  disabled={!input.trim() || trainPassword !== "159357"}
+                  disabled={!input.trim()}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <SparklesIcon className="mr-1.5 size-3.5" />
                   Bắt đầu Cuốn chiếu Song song (15 dòng/Worker)
                 </Button>
-              )}
-              
-              {!isQueueRunning && (
-                <div className="flex items-center gap-2">
-                  <Input 
-                    type="password" 
-                    placeholder="Mật khẩu (159...)" 
-                    value={trainPassword}
-                    onChange={(e) => setTrainPassword(e.target.value)}
-                    className="h-8 w-32 text-xs"
-                  />
-                </div>
               )}
               
               <div className="flex items-center gap-2 border-l pl-2 ml-2">
@@ -406,8 +394,12 @@ export default function ConvertPage() {
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-muted/30 p-1 rounded-md border gap-2">
             <TabsList className="bg-transparent border-none h-8 shrink-0">
               <TabsTrigger value="qt" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Từ điển QT (Live)</TabsTrigger>
-              <TabsTrigger value="train" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Train từ điển (Đa luồng)</TabsTrigger>
-              <TabsTrigger value="results" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Kết quả Từ điển Đã Lưu</TabsTrigger>
+              {isAdmin && (
+                <>
+                  <TabsTrigger value="train" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Train từ điển (Đa luồng)</TabsTrigger>
+                  <TabsTrigger value="results" className="text-xs data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Kết quả Từ điển Đã Lưu</TabsTrigger>
+                </>
+              )}
             </TabsList>
             
             {activeTab === "train" && (

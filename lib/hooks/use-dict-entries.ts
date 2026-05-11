@@ -163,23 +163,7 @@ export async function loadDictDataForWorker(
           .map((r) => ({ source: r.source, rawText: r.text })),
       );
 
-      // Also write structured entries to dictEntries in background
-      // (needed for management UI and name extraction)
-      for (const { source, text, ok } of fetchResults) {
-        if (!ok) continue;
-        const parsed = parseDictText(text);
-        await db.dictEntries.where("source").equals(source).delete();
-        const CHUNK = 10_000;
-        for (let i = 0; i < parsed.length; i += CHUNK) {
-          const chunk = parsed.slice(i, i + CHUNK).map((e) => ({
-            id: crypto.randomUUID(),
-            source: source as DictSource,
-            chinese: e.chinese,
-            vietnamese: e.vietnamese,
-          }));
-          await db.dictEntries.bulkAdd(chunk);
-        }
-      }
+      // Removed dictEntries writes to save memory and make it instant
 
       // Write meta
       await db.dictMeta.put({
@@ -221,23 +205,7 @@ export async function loadDictFromPublic(
     const parsed = parseDictText(text);
     sourceCounts[source] = parsed.length;
 
-    // Clear existing entries for this source
-    await db.dictEntries.where("source").equals(source).delete();
-
-    // Bulk insert in chunks
-    for (let i = 0; i < parsed.length; i += CHUNK_SIZE) {
-      const chunk = parsed.slice(i, i + CHUNK_SIZE).map((e) => ({
-        id: crypto.randomUUID(),
-        source: source as DictSource,
-        chinese: e.chinese,
-        vietnamese: e.vietnamese,
-      }));
-      await db.dictEntries.bulkAdd(chunk);
-      onProgress?.(
-        source,
-        Math.min(100, ((i + CHUNK_SIZE) / parsed.length) * 100),
-      );
-    }
+    // Removed dictEntries insert to make it instant
 
     // Also update dictCache
     await db.dictCache.put({ source, rawText: text });
@@ -260,30 +228,18 @@ export async function importDictFile(
   const text = await file.text();
   const parsed = parseDictText(text);
 
-  // Clear existing entries for this source
-  await db.dictEntries.where("source").equals(source).delete();
-
-  // Bulk insert in chunks
-  for (let i = 0; i < parsed.length; i += CHUNK_SIZE) {
-    const chunk = parsed.slice(i, i + CHUNK_SIZE).map((e) => ({
-      id: crypto.randomUUID(),
-      source,
-      chinese: e.chinese,
-      vietnamese: e.vietnamese,
-    }));
-    await db.dictEntries.bulkAdd(chunk);
-  }
+  // Removed dictEntries insert to make it instant
 
   // Update dictCache with new raw text
   await db.dictCache.put({ source, rawText: text });
 
-  // Update meta
-  const meta = await db.dictMeta.get("dict-meta");
-  if (meta) {
-    meta.sources[source] = parsed.length;
-    meta.loadedAt = new Date();
-    await db.dictMeta.put(meta);
+  let meta = await db.dictMeta.get("dict-meta");
+  if (!meta) {
+    meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
   }
+  meta.sources[source] = parsed.length;
+  meta.loadedAt = new Date();
+  await db.dictMeta.put(meta);
 
   return parsed.length;
 }
@@ -291,26 +247,17 @@ export async function importDictFile(
 export async function saveDictSource(source: DictSource, text: string): Promise<number> {
   const parsed = parseDictText(text);
 
-  await db.dictEntries.where("source").equals(source).delete();
-
-  for (let i = 0; i < parsed.length; i += CHUNK_SIZE) {
-    const chunk = parsed.slice(i, i + CHUNK_SIZE).map((e) => ({
-      id: crypto.randomUUID(),
-      source,
-      chinese: e.chinese,
-      vietnamese: e.vietnamese,
-    }));
-    await db.dictEntries.bulkAdd(chunk);
-  }
+  // Removed dictEntries insert to make it instant
 
   await db.dictCache.put({ source, rawText: text });
 
-  const meta = await db.dictMeta.get("dict-meta");
-  if (meta) {
-    meta.sources[source] = parsed.length;
-    meta.loadedAt = new Date();
-    await db.dictMeta.put(meta);
+  let meta = await db.dictMeta.get("dict-meta");
+  if (!meta) {
+    meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
   }
+  meta.sources[source] = parsed.length;
+  meta.loadedAt = new Date();
+  await db.dictMeta.put(meta);
 
   return parsed.length;
 }
@@ -351,35 +298,23 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
   // 2. Update dictCache with new text (1 IDB write)
   await db.dictCache.put({ source, rawText: updatedText });
 
-  // 3. Directly add ONLY new entries to dictEntries (O(k) instead of O(N) delete+reinsert)
-  const newRecords = uniqueNewEntries.map(e => ({
-    id: crypto.randomUUID(),
-    source: source as DictSource,
-    chinese: e.chinese,
-    vietnamese: e.vietnamese,
-  }));
-  
-  if (newRecords.length > 0) {
-    // Insert in chunks to stay responsive on mobile
-    const CHUNK = 5000;
-    for (let i = 0; i < newRecords.length; i += CHUNK) {
-      await db.dictEntries.bulkAdd(newRecords.slice(i, i + CHUNK));
-    }
-  }
+  // Removed dictEntries insert to make it instant
 
   // 4. Update meta count (1 IDB write)
-  const meta = await db.dictMeta.get("dict-meta");
-  if (meta) {
-    meta.sources[source] = (meta.sources[source] || 0) + uniqueNewEntries.length;
-    meta.loadedAt = new Date();
-    await db.dictMeta.put(meta);
+  let meta = await db.dictMeta.get("dict-meta");
+  if (!meta) {
+    meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
   }
+  meta.sources[source] = (meta.sources[source] || 0) + uniqueNewEntries.length;
+  meta.loadedAt = new Date();
+  await db.dictMeta.put(meta);
 
   return uniqueNewEntries.length;
 }
 
 export async function clearDictSource(source: DictSource): Promise<void> {
-  await db.dictEntries.where("source").equals(source).delete();
+  // Wipe all entries related to this source
+  await db.dictEntries.where("source").equals(source).delete(); // Clean up old data to free disk space
   await db.dictCache.delete(source);
 }
 
@@ -435,12 +370,16 @@ export async function exportDictSource(source: DictSource): Promise<void> {
     return;
   }
 
-  // Fallback: rebuild from entries
-  const entries = await db.dictEntries
-    .where("source")
-    .equals(source)
-    .toArray();
-  const text = entries.map((e) => `${e.chinese}=${e.vietnamese}`).join("\n");
+  // Fallback: parse raw text from API if cache misses
+  const url = DICT_FILES[source];
+  if (url) {
+    const resp = await fetch(url);
+    if (resp.ok) {
+      const text = await resp.text();
+      downloadTextFile(`${source}.txt`, text);
+      return;
+    }
+  }
   downloadTextFile(`${source}.txt`, text);
 }
 
@@ -473,20 +412,23 @@ export async function getDictEntriesForWorker(): Promise<
     return result;
   }
 
-  // Fallback: read from dictEntries table (slow)
+  // Fallback if no cache
   const result = {} as Record<
     DictSource,
     Array<{ chinese: string; vietnamese: string }>
   >;
   for (const source of ALL_SOURCES) {
-    const entries = await db.dictEntries
-      .where("source")
-      .equals(source)
-      .toArray();
-    result[source] = entries.map((e) => ({
-      chinese: e.chinese,
-      vietnamese: e.vietnamese,
-    }));
+    const url = DICT_FILES[source];
+    if (url) {
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          result[source] = parseDictText(await resp.text());
+          continue;
+        }
+      } catch {}
+    }
+    result[source] = [];
   }
   await appendOverrides(result);
   return result;

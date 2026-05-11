@@ -40,7 +40,8 @@ export function useProfile() {
         .single();
       
       if (data) {
-        setProfile(data as UserProfile);
+        // Fallback to user.email if profile.email is missing
+        setProfile({ ...data, email: data.email || user.email } as UserProfile);
       }
     }
     setLoading(false);
@@ -52,7 +53,8 @@ export function useProfile() {
 
   const isVip = () => {
     if (freeMode) return true;
-    if (profile?.email === "nthanhnam2005@gmail.com" || profile?.email === "thanhxnam2005@gmail.com") return true;
+    const email = profile?.email?.toLowerCase();
+    if (email === "nthanhnam2005@gmail.com" || email === "thanhxnam2005@gmail.com") return true;
     if (!profile?.vip_until) return false;
     return new Date(profile.vip_until) > new Date();
   };

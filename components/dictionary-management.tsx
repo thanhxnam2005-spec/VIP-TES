@@ -158,7 +158,8 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email === "nthanhnam2005@gmail.com" || data.user?.email === "thanhxnam2005@gmail.com") {
+      const email = data.user?.email?.toLowerCase();
+      if (email === "nthanhnam2005@gmail.com" || email === "thanhxnam2005@gmail.com") {
         setIsAdmin(true);
       }
     });
@@ -333,6 +334,18 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const text = await res.text();
       const entries = parseDictLines(text);
       const count = await appendToDictSource(source, entries);
+
+      if (isAdmin) {
+        const cached = await db.dictCache.get(source as any);
+        if (cached?.rawText) {
+          await fetch("/api/dev/sync-dict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source, text: cached.rawText }),
+          }).catch(() => {});
+        }
+      }
+
       toast.success(`Đã tự động gộp ${count.toLocaleString()} mục mới từ Kho chung cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
@@ -427,6 +440,17 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
             const count = await appendToDictSource(result.value.source, result.value.entries);
             newEntriesCount += count;
             if (count > 0) downloadedCount++;
+
+            if (isAdmin) {
+              const cached = await db.dictCache.get(result.value.source as any);
+              if (cached?.rawText) {
+                await fetch("/api/dev/sync-dict", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ source: result.value.source, text: cached.rawText }),
+                }).catch(() => {});
+              }
+            }
           }
         }
         
@@ -638,21 +662,50 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   const [lookupQuery, setLookupQuery] = useState("");
   const systemResults = useLiveQuery(async () => {
     if (!lookupQuery || lookupQuery.length < 1) return [];
-    return db.dictEntries
-      .where("chinese")
-      .startsWith(lookupQuery)
-      .limit(50)
-      .toArray();
+    const caches = await db.dictCache.toArray();
+    const results: Array<{ chinese: string, vietnamese: string, source: string }> = [];
+    for (const c of caches) {
+      if (!c.rawText) continue;
+      const lines = c.rawText.split(/\r?\n/);
+      for (const line of lines) {
+        if (line.startsWith(lookupQuery)) {
+          const idx = line.indexOf("=");
+          if (idx > 0) {
+            const ch = line.slice(0, idx).trim();
+            if (ch.startsWith(lookupQuery)) {
+              results.push({ chinese: ch, vietnamese: line.slice(idx + 1).trim(), source: c.source });
+            }
+          }
+        }
+        if (results.length >= 50) return results;
+      }
+    }
+    return results;
   }, [lookupQuery]);
 
   // Suggestions for currently editing/adding word
   const currentChinese = editingEntry ? newChinese : newChinese; // simplified
   const systemSuggestions = useLiveQuery(async () => {
     if (!newChinese) return [];
-    return db.dictEntries
-      .where("chinese")
-      .equals(newChinese)
-      .toArray();
+    const caches = await db.dictCache.toArray();
+    const results: Array<{ chinese: string, vietnamese: string, source: string }> = [];
+    const prefix = newChinese + "=";
+    for (const c of caches) {
+      if (!c.rawText) continue;
+      const lines = c.rawText.split(/\r?\n/);
+      for (const line of lines) {
+        if (line.startsWith(prefix)) {
+          const idx = line.indexOf("=");
+          if (idx > 0) {
+            const ch = line.slice(0, idx).trim();
+            if (ch === newChinese) {
+              results.push({ chinese: ch, vietnamese: line.slice(idx + 1).trim(), source: c.source });
+            }
+          }
+        }
+      }
+    }
+    return results;
   }, [newChinese]);
 
   // Paginate
@@ -968,25 +1021,27 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                 Tải về tất cả từ Kho chung
               </Button>
               {isAdmin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUploadAllToSupabase}
-                  className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
-                >
-                  <CloudUploadIcon className="mr-2 size-3.5" />
-                  Tải lên tất cả (Admin)
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUploadAllToSupabase}
+                    className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
+                  >
+                    <CloudUploadIcon className="mr-2 size-3.5" />
+                    Tải lên tất cả (Admin)
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReloadDicts}
+                    disabled={isReloading}
+                  >
+                    <RefreshCwIcon className="mr-2 size-3.5" />
+                    {isReloading ? "Đang tải..." : "Tải lại tất cả (File txt)"}
+                  </Button>
+                </>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReloadDicts}
-                disabled={isReloading}
-              >
-                <RefreshCwIcon className="mr-2 size-3.5" />
-                {isReloading ? "Đang tải..." : "Tải lại tất cả (File txt)"}
-              </Button>
             </div>
           </div>
         </CardHeader>
@@ -1066,36 +1121,36 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                                   </>
                                 )}
                                 {isAdmin && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => handleSyncToLocalCode(source)}
-                                    disabled={count === 0}
-                                    title="Lưu thẳng vào thư mục public/dict (Chỉ Admin)"
-                                    className="text-amber-500 hover:text-amber-600"
-                                  >
-                                    <SaveIcon className="size-3.5" />
-                                  </Button>
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleSyncToLocalCode(source)}
+                                      disabled={count === 0}
+                                      title="Lưu thẳng vào thư mục public/dict (Chỉ Admin)"
+                                      className="text-amber-500 hover:text-amber-600"
+                                    >
+                                      <SaveIcon className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleDownload(source)}
+                                      disabled={count === 0}
+                                      title="Tải xuống máy"
+                                    >
+                                      <DownloadIcon className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleReplaceClick(source)}
+                                      title="Tải lên máy"
+                                    >
+                                      <FileUpIcon className="size-3.5" />
+                                    </Button>
+                                  </>
                                 )}
-                                {isAdmin && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    onClick={() => handleDownload(source)}
-                                    disabled={count === 0}
-                                    title="Tải xuống máy"
-                                  >
-                                    <DownloadIcon className="size-3.5" />
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => handleReplaceClick(source)}
-                                  title="Tải lên máy"
-                                >
-                                  <FileUpIcon className="size-3.5" />
-                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
