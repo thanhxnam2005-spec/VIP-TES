@@ -62,38 +62,61 @@ export const WikiDichAdapter: SiteAdapter = {
 
     extractChapters(doc);
 
-    // ── Pagination ──
-    // WikiDich pagination looks like: <ul class="pagination"> <li><a href="?start=50">2</a></li> ...
-    const paginationLinks = Array.from(doc.querySelectorAll(".pagination li a, ul.pagination li a"));
-    const pageUrls = new Set<string>();
-    paginationLinks.forEach(a => {
-      const href = a.getAttribute("href");
-      if (href && !href.startsWith("javascript")) {
-        pageUrls.add(new URL(href, base).toString());
-      }
-    });
+    // ── Pagination (AJAX) ──
+    const bookIdMatch = html.match(/var\s+bookId\s*=\s*"([^"]+)"/);
+    const signKeyMatch = html.match(/var\s+signKey\s*=\s*"([^"]+)"/);
 
-    if (pageUrls.size > 0) {
-      console.log(`[WikiDich] Found ${pageUrls.size} pagination links. Fetching...`);
+    if (bookIdMatch && signKeyMatch) {
+      const bookId = bookIdMatch[1];
+      const signKey = signKeyMatch[1];
+      console.log(`[WikiDich] Found AJAX Pagination config: bookId=${bookId}, signKey=${signKey.substring(0, 10)}...`);
+
       try {
         const { extensionFetch } = await import("../extension-bridge");
-        for (const pageUrl of Array.from(pageUrls)) {
-          // Skip if we already fetched this URL or it's the current URL
-          if (pageUrl === url) continue;
-          
+
+        const fuzzySign = (text: string) => text.substring(13) + text.substring(0, 13);
+        
+        // SHA-256 hashing using Web Crypto API
+        const sha256 = async (message: string) => {
+          const msgBuffer = new TextEncoder().encode(message);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        };
+
+        let currentStart = 501; // First page (0-501) is already loaded
+        const pageSize = 501;
+        let hasMore = true;
+
+        while (hasMore) {
           try {
-            console.log(`[WikiDich] Fetching chapter list page: ${pageUrl}`);
-            const res = await extensionFetch(pageUrl, { timeout: 10000 });
-            if (res.html) {
+            const rawSign = fuzzySign(signKey + currentStart + pageSize);
+            const sign = await sha256(rawSign);
+            const ajaxUrl = new URL(`/book/index?bookId=${bookId}&start=${currentStart}&size=${pageSize}&signKey=${signKey}&sign=${sign}`, base).toString();
+            
+            console.log(`[WikiDich] Fetching chapters ${currentStart} to ${currentStart + pageSize}...`);
+            const res = await extensionFetch(ajaxUrl, { timeout: 10000 });
+            
+            if (res.html && res.html.trim().length > 0) {
               const pDoc = new DOMParser().parseFromString(res.html, "text/html");
+              const oldLength = chapters.length;
               extractChapters(pDoc);
+              
+              if (chapters.length - oldLength === 0) {
+                hasMore = false; // No new chapters found
+              } else {
+                currentStart += pageSize;
+              }
+            } else {
+              hasMore = false;
             }
           } catch (e) {
-            console.warn(`[WikiDich] Failed to fetch page ${pageUrl}:`, e);
+            console.warn(`[WikiDich] Failed to fetch AJAX page ${currentStart}:`, e);
+            hasMore = false;
           }
         }
       } catch (e) {
-        console.warn("[WikiDich] Could not import extensionFetch for pagination", e);
+        console.warn("[WikiDich] Could not import extensionFetch for AJAX pagination", e);
       }
     }
 
