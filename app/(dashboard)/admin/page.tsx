@@ -147,10 +147,14 @@ export default function AdminPage() {
       return;
     }
 
+    const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+
     const { error } = await supabase
       .from("profiles")
       .update({ 
         admin_model_quota: quota,
+        admin_daily_quota_limit: quota,
+        admin_quota_last_reset: currentVnDate,
         admin_assigned_model: model 
       })
       .eq("id", userId);

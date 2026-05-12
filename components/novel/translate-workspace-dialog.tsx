@@ -157,6 +157,12 @@ export function TranslateWorkspaceDialog({
   const selectedProviderId = currentModel?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
+  const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+  const rawQuota = (profile as any)?.admin_model_quota || 0;
+  const dailyLimit = (profile as any)?.admin_daily_quota_limit || 0;
+  const lastReset = (profile as any)?.admin_quota_last_reset || "";
+  const displayQuota = (lastReset !== currentVnDate && dailyLimit > 0) ? dailyLimit : rawQuota;
+
   const handleProviderChange = async (providerId: string) => {
     await db.novels.update(novelId, {
       customTranslateProviderId: providerId,
@@ -176,7 +182,7 @@ export function TranslateWorkspaceDialog({
       : settings.translateModel;
 
     // Ưu tiên tuyệt đối dùng Admin Model nếu còn lượt (Không cần quan tâm họ có chọn AI hay không)
-    if ((profile as any)?.admin_model_quota > 0) {
+    if (displayQuota > 0) {
       activeModel = { providerId: "admin-provider", modelId: "admin-model" };
     }
 
@@ -187,7 +193,7 @@ export function TranslateWorkspaceDialog({
     );
     
     // Nếu giải quyết model lỗi, nhưng user vẫn còn lượt, thì ép dùng Admin Model
-    if (!model && ((profile as any)?.admin_model_quota > 0)) {
+    if (!model && displayQuota > 0) {
       return await resolveChapterToolModel(
         { providerId: "admin-provider", modelId: "admin-model" },
         defaultProvider,
@@ -514,7 +520,7 @@ export function TranslateWorkspaceDialog({
                       else setConfirmMode("khuyen_nghi");
                     }}
                     className={cn("w-full gap-2 transition-all", confirmMode === "khuyen_nghi" && "bg-amber-600 hover:bg-amber-700 text-white")}
-                    disabled={!(((profile as any)?.admin_model_quota > 0) || (selectedProviderId && currentModel?.modelId))}
+                    disabled={!(displayQuota > 0 || (selectedProviderId && currentModel?.modelId))}
                   >
                     <ZapIcon className="size-4" />
                     {confirmMode === "khuyen_nghi" ? "Xác nhận dịch bằng chế độ này" : "Prompt Khuyến Nghị"}
@@ -526,7 +532,7 @@ export function TranslateWorkspaceDialog({
                       else setConfirmMode("cuc_ngan");
                     }}
                     className={cn("w-full gap-2 transition-all", confirmMode === "cuc_ngan" && "bg-amber-600 hover:bg-amber-700 text-white")}
-                    disabled={!(((profile as any)?.admin_model_quota > 0) || (selectedProviderId && currentModel?.modelId))}
+                    disabled={!(displayQuota > 0 || (selectedProviderId && currentModel?.modelId))}
                   >
                     <ZapIcon className="size-4" />
                     {confirmMode === "cuc_ngan" ? "Xác nhận dịch bằng chế độ này" : "Prompt Cực Ngắn"}
@@ -562,7 +568,7 @@ export function TranslateWorkspaceDialog({
                   else setConfirmMode("custom");
                 }}
                 className={cn("w-full gap-2 mt-2 transition-all", confirmMode === "custom" ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-blue-600 hover:bg-blue-700 text-white")}
-                disabled={(!(((profile as any)?.admin_model_quota > 0) || (selectedProviderId && currentModel?.modelId))) || !hasCustomPrompt}
+                disabled={(!(displayQuota > 0 || (selectedProviderId && currentModel?.modelId))) || !hasCustomPrompt}
                 title={!hasCustomPrompt ? "Cần tạo System Prompt ở phần Cấu hình Prompt Dịch trước" : ""}
               >
                 <SparklesIcon className="size-4" />
@@ -571,11 +577,11 @@ export function TranslateWorkspaceDialog({
             )}
 
             {/* Hiển thị số lượt miễn phí */}
-            {((profile as any)?.admin_model_quota > 0) && (
+            {(displayQuota > 0) && (
               <div className="text-center mt-2">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium border border-blue-200 dark:border-blue-800">
                   <SparklesIcon className="size-3" />
-                  Bạn còn {(profile as any).admin_model_quota} lượt dịch tự động miễn phí!
+                  Bạn còn {displayQuota} lượt dịch tự động miễn phí!
                 </span>
               </div>
             )}

@@ -34,23 +34,44 @@ export async function POST(req: NextRequest) {
     // Check quota and assigned model
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("admin_model_quota, admin_assigned_model")
+      .select("admin_model_quota, admin_assigned_model, admin_daily_quota_limit, admin_quota_last_reset")
       .eq("id", userId)
       .single();
 
-    if (error || !profile || profile.admin_model_quota <= 0) {
-      return new Response(JSON.stringify({ error: "Forbidden. Hết lượt dịch Admin Model." }), { status: 403 });
+    if (error || !profile) {
+      return new Response(JSON.stringify({ error: "Forbidden. Lỗi truy xuất thông tin." }), { status: 403 });
+    }
+
+    const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+    let currentQuota = profile.admin_model_quota || 0;
+    const dailyLimit = profile.admin_daily_quota_limit || 0;
+
+    // Lazy Reset: Bơm đầy lại nếu đã sang ngày mới (Giờ VN)
+    if (profile.admin_quota_last_reset !== currentVnDate && dailyLimit > 0) {
+      currentQuota = dailyLimit;
+      
+      // Update reset status and decrement 1 for this request
+      await supabase
+        .from("profiles")
+        .update({ 
+          admin_model_quota: currentQuota - 1, 
+          admin_quota_last_reset: currentVnDate 
+        })
+        .eq("id", userId);
+    } else {
+      if (currentQuota <= 0) {
+        return new Response(JSON.stringify({ error: "Forbidden. Hết lượt dịch tự động miễn phí hôm nay." }), { status: 403 });
+      }
+      // Decrement quota normally
+      await supabase
+        .from("profiles")
+        .update({ admin_model_quota: currentQuota - 1 })
+        .eq("id", userId);
     }
 
     if (profile.admin_assigned_model) {
       assignedModel = profile.admin_assigned_model;
     }
-
-    // Decrement quota
-    await supabase
-      .from("profiles")
-      .update({ admin_model_quota: profile.admin_model_quota - 1 })
-      .eq("id", userId);
 
     // Inject hidden URL and Key
     targetUrl = "https://catiecli.sukaka.top/v1/chat/completions";
