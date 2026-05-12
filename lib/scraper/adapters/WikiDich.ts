@@ -74,7 +74,12 @@ export const WikiDichAdapter: SiteAdapter = {
       try {
         const { extensionFetch } = await import("../extension-bridge");
 
-        const fuzzySign = (text: string) => text.substring(13) + text.substring(0, 13);
+        let offset = 56;
+        const offsetMatch = html.match(/text\.substring\((\d+)\)\s*\+/);
+        if (offsetMatch) {
+          offset = parseInt(offsetMatch[1], 10);
+        }
+        const fuzzySign = (text: string) => text.substring(offset) + text.substring(0, offset);
         
         // SHA-256 hashing using Web Crypto API
         const sha256 = async (message: string) => {
