@@ -498,8 +498,8 @@ ${cleaned}`;
           }
         };
         const [titleRes, contentRes] = await Promise.all([
-          convertText(chapter.title, dictSettings as any),
-          convertText(cleanedContent, dictSettings as any),
+          convertText(chapter.title, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }),
+          convertText(cleanedContent, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }),
         ]);
         dictTranslatedTitle = titleRes.plainText;
         dictTranslatedContent = contentRes.plainText;
