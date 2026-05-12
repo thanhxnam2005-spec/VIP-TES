@@ -2,6 +2,7 @@
 
 import { AddChapterDialog } from "@/components/add-chapter-dialog";
 import { BulkAddChaptersDialog } from "@/components/bulk-add-chapters-dialog";
+import { TranslateWorkspaceDialog } from "@/components/novel/translate-workspace-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +48,7 @@ import {
   ReplaceAllIcon,
   ScissorsIcon,
   SearchIcon,
+  SparklesIcon,
   TrashIcon,
   WrenchIcon,
   XIcon,
@@ -142,6 +144,7 @@ export function ChaptersTab({
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showTranslateStatus, setShowTranslateStatus] = useState(true);
   const debouncedQuery = useDebouncedValue(searchQuery, 350);
@@ -164,12 +167,13 @@ export function ChaptersTab({
   const filteredChapters = useMemo(() => {
     const q = debouncedQuery.trim();
     if (!q) {
-      return chapters.map((ch) => ({ chapter: ch, indices: [] as number[] }));
+      return chapters.map((ch, i) => ({ chapter: ch, indices: [] as number[], originalIndex: i }));
     }
-    const results: { chapter: Chapter; indices: number[] }[] = [];
-    for (const ch of chapters) {
+    const results: { chapter: Chapter; indices: number[]; originalIndex: number }[] = [];
+    for (let i = 0; i < chapters.length; i++) {
+      const ch = chapters[i];
       const { matched, indices } = fuzzyMatch(q, ch.title);
-      if (matched) results.push({ chapter: ch, indices });
+      if (matched) results.push({ chapter: ch, indices, originalIndex: i });
     }
     return results;
   }, [chapters, debouncedQuery]);
@@ -295,6 +299,10 @@ export function ChaptersTab({
           <CopyXIcon className="size-3.5 sm:mr-1.5" />
           <span className="hidden sm:inline">Chọn trùng lặp</span>
         </Button>
+        <Button size="sm" variant="outline" className="text-blue-600 dark:text-blue-400" onClick={() => setWorkspaceOpen(true)}>
+          <ZapIcon className="size-3.5 sm:mr-1.5" />
+          <span className="hidden sm:inline">Khu Vực Dịch Truyện</span>
+        </Button>
         <Button 
           size="sm" 
           variant="outline" 
@@ -323,13 +331,6 @@ export function ChaptersTab({
             </PopoverTrigger>
             <PopoverContent align="end" className="w-48 p-1">
               <button
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-                onClick={() => onTranslate(Array.from(selected))}
-              >
-                <LanguagesIcon className="size-3.5" />
-                Dịch AI đã chọn
-              </button>
-              <button
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-destructive"
                 onClick={() => setBulkDeleteOpen(true)}
               >
@@ -352,24 +353,6 @@ export function ChaptersTab({
                 >
                   <ZapIcon className="size-3.5" />
                   Converter AI đã chọn
-                </button>
-              )}
-              {onQtTranslate && (
-                <button
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-emerald-600 dark:text-emerald-400"
-                  onClick={() => onQtTranslate(Array.from(selected))}
-                >
-                  <BookOpenIcon className="size-3.5" />
-                  Từ điển cục bộ + AI
-                </button>
-              )}
-              {onPdfTranslate && (
-                <button
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-blue-600 dark:text-blue-400"
-                  onClick={() => onPdfTranslate(Array.from(selected))}
-                >
-                  <FileTextIcon className="size-3.5" />
-                  Dịch kèm Prompt PDF
                 </button>
               )}
               {onResplit && (
@@ -464,7 +447,7 @@ export function ChaptersTab({
                 }}
               >
                 {virtualizer.getVirtualItems().map((virtualRow) => {
-                  const { chapter: ch, indices } =
+                  const { chapter: ch, indices, originalIndex } =
                     filteredChapters[virtualRow.index];
                   const status = getStatus(ch.id);
                   const statusCfg = STATUS_CONFIG[status];
@@ -542,7 +525,7 @@ export function ChaptersTab({
                             <div className="ml-auto flex gap-0.5">
                               <Button variant="ghost" size="icon-xs" asChild>
                                 <Link
-                                  href={`/novels/${novelId}/read/${ch.order + 1}`}
+                                  href={`/novels/${novelId}/read/${originalIndex + 1}`}
                                 >
                                   <BookOpenIcon className="size-3.5" />
                                 </Link>
@@ -638,7 +621,7 @@ export function ChaptersTab({
                           <div className="flex w-[4.5rem] shrink-0 justify-end gap-0.5">
                             <Button variant="ghost" size="icon-xs" asChild>
                               <Link
-                                href={`/novels/${novelId}/read/${ch.order + 1}`}
+                                href={`/novels/${novelId}/read/${originalIndex + 1}`}
                               >
                                 <BookOpenIcon className="size-3.5" />
                               </Link>
@@ -718,6 +701,14 @@ export function ChaptersTab({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <TranslateWorkspaceDialog
+        open={workspaceOpen}
+        onOpenChange={setWorkspaceOpen}
+        novelId={novelId}
+        chapterIds={Array.from(selected)}
+        chapters={chapters}
+      />
 
       <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
         <AlertDialogContent>

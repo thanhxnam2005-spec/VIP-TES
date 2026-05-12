@@ -16,6 +16,20 @@ export async function resolveStep(
 ): Promise<LanguageModel | undefined> {
   if (!cfg?.providerId || !cfg?.modelId) return undefined;
   if (isWebGpuInferenceProviderId(cfg.providerId)) return undefined;
+
+  // Intercept Admin Provider
+  if (cfg.providerId === "admin-provider") {
+    return await getModel(
+      {
+        id: "admin-provider",
+        name: "Model Admin",
+        baseUrl: "/api/ai-proxy",
+        apiKey: "admin-model-key",
+      } as unknown as import("@/lib/db").AIProvider,
+      cfg.modelId, // will be "admin-model"
+    );
+  }
+
   const provider = await db.aiProviders.get(cfg.providerId);
   if (!provider || isWebGpuInferenceProvider(provider)) return undefined;
   return await getModel(provider, cfg.modelId);

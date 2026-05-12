@@ -31,10 +31,17 @@ export default function AdminPage() {
 
   // Temporary state for the input field of each user
   const [vipDays, setVipDays] = useState<Record<string, string>>({});
+  const [quotaInputs, setQuotaInputs] = useState<Record<string, string>>({});
+  const [modelInputs, setModelInputs] = useState<Record<string, string>>({});
+  const [availableModels, setAvailableModels] = useState<{id: string, name: string}[]>([]);
 
   const loadData = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    // We need the token to fetch models
+    const { data: { session } } = await supabase.auth.getSession();
+    
     const email = user?.email?.toLowerCase();
     if (email !== "nthanhnam2005@gmail.com" && email !== "thanhxnam2005@gmail.com") {
       setIsAdmin(false);
@@ -42,6 +49,24 @@ export default function AdminPage() {
       return;
     }
     setIsAdmin(true);
+    // Fetch dynamic models
+    try {
+      const res = await fetch("/api/admin/models");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.data && Array.isArray(data.data)) {
+          const models = data.data.map((m: any) => ({
+            id: m.id,
+            name: m.id.replace("gcli-", "").replace("假流式/", "[No Stream] ")
+          }));
+          setAvailableModels(models);
+        }
+      } else {
+        console.error("Fetch models failed:", res.status);
+      }
+    } catch (err) {
+      console.error("Failed to load admin models", err);
+    }
 
     // Load free mode setting
     const { data: settingsData } = await supabase
@@ -112,6 +137,32 @@ export default function AdminPage() {
     }
   };
 
+  const handleGrantQuota = async (userId: string) => {
+    const quotaStr = quotaInputs[userId];
+    const quota = parseInt(quotaStr, 10);
+    const model = modelInputs[userId] || "gcli-gemini-3-pro-preview"; // Mặc định nếu không chọn
+
+    if (isNaN(quota) || quota < 0) {
+      toast.error("Vui lòng nhập số lượt dịch hợp lệ");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ 
+        admin_model_quota: quota,
+        admin_assigned_model: model 
+      })
+      .eq("id", userId);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success(`Đã cập nhật lượt dịch thành ${quota} lượt với model ${model}!`);
+      loadData();
+    }
+  };
+
   const handleRevokeVip = async (userId: string) => {
     const { error } = await supabase
       .from("profiles")
@@ -166,8 +217,9 @@ export default function AdminPage() {
               <TableHead>Email</TableHead>
               <TableHead>Tên nhân vật</TableHead>
               <TableHead>Trạng thái VIP</TableHead>
-              <TableHead>Cấp thêm VIP (Ngày)</TableHead>
-              <TableHead className="text-right">Hành động</TableHead>
+              <TableHead>Lượt Admin</TableHead>
+              <TableHead>Hành động</TableHead>
+              <TableHead className="text-right">Khác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -186,32 +238,79 @@ export default function AdminPage() {
                       <span className="text-muted-foreground">Không có VIP</span>
                     )}
                   </TableCell>
+                  <TableCell className="font-semibold text-blue-600 dark:text-blue-400">
+                    <div className="flex flex-col">
+                      <span>{(p as any).admin_model_quota || 0} lượt</span>
+                      {(p as any).admin_assigned_model && (
+                        <span className="text-[10px] text-muted-foreground font-normal break-all max-w-[120px]">
+                          {(p as any).admin_assigned_model}
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
-                    <Input
-                      type="number"
-                      placeholder="VD: 10"
-                      className="w-24 h-8"
-                      value={vipDays[p.id] || ""}
-                      onChange={(e) => setVipDays({ ...vipDays, [p.id]: e.target.value })}
-                    />
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          placeholder="Ngày VIP"
+                          className="w-20 h-8 text-xs"
+                          value={vipDays[p.id] || ""}
+                          onChange={(e) => setVipDays({ ...vipDays, [p.id]: e.target.value })}
+                        />
+                        <Button
+                          size="sm"
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white h-8 text-xs"
+                          onClick={() => handleGrantVip(p.id)}
+                        >
+                          Cấp VIP
+                        </Button>
+                      </div>
+                      <div className="flex flex-col gap-1 border-t pt-2 mt-1">
+                        <select
+                          className="h-8 text-xs border rounded-md px-2 bg-background w-full"
+                          value={modelInputs[p.id] || "gcli-gemini-3-pro-preview"}
+                          onChange={(e) => setModelInputs({ ...modelInputs, [p.id]: e.target.value })}
+                        >
+                          {availableModels.length > 0 ? (
+                            availableModels.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="gcli-gemini-3-pro-preview">Đang tải models...</option>
+                          )}
+                        </select>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            placeholder="Số lượt"
+                            className="w-20 h-8 text-xs"
+                            value={quotaInputs[p.id] || ""}
+                            onChange={(e) => setQuotaInputs({ ...quotaInputs, [p.id]: e.target.value })}
+                          />
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs flex-1"
+                            onClick={() => handleGrantQuota(p.id)}
+                          >
+                            Cấp lượt dịch
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         size="sm"
-                        variant="default"
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white"
-                        onClick={() => handleGrantVip(p.id)}
-                      >
-                        Cấp VIP
-                      </Button>
-                      <Button
-                        size="sm"
                         variant="destructive"
                         onClick={() => handleRevokeVip(p.id)}
                         disabled={!isVip}
+                        className="h-8 text-xs"
                       >
-                        Thu hồi
+                        Thu hồi VIP
                       </Button>
                     </div>
                   </TableCell>

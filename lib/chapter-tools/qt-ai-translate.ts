@@ -11,12 +11,14 @@
 import { generateText } from "ai";
 import type { LanguageModel } from "ai";
 import { db } from "@/lib/db";
-import type { AnalysisSettings, Scene } from "@/lib/db";
+import type { AnalysisSettings, Scene, DictSource } from "@/lib/db";
 import { createSceneVersion, ensureInitialVersion, getOriginalContent } from "@/lib/hooks/use-scene-versions";
 import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-entries";
+import { appendToDictSource } from "@/lib/hooks/use-dict-entries";
 import { convertText } from "@/lib/hooks/use-qt-engine";
 import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 // ── Constants ──
 
@@ -26,10 +28,12 @@ const RETRY_BASE_DELAY = 2000;
 // ── Post-edit system prompt ──
 
 const HYBRID_POST_EDIT_BASE = `# Vai trò
-Bạn là biên tập viên văn học chuyên nghiệp. Bạn KHÔNG dịch lại, bạn chỉ SỬA LỖI bản dịch từ điển sẵn có.
+Bạn là biên tập viên văn học chuyên nghiệp chuyên dịch tiểu thuyết Trung Quốc sang TIẾNG VIỆT. 
+⚠️ BẮT BUỘC: Toàn bộ đầu ra PHẢI bằng TIẾNG VIỆT. TUYỆT ĐỐI KHÔNG dịch sang tiếng Anh.
+Bạn KHÔNG dịch lại từ đầu, bạn chỉ SỬA LỖI bản dịch từ điển Trung → Việt sẵn có.
 
 # Nhiệm vụ  
-Nhận bản dịch từ điển Trung → Việt và văn bản gốc tiếng Trung. Chỉ sửa những chỗ SAI, giữ nguyên phần đã đúng.
+Nhận bản dịch từ điển Trung → Việt và văn bản gốc tiếng Trung. Chỉ sửa những chỗ SAI, giữ nguyên phần đã đúng. Kết quả cuối cùng PHẢI là TIẾNG VIỆT.
 
 # Quy tắc sửa BẮT BUỘC
 1. **Tên nhân vật/địa danh/vũ khí**: Sửa tên bị dịch sai/dịch nghĩa. Phải phiên âm Hán-Việt CHUẨN. Viết hoa chữ cái đầu mỗi từ (ví dụ: Tô Dật, Thanh Đường, Cửu Ngục Kiếm).
@@ -41,14 +45,27 @@ Nhận bản dịch từ điển Trung → Việt và văn bản gốc tiếng T
 
 # Yêu cầu đầu ra (BẮT BUỘC THEO ĐÚNG FORMAT NÀY):
 <names>
-TênTrung1=TênViệt1
-TênTrung2=TênViệt2
+[names]TênTrung1=TênViệt1
+[names]TênTrung2=TênViệt2
+[tuvung]ThuậtNgữTrung=ThuậtNgữViệt
+[ngucanh]CụmTừTrung=CụmTừViệt
 </names>
 <content>
-(Văn bản dịch đã sửa lỗi)
+(Văn bản dịch TIẾNG VIỆT đã sửa lỗi — KHÔNG PHẢI tiếng Anh)
 </content>
 
-Lưu ý: TRÍCH XUẤT TÊN NHÂN VẬT, ĐỊA DANH, VẬT PHẨM, TÔNG MÔN. Định dạng đúng 1 tên 1 dòng (Trung=Việt). KHÔNG giải thích. Nếu không có tên nào, để trống giữa <names></names>.`;
+Lưu ý PHÂN LOẠI (TRÍCH XUẤT TỪ ĐIỂN):
+- [names]: Tên nhân vật, địa danh, tông môn, bang hội (phiên âm Hán-Việt, viết hoa)
+- [tuvung]: Kỹ năng, vũ khí, vật phẩm, thuật ngữ tu luyện (ví dụ: cảnh giới, công pháp)
+- [ngucanh]: Thành ngữ, cụm từ ngữ cảnh, câu nói đặc trưng
+
+⚠️ QUY TẮC TRÍCH XUẤT TỪ ĐIỂN (TỐI QUAN TRỌNG):
+1. Định dạng: \`[loại]TiếngTrung=TiếngViệt\` (1 mục 1 dòng)
+2. Vế trái (trước dấu =) BẮT BUỘC phải là CHỮ HÁN BẢN GỐC (chữ tiếng Trung lấy từ phần [GỐC]).
+3. Vế phải (sau dấu =) là nghĩa tiếng Việt tương ứng.
+4. TUYỆT ĐỐI KHÔNG trích xuất kiểu tiếng Việt = tiếng Việt (Ví dụ: Nội công=nội công -> SAI NGHIÊM TRỌNG). Phải là: 內功=nội công.
+KHÔNG giải thích thêm. Nếu không có từ nào cần trích xuất, để trống phần <names></names>.`;
+
 
 /**
  * Build genre-aware post-edit prompt.
@@ -67,6 +84,8 @@ function buildGenreAwareSystemPrompt(
 }
 
 // ── Types ──
+
+export type PromptType = "legacy" | "khuyen_nghi" | "cuc_ngan" | "custom";
 
 export interface HybridTranslateResult {
   chapterId: string;
@@ -88,6 +107,8 @@ export interface QtAiTranslateOptions {
   chapterIds: string[];
   model: LanguageModel;
   qtDictSources: string[]; // the selected genre dictionaries
+  promptType?: PromptType;
+  extractDict?: boolean; // "Càng dịch càng hay" — extract names + upload to Supabase
   signal?: AbortSignal;
   delayMs?: number;
 
@@ -102,6 +123,24 @@ export interface QtAiTranslateOptions {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Upload a genre dict source to Supabase storage after appending new names.
+ */
+async function uploadGenreDictToSupabase(dictSource: DictSource): Promise<void> {
+  const cached = await db.dictCache.get(dictSource);
+  if (!cached?.rawText) return;
+
+  const supabase = createSupabaseClient();
+  const filename = `${dictSource}.txt`;
+  const { error } = await supabase.storage
+    .from("dictionaries")
+    .upload(filename, cached.rawText, {
+      contentType: "text/plain;charset=UTF-8",
+      upsert: true,
+    });
+  if (error) throw error;
 }
 
 function classifyError(err: unknown): { retryable: boolean; message: string } {
@@ -136,8 +175,22 @@ function buildPostEditPrompt(
   dictTranslation: string,
   nameDict: Array<{ chinese: string; vietnamese: string }>,
   novelCustomPrompt?: string,
+  promptType: PromptType = "legacy",
+  extractDict: boolean = false
 ): string {
+  // When extractDict is on, force legacy extraction mode
+  if (extractDict && (promptType === "khuyen_nghi" || promptType === "cuc_ngan")) {
+    // Fall through to legacy prompt with full <names>/<content> extraction
+  } else if (promptType === "khuyen_nghi" || promptType === "cuc_ngan") {
+    return "Bạn là dịch giả chuyên nghiệp Trung → Việt. BẮT BUỘC trả lời bằng TIẾNG VIỆT. TUYỆT ĐỐI KHÔNG dịch sang tiếng Anh.";
+  }
+
+
   let prompt = buildGenreAwareSystemPrompt(novelCustomPrompt);
+  
+  if (promptType === "custom" && novelCustomPrompt) {
+     prompt = novelCustomPrompt.trim();
+  }
 
   // Add name dictionary context
   const relevantNames = nameDict.filter(
@@ -158,14 +211,30 @@ function buildPostEditUserPrompt(
   dictTranslation: string,
   chineseTitle?: string,
   dictTitle?: string,
+  promptType: PromptType = "legacy",
+  extractDict: boolean = false
 ): string {
+  // When extractDict is on, force legacy user prompt format
+  if (!extractDict) {
+    if (promptType === "khuyen_nghi") {
+      return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa bản dịch thô cho mượt mà, xưng hô đúng, văn phong chuẩn thể loại. Trả về bản dịch TIẾNG VIỆT cuối cùng thôi. KHÔNG dịch sang tiếng Anh.`;
+    }
+    if (promptType === "cuc_ngan") {
+      return `Sửa bản dịch Trung→Việt sau cho mượt, xưng hô đúng, sát gốc:\n\nGốc: ${chineseText.trim()}\n\nThô: ${dictTranslation.trim()}\n\nChỉ trả về bản dịch TIẾNG VIỆT đã sửa. KHÔNG dịch sang tiếng Anh.`;
+    }
+  }
+  if (promptType === "custom" && !extractDict) {
+    return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa cho mượt mà, xưng hô chuẩn, văn phong đúng thể loại. Chỉ trả về bản dịch TIẾNG VIỆT cuối. KHÔNG dịch sang tiếng Anh.`;
+  }
+
   let user = "";
   
   if (chineseTitle && dictTitle) {
     user += `Tiêu đề: ${chineseTitle} → ${dictTitle}\n---\n`;
   }
   
-  user += `[GỐC]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN]\n${dictTranslation}\n\nHãy phân tích và trả về <names> (nếu tìm thấy tên mới) và <content> đã sửa lỗi theo format yêu cầu.`;
+  user += `[GỐC]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN]\n${dictTranslation}\n\nHãy phân tích và trả về <names> (nếu tìm thấy từ mới) và <content> (bản dịch TIẾNG VIỆT đã sửa lỗi) theo đúng format.
+⚠️ LƯU Ý: Nếu có trích xuất <names>, vế trái BẮT BUỘC phải là CHỮ HÁN BẢN GỐC (Tiếng Trung), KHÔNG ĐƯỢC để tiếng Việt ở vế trái!`;
   
   return user;
 }
@@ -173,19 +242,33 @@ function buildPostEditUserPrompt(
 function parseHybridResult(
   raw: string,
   includeTitle: boolean,
-): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string}> } {
-  let contentPart = raw;
-  let extractedNames: Array<{chinese: string, vietnamese: string}> = [];
+  promptType: PromptType = "legacy",
+  extractDict: boolean = false
+): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> } {
+  // If extractDict is on, always parse with extraction regardless of promptType
+  if (promptType !== "legacy" && !extractDict) {
+    let contentPart = raw.trim();
+    // Loại bỏ các markdown block nếu AI tự động chèn vào
+    contentPart = contentPart.replace(/^```[\s\S]*?\n/g, "").replace(/```$/g, "").trim();
+    return { title: null, content: contentPart, extractedNames: [] };
+  }
 
-  // Extract <names> block if present
+  let contentPart = raw;
+  let extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> = [];
+
   const namesMatch = raw.match(/<names>([\s\S]*?)<\/names>/i);
   if (namesMatch) {
     const lines = namesMatch[1].trim().split("\n");
-    for (const line of lines) {
+    for (let line of lines) {
       if (line.includes("=")) {
-        const [cn, vn] = line.split("=").map(s => s.trim());
+        line = line.trim();
+        // Check for classification tag [names], [tuvung], [ngucanh]
+        const tagMatch = line.match(/^\[(\w+)\]/);
+        const dictType = tagMatch ? tagMatch[1] : "names"; // default to "names" if no tag
+        const cleanedLine = tagMatch ? line.slice(tagMatch[0].length) : line;
+        const [cn, vn] = cleanedLine.split("=").map(s => s.trim());
         if (cn && vn && cn !== vn) {
-          extractedNames.push({ chinese: cn, vietnamese: vn });
+          extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
         }
       }
     }
@@ -360,11 +443,15 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
       // ═══════════════════════════════════════════
       onPhase(chapter.id, "ai");
 
+      const effectiveExtractDict = opts.extractDict ?? false;
+
       const systemPrompt = buildPostEditPrompt(
         cleanedContent,
         dictTranslatedContent,
         nameDict,
         novelCustomPrompt,
+        opts.promptType,
+        effectiveExtractDict
       );
 
       const userPrompt = buildPostEditUserPrompt(
@@ -372,6 +459,8 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
         dictTranslatedContent,
         chapter.title,
         dictTranslatedTitle,
+        opts.promptType,
+        effectiveExtractDict
       );
 
       let accumulated = "";
@@ -416,16 +505,55 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
       let extractedNamesCount = 0;
 
       if (accumulated.trim()) {
-        const parsed = parseHybridResult(accumulated, true);
-        parsedTitle = parsed.title;
+        const parsed = parseHybridResult(accumulated, true, opts.promptType, effectiveExtractDict);
+        parsedTitle = parsed.title || dictTranslatedTitle;
         
         // Save extracted names to novel dictionary dynamically
         if (parsed.extractedNames.length > 0) {
           try {
-            await bulkImportNameEntries(novelId, parsed.extractedNames, "khác", "skip");
+            const entriesWithCategory = parsed.extractedNames.map((entry) => {
+              let category = "khác";
+              if (entry.dictType === "names") category = "nhân vật";
+              else if (entry.dictType === "tuvung") category = "thuật ngữ";
+              else if (entry.dictType === "ngucanh") category = "context mapping";
+              return { ...entry, category };
+            });
+            
+            const importResult = await bulkImportNameEntries(
+              novelId,
+              entriesWithCategory,
+              "khác",
+              "skip"
+            );
             extractedNamesCount = parsed.extractedNames.length;
             // Update nameDict for subsequent chapters in the loop
             nameDict = await getMergedNameDict(novelId);
+
+            // If extractDict is on, classify and append to correct genre sub-dicts, then upload
+            if (effectiveExtractDict && importResult.added > 0) {
+              try {
+                const genre = opts.qtDictSources?.[0] || "tienhiep";
+                // Group extracted names by dictType (names, tuvung, ngucanh)
+                const grouped: Record<string, Array<{chinese: string, vietnamese: string}>> = {};
+                for (const entry of parsed.extractedNames) {
+                  const dt = entry.dictType || "names";
+                  // Only allow known dict types
+                  if (dt !== "names" && dt !== "tuvung" && dt !== "ngucanh") continue;
+                  if (!grouped[dt]) grouped[dt] = [];
+                  grouped[dt].push({ chinese: entry.chinese, vietnamese: entry.vietnamese });
+                }
+                // Append to each sub-dict and upload
+                for (const [dictType, entries] of Object.entries(grouped)) {
+                  const dictSource = `${genre}_${dictType}` as DictSource;
+                  const appendedCount = await appendToDictSource(dictSource, entries);
+                  if (appendedCount > 0) {
+                    await uploadGenreDictToSupabase(dictSource);
+                  }
+                }
+              } catch (uploadErr) {
+                console.warn("[ExtractDict] Genre dict upload skipped:", uploadErr);
+              }
+            }
           } catch (err) {
             console.error("Lỗi lưu tên mới vào từ điển:", err);
           }

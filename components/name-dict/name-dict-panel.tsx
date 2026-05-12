@@ -127,27 +127,30 @@ export function NameDictPanel() {
     (categoryFilter ? 1 : 0) +
     (isNovelContext && scopeFilter !== "all" ? 1 : 0);
 
-  // Filter entries
   const filtered = useMemo(() => {
+    let result = allEntries;
     if (
-      !searchQuery &&
-      !categoryFilter &&
-      (scopeFilter === "all" || !isNovelContext)
-    )
-      return allEntries;
-    return allEntries.filter((e) => {
-      const matchesSearch =
-        !searchQuery ||
-        e.chinese.includes(searchQuery) ||
-        e.vietnamese.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCategory = !categoryFilter || e.category === categoryFilter;
-      const matchesScope =
-        !isNovelContext ||
-        scopeFilter === "all" ||
-        (scopeFilter === "novel" && e.scope !== "global") ||
-        (scopeFilter === "global" && e.scope === "global");
-      return matchesSearch && matchesCategory && matchesScope;
-    });
+      searchQuery ||
+      categoryFilter ||
+      (isNovelContext && scopeFilter !== "all")
+    ) {
+      result = allEntries.filter((e) => {
+        const matchesSearch =
+          !searchQuery ||
+          e.chinese.includes(searchQuery) ||
+          e.vietnamese.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = !categoryFilter || e.category === categoryFilter;
+        const matchesScope =
+          !isNovelContext ||
+          scopeFilter === "all" ||
+          (scopeFilter === "novel" && e.scope !== "global") ||
+          (scopeFilter === "global" && e.scope === "global");
+        return matchesSearch && matchesCategory && matchesScope;
+      });
+    }
+    
+    // Sort by newest first so extracted names are always at the top (avoid mutating the original array)
+    return [...result].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [allEntries, searchQuery, categoryFilter, scopeFilter, isNovelContext]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);

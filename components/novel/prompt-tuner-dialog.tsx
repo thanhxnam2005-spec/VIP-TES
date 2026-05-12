@@ -1,0 +1,353 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { db } from "@/lib/db";
+import { useAnalysisSettings } from "@/lib/hooks/use-analysis-settings";
+import { useChatSettings } from "@/lib/hooks/use-chat-settings";
+import { useAIProvider, useApiInferenceProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { StepModelConfig } from "@/lib/db";
+import {
+  resolveChapterToolModel,
+  getChapterToolModelMissingMessage,
+} from "@/lib/chapter-tools/stream-runner";
+import { generateText } from "ai";
+import { Loader2Icon, SparklesIcon, SaveIcon, RefreshCwIcon, CheckIcon } from "lucide-react";
+import { useCallback, useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getOriginalContent } from "@/lib/hooks/use-scene-versions";
+
+const INITIAL_PROMPT = `Bạn là chuyên gia phân tích và dịch thuật tiểu thuyết mạng Trung Quốc hàng đầu, am hiểu cực sâu tất cả các thể loại: Tiên Hiệp, Huyền Huyễn, Đô Thị Tu Tiên, Ngôn Tình, Đam Mỹ, v.v 
+Hãy đọc kỹ mẫu văn bản của bộ truyện và thực hiện nhiệm vụ sau một cách chính xác nhất có thể.
+
+**Nhiệm vụ:**
+
+1. **Xác định thể loại**
+   - Thể loại chính (chỉ 1)
+   - Thể loại phụ (có thể 1-2)
+   - Mức độ: Huyền ảo cao / Thấp, Tập trung tu luyện / Hệ thống / Tình cảm / Trả thù / Ngọt ngược...
+
+2. **Phân tích sâu phong cách truyện**
+   - Tone tổng thể (lạnh lùng cao ngạo, hùng tráng máu me, ngọt sủng, đen tối, hài hước, kịch tính...)
+   - Đặc điểm xưng hô nhân vật chính và phụ
+   - Mức độ miêu tả (chiến đấu, nội tâm, thế giới quan, cảm xúc...)
+   - Tác giả hay dùng thủ pháp gì (miêu tả dài, thoại nhiều, cliffhanger...)
+
+3. **Tạo System Prompt dịch chuyên biệt** (rất mạnh, tối ưu token)
+   - Phải dịch cực sát nghĩa gốc, không thêm thắt nội dung.
+   - Xưng hô tuyệt đối chuẩn theo vai trò, cảnh giới, quan hệ.
+   - Văn phong đúng thể loại + tone của truyện này.
+   - Ưu tiên thuật ngữ nhất quán, mượt mà tự nhiên khi đọc.
+   - Tiết kiệm token tối đa.
+
+Trả về kết quả bằng tiếng Việt, trong đó phần "System Prompt dịch chuyên biệt" cần được đặt trong khối code markdown \`\`\` để tôi dễ dàng copy.`;
+
+export function PromptTunerDialog({
+  open,
+  onOpenChange,
+  novelId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  novelId: string;
+}) {
+  const [isScanning, setIsScanning] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+  const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [feedback, setFeedback] = useState("");
+
+  const settings = useAnalysisSettings();
+  const chatSettings = useChatSettings();
+  const defaultProvider = useAIProvider(chatSettings?.providerId);
+
+  const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
+
+  const providers = useApiInferenceProviders();
+  const currentModel = useMemo(() => {
+    if (novel?.customTranslateProviderId) {
+      return {
+        providerId: novel.customTranslateProviderId,
+        modelId: novel.customTranslateModelId || "",
+      };
+    }
+    return settings.translateModel as StepModelConfig | undefined;
+  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel]);
+
+  const selectedProviderId = currentModel?.providerId ?? "";
+  const models = useAIModels(selectedProviderId || undefined);
+
+  const handleProviderChange = async (providerId: string) => {
+    await db.novels.update(novelId, {
+      customTranslateProviderId: providerId,
+      customTranslateModelId: "",
+    });
+  };
+  const handleModelChange = async (modelId: string) => {
+    if (!selectedProviderId) return;
+    await db.novels.update(novelId, {
+      customTranslateModelId: modelId,
+    });
+  };
+
+  useEffect(() => {
+    if (open && novel?.customTranslatePrompt && !generatedPrompt) {
+      setGeneratedPrompt(novel.customTranslatePrompt);
+    }
+  }, [open, novel, generatedPrompt]);
+
+  const resolveModel = useCallback(async () => {
+    const activeModel = novel?.customTranslateProviderId
+      ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" }
+      : settings.translateModel;
+    const model = await resolveChapterToolModel(
+      activeModel,
+      defaultProvider,
+      chatSettings,
+    );
+    if (!model) {
+      toast.error(getChapterToolModelMissingMessage(defaultProvider));
+    }
+    return model;
+  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel, defaultProvider, chatSettings]);
+
+  const handleScan = async () => {
+    const model = await resolveModel();
+    if (!model) return;
+
+    setIsScanning(true);
+    try {
+      // 1. Fetch up to 10 chapters
+      const chapters = await db.chapters
+        .where("novelId")
+        .equals(novelId)
+        .sortBy("order");
+      
+      const firstChapters = chapters.slice(0, 10);
+      if (firstChapters.length === 0) {
+        throw new Error("Truyện chưa có chương nào.");
+      }
+
+      const chapterIds = new Set(firstChapters.map((c) => c.id));
+      const allScenes = await db.scenes
+        .where("[novelId+isActive]")
+        .equals([novelId, 1])
+        .toArray();
+
+      const scenesByChapter = new Map<string, typeof allScenes>();
+      for (const s of allScenes) {
+        if (!chapterIds.has(s.chapterId)) continue;
+        const arr = scenesByChapter.get(s.chapterId) ?? [];
+        arr.push(s);
+        scenesByChapter.set(s.chapterId, arr);
+      }
+      for (const scenes of scenesByChapter.values()) {
+        scenes.sort((a, b) => a.order - b.order);
+      }
+
+      const parts: string[] = [];
+      for (const chapter of firstChapters) {
+        const scenes = scenesByChapter.get(chapter.id) ?? [];
+        if (scenes.length === 0) continue;
+        const contents = await Promise.all(scenes.map((s) => getOriginalContent(s.id)));
+        const content = contents.join("\n\n");
+        if (!content.trim()) continue;
+        // Limit each chapter to 1000 chars to save context
+        parts.push(content.slice(0, 1000));
+      }
+
+      const sampleText = parts.join("\n---\n");
+
+      // 2. Run AI
+      const result = await generateText({
+        model,
+        system: INITIAL_PROMPT,
+        prompt: "MẪU VĂN BẢN TỪ TRUYỆN:\n" + sampleText,
+      });
+
+      setGeneratedPrompt(result.text);
+      toast.success("Đã phân tích xong!");
+    } catch (err: any) {
+      toast.error("Lỗi khi tạo prompt: " + err.message);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleRefine = async () => {
+    if (!feedback.trim() || !generatedPrompt.trim()) return;
+    
+    const model = await resolveModel();
+    if (!model) return;
+
+    setIsRefining(true);
+    try {
+      const refinePrompt = `Đây là kết quả phân tích và System Prompt hiện tại của bạn:
+${generatedPrompt}
+
+Người dùng có góp ý sau để điều chỉnh:
+"${feedback}"
+
+Vui lòng cập nhật lại kết quả phân tích và System Prompt dựa trên góp ý này. Đảm bảo System Prompt vẫn được đặt trong khối code markdown \`\`\`.`;
+
+      const result = await generateText({
+        model,
+        prompt: refinePrompt,
+      });
+
+      setGeneratedPrompt(result.text);
+      setFeedback("");
+      toast.success("Đã cập nhật prompt!");
+    } catch (err: any) {
+      toast.error("Lỗi khi điều chỉnh prompt: " + err.message);
+    } finally {
+      setIsRefining(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!generatedPrompt.trim()) return;
+    
+    // Attempt to extract just the code block if it exists
+    let promptToSave = generatedPrompt;
+    const match = generatedPrompt.match(/\`\`\`[\\s\\S]*?\\n([\\s\\S]+?)\`\`\`/);
+    if (match && match[1]) {
+      promptToSave = match[1].trim();
+    }
+
+    await db.novels.update(novelId, {
+      customTranslatePrompt: promptToSave,
+      styleScannedAt: new Date(),
+      updatedAt: new Date(),
+    });
+    
+    toast.success("Đã lưu Prompt vào hệ thống!");
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <SparklesIcon className="size-5 text-blue-500" />
+            Tạo Prompt Dịch Chuyên Biệt
+          </DialogTitle>
+          <DialogDescription>
+            AI sẽ quét 10 chương đầu của truyện để phân tích văn phong, xưng hô và đưa ra System Prompt tối ưu nhất cho riêng bộ truyện này.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 py-2 flex-1 min-h-0">
+          <div className="flex gap-2 items-center shrink-0">
+            <Label className="text-xs whitespace-nowrap text-muted-foreground font-medium">Sử dụng AI:</Label>
+            <Select value={selectedProviderId} onValueChange={handleProviderChange}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="Chọn Provider..." />
+              </SelectTrigger>
+              <SelectContent>
+                {providers?.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={currentModel?.modelId ?? ""}
+              onValueChange={handleModelChange}
+              disabled={!selectedProviderId}
+            >
+              <SelectTrigger className="flex-1 h-8 text-xs">
+                <SelectValue placeholder="Chọn Model..." />
+              </SelectTrigger>
+              <SelectContent>
+                {models?.map((m) => (
+                  <SelectItem key={m.id} value={m.modelId}>
+                    {m.name || m.modelId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!generatedPrompt && !isScanning ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-4 border border-dashed rounded-lg bg-muted/30">
+              <SparklesIcon className="size-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Chưa có prompt nào được tạo cho truyện này.</p>
+              <Button onClick={handleScan} className="gap-2">
+                <SparklesIcon className="size-4" /> Bắt đầu quét & tạo Prompt
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 flex-1 min-h-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Kết quả từ AI:</span>
+                <Button variant="outline" size="sm" onClick={handleScan} disabled={isScanning} className="gap-2 h-8">
+                  {isScanning ? <Loader2Icon className="size-3.5 animate-spin" /> : <RefreshCwIcon className="size-3.5" />}
+                  Quét lại từ đầu
+                </Button>
+              </div>
+              
+              <Textarea
+                value={generatedPrompt}
+                onChange={(e) => setGeneratedPrompt(e.target.value)}
+                disabled={isScanning || isRefining}
+                className="flex-1 min-h-[300px] text-[12px] font-mono leading-relaxed"
+                placeholder={isScanning ? "Đang phân tích..." : "Kết quả AI sẽ hiện ở đây..."}
+              />
+
+              <div className="space-y-2 pt-2 border-t mt-2">
+                <span className="text-sm font-medium block">Góp ý điều chỉnh (Iteration):</span>
+                <div className="flex gap-2">
+                  <Textarea 
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    disabled={isScanning || isRefining || !generatedPrompt}
+                    placeholder="VD: Đổi xưng hô nam chính thành bổn tọa, phong cách hài hước hơn..."
+                    className="h-16 text-sm resize-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleRefine();
+                      }
+                    }}
+                  />
+                  <Button 
+                    onClick={handleRefine} 
+                    disabled={isScanning || isRefining || !feedback.trim() || !generatedPrompt}
+                    className="h-16 shrink-0 gap-2 w-28"
+                  >
+                    {isRefining ? <Loader2Icon className="size-4 animate-spin" /> : <SparklesIcon className="size-4" />}
+                    Tối ưu lại
+                  </Button>
+                </div>
+              </div>
+
+              <Button onClick={handleSave} className="w-full gap-2 mt-2" disabled={isScanning || isRefining || !generatedPrompt}>
+                <CheckIcon className="size-4" />
+                Lưu Prompt Này Cho Truyện
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

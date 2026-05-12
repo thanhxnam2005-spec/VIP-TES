@@ -18,14 +18,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ReplaceRule } from "@/lib/db";
+import { db, type ReplaceRule } from "@/lib/db";
 import {
   createReplaceRule,
   updateReplaceRule,
+  toEngineRule,
 } from "@/lib/hooks/use-replace-rules";
+import { useReplaceEngine } from "@/lib/hooks/use-replace-engine";
 import { validatePattern } from "@/lib/replace-engine";
+import { createSceneVersion, ensureInitialVersion } from "@/lib/hooks/use-scene-versions";
+import { updateScene } from "@/lib/hooks/use-scenes";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Loader2Icon } from "lucide-react";
 
 function ReplaceRuleForm({
   editingEntry,
@@ -50,6 +55,8 @@ function ReplaceRuleForm({
   const [caseSensitive, setCaseSensitive] = useState(
     editingEntry?.caseSensitive ?? false,
   );
+  const [autoApply, setAutoApply] = useState(true);
+  const [isApplying, setIsApplying] = useState(false);
   const [scope, setScope] = useState<"novel" | "global">(
     editingEntry
       ? editingEntry.scope === "global"
@@ -57,6 +64,8 @@ function ReplaceRuleForm({
         : "novel"
       : defaultScope,
   );
+
+  const engine = useReplaceEngine();
 
   const regexError = useMemo(
     () => (isRegex && pattern ? validatePattern(pattern) : null),
@@ -76,6 +85,7 @@ function ReplaceRuleForm({
       }
     }
 
+    let savedRuleId = "";
     if (editingEntry) {
       await updateReplaceRule(editingEntry.id, {
         pattern: pattern.trim(),
@@ -83,11 +93,12 @@ function ReplaceRuleForm({
         isRegex,
         caseSensitive,
       });
+      savedRuleId = editingEntry.id;
       toast.success("Đã cập nhật rule");
     } else {
       const resolvedScope =
         scope === "novel" && activeNovelId ? activeNovelId : "global";
-      await createReplaceRule({
+      savedRuleId = await createReplaceRule({
         scope: resolvedScope,
         pattern: pattern.trim(),
         replacement,
@@ -98,6 +109,65 @@ function ReplaceRuleForm({
       });
       toast.success("Đã thêm rule");
     }
+
+    // Auto Apply
+    if (autoApply && activeNovelId) {
+      setIsApplying(true);
+      try {
+        const scenes = await db.scenes
+          .where("[novelId+isActive]")
+          .equals([activeNovelId, 1])
+          .toArray();
+
+        if (scenes.length > 0) {
+          const items = scenes.map((s) => ({ itemId: s.id, text: s.content }));
+          const engineRule = {
+            pattern: pattern.trim(),
+            replacement,
+            isRegex,
+            caseSensitive,
+          };
+
+          let changedCount = 0;
+          await engine.replaceBatch(
+            items,
+            [engineRule],
+            async (itemId, output, matchCount) => {
+              if (matchCount > 0) {
+                const originalScene = scenes.find((s) => s.id === itemId);
+                if (originalScene && originalScene.content !== output) {
+                  changedCount++;
+                  await ensureInitialVersion(
+                    itemId,
+                    activeNovelId,
+                    originalScene.content,
+                  );
+                  await createSceneVersion(
+                    itemId,
+                    activeNovelId,
+                    "find-replace",
+                    output,
+                  );
+                  await updateScene(itemId, { content: output });
+                }
+              }
+            },
+          );
+
+          if (changedCount > 0) {
+            toast.success(
+              `Đã tự động thay thế trên ${changedCount} chương của truyện hiện tại!`,
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Auto apply error:", err);
+        toast.error("Lỗi khi tự động thay thế");
+      } finally {
+        setIsApplying(false);
+      }
+    }
+
     onClose();
   };
 
@@ -165,6 +235,26 @@ function ReplaceRuleForm({
                 <SelectItem value="global">Chung (toàn cục)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        )}
+        {isNovelContext && (
+          <div className="flex items-center gap-1.5 mt-2">
+            <Checkbox
+              id="rule-auto-apply"
+              checked={autoApply}
+              onCheckedChange={(v) => setAutoApply(v === true)}
+              disabled={isApplying}
+            />
+            <Label htmlFor="rule-auto-apply" className="cursor-pointer text-sm font-medium text-emerald-600 dark:text-emerald-400">
+              {isApplying ? (
+                <span className="flex items-center gap-1">
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                  Đang quét và thay thế toàn bộ truyện...
+                </span>
+              ) : (
+                "Tự động quét & áp dụng thay thế cho toàn bộ truyện"
+              )}
+            </Label>
           </div>
         )}
       </div>

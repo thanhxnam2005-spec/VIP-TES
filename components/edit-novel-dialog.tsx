@@ -66,13 +66,18 @@ export function EditNovelDialog({
   const [saving, setSaving] = useState(false);
 
   const dictMeta = useDictMeta();
-  const dynamicSources = dictMeta 
-    ? Object.keys(dictMeta.sources).filter(s => 
-        !["vietphrase", "names", "names2", "phienam", "luatnhan"].includes(s) &&
-        !GENRE_DICTS.includes(s)
-      ) 
-    : [];
-  const allGenreSources = [...GENRE_DICTS, ...dynamicSources];
+  const dynamicGenres = (() => {
+    if (!dictMeta) return [];
+    const genres = new Set<string>();
+    for (const source of Object.keys(dictMeta.sources)) {
+      const g = source.split("_")[0];
+      if (g && g !== "core" && !GENRE_DICTS.includes(g)) {
+        genres.add(g);
+      }
+    }
+    return Array.from(genres);
+  })();
+  const allGenreSources = [...GENRE_DICTS, ...dynamicGenres];
 
   // Sync state when dialog opens
   useEffect(() => {

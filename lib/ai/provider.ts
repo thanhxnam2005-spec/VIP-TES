@@ -83,12 +83,25 @@ export async function getModel(
           apiKey: provider.apiKey,
           supportsStructuredOutputs: false,
           fetch: async (url, options) => {
+            let authHeader = "";
+            try {
+              const { createClient } = await import("@/lib/supabase/client");
+              const supabase = createClient();
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.access_token) {
+                authHeader = `Bearer ${session.access_token}`;
+              }
+            } catch (e) {
+              console.error("Failed to get supabase session", e);
+            }
+
             // Route through server-side proxy to bypass CORS
             return fetch("/api/ai-proxy", {
               ...options,
               headers: {
                 ...options?.headers,
                 "x-target-url": url.toString(),
+                ...(authHeader ? { "x-supabase-auth": authHeader } : {}),
               },
             });
           },

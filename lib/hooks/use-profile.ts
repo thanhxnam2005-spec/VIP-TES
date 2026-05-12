@@ -7,6 +7,8 @@ export interface UserProfile {
   display_name: string;
   vip_until: string | null;
   avatar_url: string | null;
+  admin_model_quota?: number;
+  admin_assigned_model?: string | null;
 }
 
 export function useProfile() {

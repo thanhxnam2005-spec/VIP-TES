@@ -161,6 +161,14 @@ function ensureActiveDicts(activeSources: string[] = []) {
       genreDictMaps.set(`${genre}_tuvung`, tuvungMap);
     }
 
+    const ngucanhMap = new Map<string, string>();
+    for (const e of rawDictData[`${genre}_ngucanh`] ?? []) {
+      ngucanhMap.set(e.chinese, pickPrimary(e.vietnamese));
+    }
+    if (ngucanhMap.size > 0) {
+      genreDictMaps.set(`${genre}_ngucanh`, ngucanhMap);
+    }
+
     for (const e of rawDictData[`${genre}_phienam`] ?? []) {
       if (e.chinese in FULLWIDTH_PUNCT) {
         phienAmMap.set(e.chinese, FULLWIDTH_PUNCT[e.chinese]);
@@ -624,14 +632,16 @@ function convert(
   }
   orderedNameMaps.push(["qt-name", namesMap]);
 
-  // Insert genre dicts
+  // Insert genre dicts (tuvung + ngucanh)
   const activeGenreMaps: PriorityEntry[] = [];
   const genresToLoad = ["core", ...(o.activeDictSources || [])];
   for (const genre of genresToLoad) {
-    const src = `${genre}_tuvung`;
-    const gMap = genreDictMaps.get(src);
-    if (gMap) {
-      activeGenreMaps.push([src as ConvertSource, gMap]);
+    for (const dictType of ["tuvung", "ngucanh"]) {
+      const src = `${genre}_${dictType}`;
+      const gMap = genreDictMaps.get(src);
+      if (gMap) {
+        activeGenreMaps.push([src as ConvertSource, gMap]);
+      }
     }
   }
 

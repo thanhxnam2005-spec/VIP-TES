@@ -112,8 +112,8 @@ export interface BulkImportResult {
  */
 export async function bulkImportNameEntries(
   scope: string,
-  entries: Array<{ chinese: string; vietnamese: string }>,
-  category: string,
+  entries: Array<{ chinese: string; vietnamese: string; category?: string }>,
+  defaultCategory: string,
   duplicateMode: DuplicateMode = "skip",
 ): Promise<BulkImportResult> {
   // Fetch existing entries for this scope in one query
@@ -131,10 +131,12 @@ export async function bulkImportNameEntries(
 
   // Deduplicate input (last wins within the import set)
   const uniqueEntries = new Map(
-    entries.map((e) => [e.chinese, e.vietnamese]),
+    entries.map((e) => [e.chinese, e]),
   );
 
-  for (const [chinese, vietnamese] of uniqueEntries) {
+  for (const [chinese, entry] of uniqueEntries) {
+    const vietnamese = entry.vietnamese;
+    const itemCategory = entry.category || defaultCategory;
     const ex = existingMap.get(chinese);
     if (ex) {
       if (duplicateMode === "replace") {
@@ -148,7 +150,7 @@ export async function bulkImportNameEntries(
         scope,
         chinese,
         vietnamese,
-        category,
+        category: itemCategory,
         createdAt: now,
         updatedAt: now,
       });
