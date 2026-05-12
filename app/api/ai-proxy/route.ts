@@ -96,24 +96,31 @@ export async function POST(req: NextRequest) {
       }
     }
     // Forward the request to the actual AI provider
+    const acceptHeader = req.headers.get("Accept") || "application/json";
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Authorization": authHeader || "",
         "Content-Type": contentType,
-        "Accept": "text/event-stream",
+        "Accept": acceptHeader,
       },
       body,
     });
 
     // Proxy the response stream back to the client
+    const resHeaders: Record<string, string> = {
+      "Content-Type": response.headers.get("Content-Type") || "application/json",
+    };
+    
+    // Add streaming headers only if it's an event stream
+    if (resHeaders["Content-Type"].includes("text/event-stream")) {
+      resHeaders["Cache-Control"] = "no-cache";
+      resHeaders["Connection"] = "keep-alive";
+    }
+
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        "Content-Type": response.headers.get("Content-Type") || "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
+      headers: resHeaders,
     });
   } catch (error) {
     console.error("AI Proxy error:", error);
