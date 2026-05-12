@@ -27,7 +27,6 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [freeMode, setFreeMode] = useState(false);
-  const supabase = createClient();
 
   // Temporary state for the input field of each user
   const [vipDays, setVipDays] = useState<Record<string, string>>({});
@@ -37,6 +36,7 @@ export default function AdminPage() {
 
   const loadData = async () => {
     setLoading(true);
+    const supabase = createClient();
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     // We need the token to fetch models
