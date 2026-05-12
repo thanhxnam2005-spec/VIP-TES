@@ -32,6 +32,7 @@ import { useCallback, useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useLiveQuery } from "dexie-react-hooks";
 import { getOriginalContent } from "@/lib/hooks/use-scene-versions";
+import { useProfile } from "@/lib/hooks/use-profile";
 
 const INITIAL_PROMPT = `Bạn là chuyên gia phân tích và dịch thuật tiểu thuyết mạng Trung Quốc hàng đầu, am hiểu cực sâu tất cả các thể loại: Tiên Hiệp, Huyền Huyễn, Đô Thị Tu Tiên, Ngôn Tình, Đam Mỹ, v.v 
 Hãy đọc kỹ mẫu văn bản của bộ truyện và thực hiện nhiệm vụ sau một cách chính xác nhất có thể.
@@ -78,6 +79,14 @@ export function PromptTunerDialog({
 
   const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
 
+  const { profile } = useProfile();
+  
+  const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+  const rawQuota = (profile as any)?.admin_model_quota || 0;
+  const dailyLimit = (profile as any)?.admin_daily_quota_limit || 0;
+  const lastReset = (profile as any)?.admin_quota_last_reset || "";
+  const displayQuota = (lastReset !== currentVnDate && dailyLimit > 0) ? dailyLimit : rawQuota;
+
   const providers = useApiInferenceProviders();
   const currentModel = useMemo(() => {
     if (novel?.customTranslateProviderId) {
@@ -112,19 +121,34 @@ export function PromptTunerDialog({
   }, [open, novel, generatedPrompt]);
 
   const resolveModel = useCallback(async () => {
-    const activeModel = novel?.customTranslateProviderId
+    let activeModel = novel?.customTranslateProviderId
       ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" }
       : settings.translateModel;
+
+    // Ưu tiên tuyệt đối dùng Admin Model nếu còn lượt
+    if (displayQuota > 0) {
+      activeModel = { providerId: "admin-provider", modelId: "admin-model" };
+    }
+
     const model = await resolveChapterToolModel(
       activeModel,
       defaultProvider,
       chatSettings,
     );
+    
+    if (!model && displayQuota > 0) {
+      return await resolveChapterToolModel(
+        { providerId: "admin-provider", modelId: "admin-model" },
+        defaultProvider,
+        chatSettings
+      );
+    }
+
     if (!model) {
       toast.error(getChapterToolModelMissingMessage(defaultProvider));
     }
     return model;
-  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel, defaultProvider, chatSettings]);
+  }, [novel?.customTranslateProviderId, novel?.customTranslateModelId, settings.translateModel, defaultProvider, chatSettings, displayQuota]);
 
   const handleScan = async () => {
     const model = await resolveModel();
@@ -254,38 +278,47 @@ Vui lòng cập nhật lại kết quả phân tích và System Prompt dựa tr�
         </DialogHeader>
 
         <div className="flex flex-col gap-4 py-2 flex-1 min-h-0">
-          <div className="flex gap-2 items-center shrink-0">
-            <Label className="text-xs whitespace-nowrap text-muted-foreground font-medium">Sử dụng AI:</Label>
-            <Select value={selectedProviderId} onValueChange={handleProviderChange}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
-                <SelectValue placeholder="Chọn Provider..." />
-              </SelectTrigger>
-              <SelectContent>
-                {providers?.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {displayQuota > 0 ? (
+            <div className="flex items-center justify-center p-2 rounded-lg border border-blue-500/30 bg-blue-500/10">
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                <SparklesIcon className="size-4" />
+                Hệ thống tự động sử dụng {displayQuota} lượt dịch Admin miễn phí
+              </span>
+            </div>
+          ) : (
+            <div className="flex gap-2 items-center shrink-0">
+              <Label className="text-xs whitespace-nowrap text-muted-foreground font-medium">Sử dụng AI:</Label>
+              <Select value={selectedProviderId} onValueChange={handleProviderChange}>
+                <SelectTrigger className="w-[140px] h-8 text-xs">
+                  <SelectValue placeholder="Chọn Provider..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers?.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-            <Select
-              value={currentModel?.modelId ?? ""}
-              onValueChange={handleModelChange}
-              disabled={!selectedProviderId}
-            >
-              <SelectTrigger className="flex-1 h-8 text-xs">
-                <SelectValue placeholder="Chọn Model..." />
-              </SelectTrigger>
-              <SelectContent>
-                {models?.map((m) => (
-                  <SelectItem key={m.id} value={m.modelId}>
-                    {m.name || m.modelId}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <Select
+                value={currentModel?.modelId ?? ""}
+                onValueChange={handleModelChange}
+                disabled={!selectedProviderId}
+              >
+                <SelectTrigger className="flex-1 h-8 text-xs">
+                  <SelectValue placeholder="Chọn Model..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {models?.map((m) => (
+                    <SelectItem key={m.id} value={m.modelId}>
+                      {m.name || m.modelId}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {!generatedPrompt && !isScanning ? (
             <div className="flex flex-col items-center justify-center py-10 gap-4 border border-dashed rounded-lg bg-muted/30">

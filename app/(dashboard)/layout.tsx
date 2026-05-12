@@ -44,6 +44,7 @@ const NameDictPanel = lazy(() => import("@/components/name-dict/name-dict-panel"
 const ReaderPanel = lazy(() => import("@/components/reader/reader-panel").then(m => ({ default: m.ReaderPanel })));
 const DictInitializer = lazy(() => import("@/components/dict-initializer").then(m => ({ default: m.DictInitializer })));
 const WelcomeModal = lazy(() => import("@/components/welcome-modal").then(m => ({ default: m.WelcomeModal })));
+const AutoDictSync = lazy(() => import("@/components/auto-dict-sync").then(m => ({ default: m.AutoDictSync })));
 
 const pageTitles: Record<string, string> = Object.fromEntries(
   [...navConfig, ...miscNav].map((item) => [item.href, item.title]),
@@ -244,6 +245,7 @@ export default function DashboardLayout({
       <Suspense fallback={null}>
         <DictInitializer />
       </Suspense>
+      <AutoDictSync />
       <GlobalSearchDialog />
       <Suspense fallback={null}>
         <WelcomeModal />
