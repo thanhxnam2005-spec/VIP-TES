@@ -360,18 +360,18 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
   // ── Auto Initial Dictionary Scan (Khởi động từ điển) ──
   if (nameDict.length === 0) {
     try {
-      console.log("[Cold Start] Từ điển trống, tiến hành quét 2 chương đầu...");
-      const first2Chapters = allChapters.slice(0, 2);
-      if (first2Chapters.length > 0) {
+      console.log("[Cold Start] Từ điển trống, tiến hành quét 1 chương đầu...");
+      const firstChapter = allChapters.slice(0, 1);
+      if (firstChapter.length > 0) {
         let combinedText = "";
-        for (const c of first2Chapters) {
+        for (const c of firstChapter) {
           const chapSc = allScenes.filter(s => s.chapterId === c.id).sort((a,b)=>a.order-b.order);
           const contents = await Promise.all(chapSc.map(s => getOriginalContent(s.id)));
           combinedText += contents.join("\n\n") + "\n\n";
         }
         
-        // Cắt khoảng 4000 ký tự đầu để tránh tốn quá nhiều token
-        const cleaned = cleanGarbageLines(combinedText).slice(0, 4000); 
+        // Cắt khoảng 2500 ký tự đầu để quét cực nhanh
+        const cleaned = cleanGarbageLines(combinedText).slice(0, 2500); 
 
         if (cleaned.trim()) {
           const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
