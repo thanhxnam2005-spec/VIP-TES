@@ -168,12 +168,39 @@ function countWords(content: string): number {
   return content.split(/\s+/).filter(Boolean).length;
 }
 
+/**
+ * Replaces Chinese names with their Vietnamese equivalents in the raw Chinese text.
+ * Sorts names by length descending to avoid partial word replacements.
+ */
+function injectNamesIntoChinese(
+  text: string,
+  nameDict: Array<{ chinese: string; vietnamese: string }>
+): string {
+  if (!nameDict || nameDict.length === 0) return text;
+
+  // Filter out names that are not in the text first for performance
+  const relevantNames = nameDict.filter((n) => text.includes(n.chinese));
+  if (relevantNames.length === 0) return text;
+
+  // Sort descending by length to replace longer names first (e.g. replace "林动哥" before "林动")
+  relevantNames.sort((a, b) => b.chinese.length - a.chinese.length);
+
+  let injectedText = text;
+  for (const n of relevantNames) {
+    // Escape regex characters just in case, though Chinese names rarely have them
+    const safeChinese = n.chinese.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(safeChinese, 'g');
+    injectedText = injectedText.replace(regex, n.vietnamese);
+  }
+
+  return injectedText;
+}
+
 // ── Build AI post-edit prompt with dictionary context ──
 
 function buildPostEditPrompt(
   chineseText: string,
   dictTranslation: string,
-  nameDict: Array<{ chinese: string; vietnamese: string }>,
   novelCustomPrompt?: string,
   promptType: PromptType = "legacy",
   extractDict: boolean = false
@@ -192,17 +219,7 @@ function buildPostEditPrompt(
      prompt = novelCustomPrompt.trim();
   }
 
-  // Add name dictionary context
-  const relevantNames = nameDict.filter(
-    (n) => chineseText.includes(n.chinese)
-  );
-  if (relevantNames.length > 0) {
-    prompt += `\n\n# Bảng tên riêng (BẮT BUỘC dùng đúng)\n`;
-    for (const n of relevantNames.slice(0, 100)) {
-      prompt += `${n.chinese} → ${n.vietnamese}\n`;
-    }
-  }
-
+  // Name dictionary context is no longer appended here because names are now directly pre-injected into the Chinese text (Name Pre-translation)
   return prompt;
 }
 
@@ -445,19 +462,25 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
 
       const effectiveExtractDict = opts.extractDict ?? false;
 
+      // ── Name Pre-translation (Name Injection) ──
+      // Thay vì ném bảng tên vào system prompt gây tốn token,
+      // ta nhét thẳng tên tiếng Việt vào bản raw tiếng Trung.
+      // Khi AI nhìn thấy bản raw đã có sẵn tên tiếng Việt, nó sẽ tự động giữ nguyên.
+      const injectedChineseContent = injectNamesIntoChinese(cleanedContent, nameDict);
+      const injectedChineseTitle = injectNamesIntoChinese(chapter.title, nameDict);
+
       const systemPrompt = buildPostEditPrompt(
-        cleanedContent,
+        injectedChineseContent,
         dictTranslatedContent,
-        nameDict,
         novelCustomPrompt,
         opts.promptType,
         effectiveExtractDict
       );
 
       const userPrompt = buildPostEditUserPrompt(
-        cleanedContent,
+        injectedChineseContent,
         dictTranslatedContent,
-        chapter.title,
+        injectedChineseTitle,
         dictTranslatedTitle,
         opts.promptType,
         effectiveExtractDict
