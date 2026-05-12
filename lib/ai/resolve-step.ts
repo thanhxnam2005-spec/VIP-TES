@@ -23,7 +23,7 @@ export async function resolveStep(
       {
         id: "admin-provider",
         name: "Model Admin",
-        baseUrl: "/api/ai-proxy",
+        baseUrl: "https://dummy.local/api/ai-proxy", // Must be absolute for URL constructor
         apiKey: "admin-model-key",
       } as unknown as import("@/lib/db").AIProvider,
       cfg.modelId, // will be "admin-model"
