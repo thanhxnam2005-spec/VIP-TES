@@ -175,8 +175,8 @@ export function TranslateWorkspaceDialog({
       ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" }
       : settings.translateModel;
 
-    // Tự động dùng Admin Model nếu không có AI cá nhân nhưng còn lượt
-    if (!activeModel?.providerId && ((profile as any)?.admin_model_quota > 0)) {
+    // Ưu tiên tuyệt đối dùng Admin Model nếu còn lượt (Không cần quan tâm họ có chọn AI hay không)
+    if ((profile as any)?.admin_model_quota > 0) {
       activeModel = { providerId: "admin-provider", modelId: "admin-model" };
     }
 
@@ -535,8 +535,8 @@ export function TranslateWorkspaceDialog({
               </div>
             )}
 
-            {/* Càng dịch càng hay toggle — visible on hybrid tab */}
-            {activeTab === "hybrid" && (
+            {/* Càng dịch càng hay toggle — visible on both hybrid and pure-ai tabs */}
+            {(activeTab === "hybrid" || activeTab === "pure-ai") && (
               <label className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 cursor-pointer transition-colors hover:bg-emerald-500/10">
                 <Checkbox
                   checked={extractDict}
