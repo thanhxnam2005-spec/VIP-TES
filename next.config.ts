@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Exclude native node binaries from server bundle (can't run on Cloudflare Workers)
+  serverExternalPackages: ["onnxruntime-node"],
   // Performance: tree-shake large icon/component libraries
   experimental: {
     optimizePackageImports: [
