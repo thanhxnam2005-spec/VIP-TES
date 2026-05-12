@@ -20,7 +20,6 @@ import Image from "next/image";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -40,6 +39,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     
+    const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
       password,
