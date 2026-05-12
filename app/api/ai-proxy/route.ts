@@ -10,10 +10,9 @@ export async function POST(req: NextRequest) {
   let userId = null;
   let assignedModel = "gcli-gemini-3-pro-preview"; // fallback
 
-  // Create a supabase client with service role to securely bypass RLS and verify token
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
   // Authenticate user via bearer token in the auth header if present, or from cookies.
