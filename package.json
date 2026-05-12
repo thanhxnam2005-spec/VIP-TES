@@ -6,8 +6,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "pages:build": "npx @opennextjs/cloudflare build",
-    "pages:preview": "npm run pages:build && wrangler dev",
     "start": "next start",
     "lint": "eslint",
     "zip:android": "powershell -Command \"Compress-Archive -Path extension\\* -DestinationPath public\\novel-studio-connector-android.zip -Force\"",
@@ -82,7 +80,6 @@
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
     "@commitlint/config-conventional": "^20.5.0",
-    "@opennextjs/cloudflare": "^1.19.9",
     "@tailwindcss/postcss": "^4",
     "@types/diff": "^8.0.0",
     "@types/jszip": "^3.4.1",
@@ -90,15 +87,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@webgpu/types": "^0.1.69",
-    "esbuild": "^0.28.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "husky": "^9.1.7",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "wrangler": "^4.90.1"
-  },
-  "overrides": {
-    "onnxruntime-node": "npm:empty-npm-package@1.0.0"
+    "typescript": "^5"
   }
 }
