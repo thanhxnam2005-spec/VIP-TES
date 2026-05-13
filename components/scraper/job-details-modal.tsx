@@ -114,7 +114,11 @@ export function JobDetailsModal({ jobId, onClose }: JobDetailsModalProps) {
       const newChapters = novelInfo.chapters.filter((ch: any) => 
         !existingTitles.has(ch.title.toLowerCase().trim()) && 
         !pendingTitles.has(ch.title.toLowerCase().trim())
-      );
+      ).map((ch: any, i: number) => ({
+        title: ch.title as string,
+        url: ch.url as string,
+        order: job.chaptersToScrape.length + i,
+      }));
 
       if (newChapters.length === 0) {
         toast.success("Không có chương mới nào để cập nhật.");
