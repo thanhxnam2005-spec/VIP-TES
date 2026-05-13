@@ -127,6 +127,31 @@ export async function loadDictDataForWorker(
 
   const fetchResults = await Promise.all(
     ALL_SOURCES.map(async (source) => {
+      if (source === "core_vietphrase") {
+        // Try fetching vietphrase_1 and vietphrase_2 if vietphrase.txt fails
+        const resp = await fetch(DICT_FILES[source]);
+        if (resp.ok) {
+          return { source, text: await resp.text(), ok: true };
+        }
+        
+        // Fallback to parts
+        try {
+          const [r1, r2] = await Promise.all([
+            fetch("/dict/vietphrase_1.txt"),
+            fetch("/dict/vietphrase_2.txt")
+          ]);
+          if (r1.ok && r2.ok) {
+            const t1 = await r1.text();
+            const t2 = await r2.text();
+            return { source, text: t1 + "\n" + t2, ok: true };
+          }
+        } catch (err) {
+          console.warn("Failed to fetch split vietphrase files:", err);
+        }
+        
+        return { source, text: "", ok: false };
+      }
+
       const url = DICT_FILES[source];
       const resp = await fetch(url);
       if (!resp.ok) {
@@ -192,21 +217,38 @@ export async function loadDictFromPublic(
   const sourceCounts: Record<string, number> = {};
 
   for (const source of ALL_SOURCES) {
-    const url = DICT_FILES[source];
     onProgress?.(source, 0);
+    let text = "";
 
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      console.warn(`Failed to fetch dict file: ${url}`);
+    if (source === "core_vietphrase") {
+      const resp = await fetch(DICT_FILES[source]);
+      if (resp.ok) {
+        text = await resp.text();
+      } else {
+        // Try parts
+        const [r1, r2] = await Promise.all([
+          fetch("/dict/vietphrase_1.txt"),
+          fetch("/dict/vietphrase_2.txt")
+        ]);
+        if (r1.ok && r2.ok) {
+          text = (await r1.text()) + "\n" + (await r2.text());
+        }
+      }
+    } else {
+      const resp = await fetch(DICT_FILES[source]);
+      if (resp.ok) {
+        text = await resp.text();
+      }
+    }
+
+    if (!text) {
+      console.warn(`Failed to fetch dict file for: ${source}`);
       sourceCounts[source] = 0;
       continue;
     }
 
-    const text = await resp.text();
     const parsed = parseDictText(text);
     sourceCounts[source] = parsed.length;
-
-    // Removed dictEntries insert to make it instant
 
     // Also update dictCache
     await db.dictCache.put({ source, rawText: text });

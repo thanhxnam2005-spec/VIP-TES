@@ -377,7 +377,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
     const toastId = toast.loading("Đang tải từ điển lên Kho chung (0%)...");
     try {
       let uploadedCount = 0;
-      const sources = ALL_SOURCES.filter(s => s !== "core_vietphrase");
+      const sources = ALL_SOURCES;
       const total = sources.length;
       
       // Process in batches of 3 (upload is heavier than download)
@@ -423,7 +423,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       let newEntriesCount = 0;
       
       // Filter out core_vietphrase
-      const sources = ALL_SOURCES.filter(s => s !== "core_vietphrase");
+      const sources = ALL_SOURCES;
       const total = sources.length;
       
       // Process in parallel batches of 5 to speed up while not overwhelming mobile
@@ -1109,7 +1109,6 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">
-                                {source !== "core_vietphrase" && source !== "core_phienam" && (
                                   <>
                                     <Button
                                       variant="ghost"
@@ -1134,7 +1133,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                                     )}
                                     <div className="w-px h-4 bg-border my-auto mx-1" />
                                   </>
-                                )}
+
                                 {isAdmin && (
                                   <Button
                                     variant="ghost"
