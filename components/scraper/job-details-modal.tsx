@@ -170,7 +170,7 @@ export function JobDetailsModal({ jobId, onClose }: JobDetailsModalProps) {
             <div className="flex-1 min-w-0 pr-6 text-left">
               <DialogTitle className="line-clamp-2 leading-snug">{job.title}</DialogTitle>
               <DialogDescription className="mt-2 flex items-center gap-2">
-                <Badge variant={job.status === 'done' ? 'success' : job.status === 'error' ? 'destructive' : job.status === 'paused' ? 'secondary' : 'default'}>
+                <Badge variant={job.status === 'done' ? 'secondary' : job.status === 'error' ? 'destructive' : job.status === 'paused' ? 'outline' : 'default'}>
                   {job.status === 'error' ? 'Lỗi' : job.status === 'done' ? 'Hoàn thành' : job.status === 'paused' ? 'Tạm dừng' : 'Đang tải'}
                 </Badge>
                 <a href={job.url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline inline-flex items-center">
