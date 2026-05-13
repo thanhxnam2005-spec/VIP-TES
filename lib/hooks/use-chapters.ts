@@ -97,7 +97,8 @@ export function useNovelDetailStats(novelId: string | undefined) {
     async () => {
       const chapterWordCounts = new Map<string, number>();
       const latestEditByChapter = new Map<string, number>();
-      if (!novelId || !shouldLoad) return { chapterWordCounts, analysisStatuses: [] };
+      const translatedChapterIds = new Set<string>();
+      if (!novelId || !shouldLoad) return { chapterWordCounts, analysisStatuses: [], translatedChapterIds };
 
       const chapters = await db.chapters
         .where("novelId")
@@ -125,6 +126,9 @@ export function useNovelDetailStats(novelId: string | undefined) {
           if (t > current) {
             latestEditByChapter.set(s.chapterId, t);
           }
+          if (s.versionType && s.versionType !== "manual") {
+            translatedChapterIds.add(s.chapterId);
+          }
         }
 
         offset += CHUNK_SIZE;
@@ -141,10 +145,10 @@ export function useNovelDetailStats(novelId: string | undefined) {
         };
       });
 
-      return { chapterWordCounts, analysisStatuses };
+      return { chapterWordCounts, analysisStatuses, translatedChapterIds };
     },
     [novelId, shouldLoad]
-  ) ?? { chapterWordCounts: new Map<string, number>(), analysisStatuses: [] };
+  ) ?? { chapterWordCounts: new Map<string, number>(), analysisStatuses: [], translatedChapterIds: new Set<string>() };
 }
 
 export function useHasAnalyzedChapters(novelId: string | undefined) {

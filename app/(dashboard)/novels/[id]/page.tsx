@@ -59,6 +59,7 @@ import {
   useCharacters,
   useNovel,
 } from "@/lib/hooks";
+import { useScraperQueueStore } from "@/lib/stores/scraper-queue";
 import { db } from "@/lib/db";
 import { generateEpub } from "@/lib/epub-generator";
 import { useApiInferenceProviders, useAIModels } from "@/lib/hooks/use-ai-providers";
@@ -95,13 +96,14 @@ export default function NovelDetailPage() {
   const [activeTab, setActiveTab] = useState("chapters");
   const novel = useNovel(id);
   const chapters = useChapters(id);
-  const { chapterWordCounts, analysisStatuses } = useNovelDetailStats(id);
+  const { chapterWordCounts, analysisStatuses, translatedChapterIds } = useNovelDetailStats(id);
   const totalWords = useMemo(() => {
     let sum = 0;
     chapterWordCounts.forEach((count) => { sum += count; });
     return sum;
   }, [chapterWordCounts]);
   const characters = useCharacters(id);
+  const pendingChaptersCount = useScraperQueueStore(s => s.jobs[id]?.chaptersToScrape.length || 0);
 
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("full");
@@ -510,7 +512,10 @@ export default function NovelDetailPage() {
 
           {/* Stats + Genres + Tags */}
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
-            <Badge variant="outline">{chapters?.length ?? 0} chương</Badge>
+            <Badge variant="outline">{chapters?.length ?? 0} đã tải</Badge>
+            {pendingChaptersCount > 0 && (
+              <Badge variant="outline" className="text-muted-foreground opacity-70 bg-muted/50">{pendingChaptersCount} chờ tải</Badge>
+            )}
             <Badge variant="outline">{totalWords.toLocaleString()} từ</Badge>
             {novel.genres?.map((g: string) => (
               <Badge key={g} variant="default">
@@ -554,6 +559,7 @@ export default function NovelDetailPage() {
             chapters={chapters ?? []}
             analysisStatuses={analysisStatuses}
             wordCounts={chapterWordCounts}
+            translatedChapterIds={translatedChapterIds}
             onAnalyze={handleAnalyze}
             onTranslate={handleTranslate}
             onReplace={handleReplace}

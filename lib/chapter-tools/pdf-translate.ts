@@ -37,14 +37,20 @@ ${PDF_RULES}
 
 # Yêu cầu đầu ra (BẮT BUỘC THEO ĐÚNG FORMAT NÀY):
 <names>
-TênTrung1=TênViệt1
-TênTrung2=TênViệt2
+[names]TênTrung1=TênViệt1
+[names]TênTrung2=TênViệt2
+[tuvung]ThuậtNgữTrung=ThuậtNgữViệt
+[ngucanh]CụmTừTrung=CụmTừViệt
 </names>
 <content>
 (Văn bản dịch đã sửa lỗi)
 </content>
 
-Lưu ý: TRÍCH XUẤT TÊN NHÂN VẬT, ĐỊA DANH, VẬT PHẨM, TÔNG MÔN. Định dạng đúng 1 tên 1 dòng (Trung=Việt). KHÔNG giải thích. Nếu không có tên nào, để trống giữa <names></names>.`;
+Lưu ý QUAN TRỌNG: TRÍCH XUẤT TỪ ĐIỂN theo định dạng \`[loại]TiếngTrung=TiếngViệt\`.
+- [names]: Tên nhân vật, địa danh, môn phái
+- [tuvung]: Thuật ngữ, kỹ năng, vật phẩm
+- [ngucanh]: Ngữ cảnh đặc thù
+KHÔNG giải thích. Nếu không có tên nào, để trống giữa <names></names>.`;
 
 function buildGenreAwareSystemPrompt(): string {
   return HYBRID_POST_EDIT_BASE;
@@ -156,19 +162,23 @@ function buildPostEditUserPrompt(
 function parseHybridResult(
   raw: string,
   includeTitle: boolean,
-): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string}> } {
+): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> } {
   let contentPart = raw;
-  let extractedNames: Array<{chinese: string, vietnamese: string}> = [];
+  let extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> = [];
 
   // Extract <names> block if present
   const namesMatch = raw.match(/<names>([\s\S]*?)<\/names>/i);
   if (namesMatch) {
     const lines = namesMatch[1].trim().split("\n");
-    for (const line of lines) {
+    for (let line of lines) {
       if (line.includes("=")) {
-        const [cn, vn] = line.split("=").map(s => s.trim());
+        line = line.trim();
+        const tagMatch = line.match(/^\[(\w+)\]/);
+        const dictType = tagMatch ? tagMatch[1] : "names";
+        const cleanedLine = tagMatch ? line.slice(tagMatch[0].length) : line;
+        const [cn, vn] = cleanedLine.split("=").map(s => s.trim());
         if (cn && vn && cn !== vn) {
-          extractedNames.push({ chinese: cn, vietnamese: vn });
+          extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
         }
       }
     }
@@ -432,10 +442,24 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
         // Save extracted names to novel dictionary dynamically
         if (parsed.extractedNames.length > 0) {
           try {
-            await bulkImportNameEntries(novelId, parsed.extractedNames, "khác", "skip");
+            const entriesWithCategory = parsed.extractedNames.map((entry) => {
+              let category = "khác";
+              if (entry.dictType === "names") category = "nhân vật";
+              else if (entry.dictType === "tuvung") category = "thuật ngữ";
+              else if (entry.dictType === "ngucanh") category = "context mapping";
+              return { ...entry, category };
+            });
+
+            await bulkImportNameEntries(novelId, entriesWithCategory, "khác", "skip");
             extractedNamesCount = parsed.extractedNames.length;
             // Update nameDict for subsequent chapters in the loop
             nameDict = await getMergedNameDict(novelId);
+
+            // Upload to community dictionary
+            const novel = await db.novels.get(novelId);
+            const genre = novel?.genres?.[0] || "tienhiep";
+            const { uploadToCommunityDict } = await import("@/lib/hooks/use-dict-entries");
+            await uploadToCommunityDict(entriesWithCategory, genre);
           } catch (err) {
             console.error("Lỗi lưu tên mới vào từ điển:", err);
           }

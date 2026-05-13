@@ -14,6 +14,30 @@
       .trim();
   };
 
+  // --- AUTO CAPTCHA SOLVER ---
+  const autoSolveCaptcha = () => {
+    try {
+      if (location.hostname.includes('cloudflare.com')) {
+        const cb = document.querySelector('input[type="checkbox"], .mark, .cb-c, label.ctp-checkbox-label, #trk_checkbox');
+        if (cb) {
+          console.log('[Stealth] Found Turnstile checkbox in iframe, clicking!');
+          cb.click();
+        }
+      }
+
+      const wrapper = document.querySelector('#cf-turnstile, .h-captcha, .g-recaptcha, #challenge-stage');
+      if (wrapper) wrapper.click();
+      
+      const challengeBtn = document.querySelector('#challenge-form input[type="submit"], #challenge-form button');
+      if (challengeBtn && challengeBtn.offsetParent !== null) {
+         challengeBtn.click();
+      }
+    } catch (e) {}
+  };
+  setInterval(autoSolveCaptcha, 2500);
+  setTimeout(autoSolveCaptcha, 500);
+
+
   const isFanqie = () => location.href.includes('fanqienovel.com');
 
   const doExtract = () => {

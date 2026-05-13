@@ -206,7 +206,7 @@ export const useBulkTranslateStore = create<BulkTranslateState>((set, get) => ({
     const job = get().jobs[novelId];
     if (job) {
       job.abortController?.abort();
-      set((s) => ({ jobs: { ...s.jobs, [novelId]: { ...job, isRunning: false } } }));
+      set((s) => ({ jobs: { ...s.jobs, [novelId]: { ...job, isRunning: false, step: "results" } } }));
     }
   },
 

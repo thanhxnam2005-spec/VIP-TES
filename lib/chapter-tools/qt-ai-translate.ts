@@ -14,7 +14,7 @@ import { db } from "@/lib/db";
 import type { AnalysisSettings, Scene, DictSource } from "@/lib/db";
 import { createSceneVersion, ensureInitialVersion, getOriginalContent } from "@/lib/hooks/use-scene-versions";
 import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-entries";
-import { appendToDictSource } from "@/lib/hooks/use-dict-entries";
+import { appendToDictSource, uploadToCommunityDict } from "@/lib/hooks/use-dict-entries";
 import { convertText } from "@/lib/hooks/use-qt-engine";
 import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
@@ -128,20 +128,7 @@ function delay(ms: number): Promise<void> {
 /**
  * Upload a genre dict source to Supabase storage after appending new names.
  */
-async function uploadGenreDictToSupabase(dictSource: DictSource): Promise<void> {
-  const cached = await db.dictCache.get(dictSource);
-  if (!cached?.rawText) return;
 
-  const supabase = createSupabaseClient();
-  const filename = `${dictSource}.txt`;
-  const { error } = await supabase.storage
-    .from("dictionaries")
-    .upload(filename, cached.rawText, {
-      contentType: "text/plain;charset=UTF-8",
-      upsert: true,
-    });
-  if (error) throw error;
-}
 
 function classifyError(err: unknown): { retryable: boolean; message: string } {
   const msg = err instanceof Error ? err.message : String(err);
@@ -637,14 +624,13 @@ ${cleaned}`;
                   if (!grouped[dt]) grouped[dt] = [];
                   grouped[dt].push({ chinese: entry.chinese, vietnamese: entry.vietnamese });
                 }
-                // Append to each sub-dict and upload
                 for (const [dictType, entries] of Object.entries(grouped)) {
                   const dictSource = `${genre}_${dictType}` as DictSource;
-                  const appendedCount = await appendToDictSource(dictSource, entries);
-                  if (appendedCount > 0) {
-                    await uploadGenreDictToSupabase(dictSource);
-                  }
+                  await appendToDictSource(dictSource, entries);
                 }
+                
+                // Upload to community dictionary table
+                await uploadToCommunityDict(entriesWithCategory, genre);
               } catch (uploadErr) {
                 console.warn("[ExtractDict] Genre dict upload skipped:", uploadErr);
               }

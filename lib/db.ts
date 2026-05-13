@@ -246,6 +246,7 @@ export interface AnalysisSettings {
   reviewPrompt?: string;
   editPrompt?: string;
   translateDelaySeconds?: number;
+  translateConcurrency?: number;
 }
 
 // ─── Name Dictionary ─────────────────────────────────────────
@@ -559,6 +560,12 @@ export interface WritingStepResult {
 
 // ─── Database ────────────────────────────────────────────────
 
+export interface NovelCollection {
+  id: string;
+  name: string;
+  createdAt: Date;
+}
+
 export class NovelStudioDB extends Dexie {
   novels!: EntityTable<Novel, "id">;
   chapters!: EntityTable<Chapter, "id">;
@@ -586,6 +593,7 @@ export class NovelStudioDB extends Dexie {
   writingSettings!: EntityTable<WritingSettings, "id">;
   writingSessions!: EntityTable<WritingSession, "id">;
   writingStepResults!: EntityTable<WritingStepResult, "id">;
+  novelCollections!: EntityTable<NovelCollection, "id">;
 
   constructor() {
     super("novel-studio");

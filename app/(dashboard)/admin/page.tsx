@@ -140,9 +140,12 @@ export default function AdminPage() {
   };
 
   const handleGrantQuota = async (userId: string) => {
+    // Find the profile we are updating to use its assigned model if none selected
+    const userProfile = profiles.find(p => p.id === userId) as any;
+    
     const quotaStr = quotaInputs[userId];
     const quota = parseInt(quotaStr, 10);
-    const model = modelInputs[userId] || "gcli-gemini-3-pro-preview"; // Mặc định nếu không chọn
+    const model = modelInputs[userId] || userProfile?.admin_assigned_model || "gcli-gemini-3-pro-preview";
 
     if (isNaN(quota) || quota < 0) {
       toast.error("Vui lòng nhập số lượt dịch hợp lệ");
@@ -152,6 +155,21 @@ export default function AdminPage() {
     const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
 
     const supabase = createClient();
+
+    // KIỂM TRA TRÙNG MODEL:
+    if (model && model !== "gcli-gemini-3-pro-preview") {
+      const { data: existingUsers } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .eq("admin_assigned_model", model)
+        .neq("id", userId);
+
+      if (existingUsers && existingUsers.length > 0) {
+        toast.error(`Model này đã được cấp cho người dùng khác (${existingUsers[0].email})!`);
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({ 
@@ -277,7 +295,7 @@ export default function AdminPage() {
                       <div className="flex flex-col gap-1 border-t pt-2 mt-1">
                         <select
                           className="h-8 text-xs border rounded-md px-2 bg-background w-full"
-                          value={modelInputs[p.id] || "gcli-gemini-3-pro-preview"}
+                          value={modelInputs[p.id] || (p as any).admin_assigned_model || "gcli-gemini-3-pro-preview"}
                           onChange={(e) => setModelInputs({ ...modelInputs, [p.id]: e.target.value })}
                         >
                           {availableModels.length > 0 ? (

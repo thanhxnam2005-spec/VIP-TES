@@ -57,6 +57,8 @@ import {
 import { db, type Novel } from "@/lib/db";
 import { deleteNovel, useNovels } from "@/lib/hooks";
 import { downloadNovelJson, exportNovel, importNovel } from "@/lib/novel-io";
+import { CollectionManager } from "@/components/collection-manager";
+import { CategorizeNovelsDialog } from "@/components/categorize-novels-dialog";
 import {
   BookOpenIcon,
   DownloadIcon,
@@ -251,14 +253,7 @@ export default function LibraryPage() {
     }
   }, [models, selectedModel]);
 
-  const genres = useMemo(() => {
-    if (!novels) return [];
-    const set = new Set<string>();
-    for (const n of novels) {
-      if (n.genre) set.add(n.genre);
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "vi"));
-  }, [novels]);
+
 
   const filtered = useMemo(() => {
     if (!novels) return [];
@@ -293,10 +288,6 @@ export default function LibraryPage() {
 
   const handleSearch = (value: string) => {
     setSearch(value);
-    setPage(1);
-  };
-  const handleGenre = (value: string) => {
-    setGenreFilter(value);
     setPage(1);
   };
   const handleSort = (value: string) => {
@@ -507,6 +498,12 @@ export default function LibraryPage() {
         </div>
       </div>
 
+      <CollectionManager 
+        novels={novels} 
+        activeGenre={genreFilter} 
+        onSelectGenre={(val) => { setGenreFilter(val); setPage(1); }} 
+      />
+
       {/* Toolbar */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="relative w-full sm:w-64">
@@ -527,21 +524,7 @@ export default function LibraryPage() {
           )}
         </div>
 
-        {genres.length > 0 && (
-          <Select value={genreFilter} onValueChange={handleGenre}>
-            <SelectTrigger>
-              <SelectValue placeholder="Thể loại" />
-            </SelectTrigger>
-            <SelectContent position="popper" align="start">
-              <SelectItem value="all">Tất cả thể loại</SelectItem>
-              {genres.map((g) => (
-                <SelectItem key={g} value={g}>
-                  {g}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+
 
         <Select value={sort} onValueChange={handleSort}>
           <SelectTrigger>
@@ -555,6 +538,8 @@ export default function LibraryPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <CategorizeNovelsDialog novels={novels} />
 
         <ToggleGroup
           type="single"

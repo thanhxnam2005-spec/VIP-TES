@@ -177,6 +177,7 @@ export interface DatabaseExportMeta {
   dbVersion: number;
   exportedAt: string;
   tables: Record<string, number>;
+  scraperQueue?: string;
 }
 
 type TableData = {
@@ -628,6 +629,10 @@ export async function buildExportPayload(
     tables: counts,
   };
 
+  if (typeof window !== "undefined") {
+    meta.scraperQueue = localStorage.getItem("scraper-queue") || undefined;
+  }
+
   const exportData: DatabaseExportData = { meta, data };
   // Don't pretty-print if encrypting (saves ~30% size)
   const json = JSON.stringify(exportData, null, password ? undefined : 2);
@@ -725,6 +730,17 @@ export async function importDatabase(
 
   const data = exportData.data;
   if (!data) throw new Error("Không có dữ liệu trong tệp.");
+
+  // Import scraper queue if available
+  if (exportData.meta.scraperQueue && typeof window !== "undefined") {
+    localStorage.setItem("scraper-queue", exportData.meta.scraperQueue);
+    try {
+      const { useScraperQueueStore } = await import("@/lib/stores/scraper-queue");
+      useScraperQueueStore.persist.rehydrate();
+    } catch (e) {
+      console.error("Failed to rehydrate scraper queue", e);
+    }
+  }
 
   // Build ID remap maps for "keep-both" mode
   const idMaps: Record<string, Map<string, string>> = {};

@@ -1,4 +1,4 @@
-console.log("%c🚀 Novel Studio Connector v6.0 — Stealth Mode", "color:lime;font-size:16px");
+console.log("%c🚀 Novel Studio Connector v1.0 — Stealth Mode", "color:lime;font-size:16px");
 const contentCache = new Map();
 let stvScrapeActive = true;
 
@@ -176,7 +176,7 @@ chrome.runtime.onMessageExternal.addListener((request, _sender, sendResponse) =>
     return true;
   }
   if (request.type === "FETCH") {
-    handleFetch(request.url, request.waitSelector, request.clickSelector, request.timeout || 15000)
+    handleFetch(request.url, request.waitSelector, request.clickSelector, request.timeout || 15000, request.activeTab, request.reuseTab)
       .then((r) => sendResponse({ ok: true, ...r }))
       .catch((e) => sendResponse({ ok: false, error: e.message }));
     return true;
@@ -294,7 +294,7 @@ async function downloadAllSequential({ chapters, delay: d = 1000 }, sendResponse
 // ══════════════════════════════════════════════════════════════
 // 6. CORE FETCH — Stealth Enhanced + Proxy Rotation
 // ══════════════════════════════════════════════════════════════
-async function handleFetch(url, waitSelector, clickSelector, timeout) {
+async function handleFetch(url, waitSelector, clickSelector, timeout, forceActive = false, reuseTab = false) {
   // Rotate proxy before this chapter
   await rotateProxyIfNeeded();
 
@@ -305,22 +305,50 @@ async function handleFetch(url, waitSelector, clickSelector, timeout) {
     if (activeTab) originalTabId = activeTab.id;
   } catch {}
 
-  const tab = await chrome.tabs.create({ url, active: false });
-  const tabId = tab.id;
+  let tabId = null;
+  let isReused = false;
+
+  if (reuseTab) {
+    try {
+      const u = new URL(url);
+      const tabs = await chrome.tabs.query({ url: `*://${u.hostname}/*` });
+      if (tabs.length > 0) {
+        let bestTab = tabs.find(t => t.url.includes(u.pathname));
+        if (!bestTab) bestTab = tabs[0];
+        tabId = bestTab.id;
+        isReused = true;
+        
+        if (!bestTab.url.includes(u.pathname)) {
+          await chrome.tabs.update(tabId, { url, active: true });
+          await waitForTabLoad(tabId, 30000);
+          await delay(3000);
+        } else {
+          await chrome.tabs.update(tabId, { active: true });
+          await delay(1000);
+        }
+      }
+    } catch (e) {
+      console.error("[Fetch] reuseTab error:", e);
+    }
+  }
+
+  if (!isReused) {
+    const tab = await chrome.tabs.create({ url, active: forceActive });
+    tabId = tab.id;
+  }
 
   // On Android, active:false doesn't work — immediately refocus original tab
-  if (originalTabId) {
+  if (originalTabId && !isReused) {
     try { await chrome.tabs.update(originalTabId, { active: true }); } catch {}
   }
 
   try {
-    await waitForTabLoad(tabId, 30000);
-    await injectFullStealth(tabId);
-    // Human-like random delay
-    await delay(getAdaptiveDelay(1500));
-
-    // Simulate human: scroll + mouse
-    await simulateHuman(tabId);
+    if (!isReused) {
+      await waitForTabLoad(tabId, 30000);
+      await injectFullStealth(tabId);
+      await delay(getAdaptiveDelay(1500));
+      await simulateHuman(tabId);
+    }
 
     let timedOut = false;
     if (clickSelector && waitSelector) {
@@ -338,7 +366,9 @@ async function handleFetch(url, waitSelector, clickSelector, timeout) {
         await delay(humanDelay(500));
       }
     } else if (waitSelector) {
-      timedOut = await waitForSelector(tabId, waitSelector, timeout, 1);
+      // Just wait for it, don't fail immediately on timeout so captcha solver can work
+      await waitForSelector(tabId, waitSelector, timeout, 1);
+      timedOut = false; // We'll extract whatever is there anyway
     } else {
       await waitForStableContent(tabId, timeout);
     }
@@ -353,7 +383,10 @@ async function handleFetch(url, waitSelector, clickSelector, timeout) {
       },
     });
     const data = results?.[0]?.result;
-    if (!data) throw new Error("Failed to extract");
+    if (!data) {
+      console.warn("Failed to extract data, returning empty");
+      return { html: "", contentText: "", timedOut: true };
+    }
 
     // Success → decrease throttle
     if (data.contentText && data.contentText.length > 100) decreaseThrottle();
@@ -364,8 +397,10 @@ async function handleFetch(url, waitSelector, clickSelector, timeout) {
     increaseThrottle();
     throw err;
   } finally {
-    try { await chrome.tabs.remove(tabId); } catch {}
-    // Refocus original tab again after closing scraper tab
+    if (!isReused) {
+      try { await chrome.tabs.remove(tabId); } catch {}
+    }
+    // Refocus original tab again
     if (originalTabId) {
       try { await chrome.tabs.update(originalTabId, { active: true }); } catch {}
     }

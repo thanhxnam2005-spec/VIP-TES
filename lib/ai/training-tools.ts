@@ -9,8 +9,6 @@ export interface TrainingSuggestion {
   category: "names" | "names2" | "phienam" | "luatnhan" | "tuvung" | "ngucanh" | "vietphrase";
   genre: string;
   context_zh?: string;
-  context_vi_before?: string;
-  context_vi_after?: string;
 }
 
 const trainingSchema = jsonSchema<{ suggestions: TrainingSuggestion[] }>({
@@ -27,10 +25,8 @@ const trainingSchema = jsonSchema<{ suggestions: TrainingSuggestion[] }>({
           category: { type: "string", enum: ["names", "names2", "phienam", "luatnhan", "tuvung", "ngucanh", "vietphrase"] },
           genre: { type: "string" },
           context_zh: { type: "string" },
-          context_vi_before: { type: "string" },
-          context_vi_after: { type: "string" },
         },
-        required: ["chinese", "vietnamese", "reason", "category", "genre", "context_zh", "context_vi_before", "context_vi_after"],
+        required: ["chinese", "vietnamese", "reason", "category", "genre", "context_zh"],
       },
     },
   },
@@ -76,8 +72,8 @@ ${opts.aiTranslated.slice(0, 3000)}
    - "vietphrase": Từ điển phụ (Bổ sung từ vựng thông dụng đặc thù của thể loại, độ ưu tiên thấp hơn tên riêng/thuật ngữ).
 3. Chú trọng vào việc sử dụng từ Hán-Việt cho các thuật ngữ tu tiên, chiêu thức và tên riêng để giữ đúng phong cách tiên hiệp/huyền huyễn.
 4. Tránh dịch quá "thuần Việt" (quá hiện đại hoặc bình dân) cho các bối cảnh cổ đại/tu tiên.
-5. Với mỗi đề xuất, hãy trích dẫn câu văn gốc chứa từ đó (context_zh), bản dịch hiện tại của QT cho câu đó (context_vi_before) và bản dịch đề xuất của bạn cho câu đó (context_vi_after) để người dùng đối chiếu.
-6. Mỗi đề xuất phải có { chinese, vietnamese, reason, category, context_zh, context_vi_before, context_vi_after }.
+5. Với mỗi đề xuất, hãy trích dẫn câu văn gốc chứa từ đó (context_zh) để người dùng đối chiếu.
+6. Mỗi đề xuất phải có { chinese, vietnamese, reason, category, context_zh }.
 </requirements>
 
 <output_format>Trả về JSON chứa mảng "suggestions". Không giải thích gì thêm.</output_format>
@@ -136,7 +132,7 @@ ${opts.sourceText.slice(0, 3000)}
    - "ngucanh": Ngữ cảnh & Quy tắc dịch (Quy tắc đặc thù khi dịch từ/cụm từ cụ thể trong bối cảnh truyện).
    - "vietphrase": Từ điển phụ (Bổ sung từ vựng thông dụng đặc thù của thể loại, độ ưu tiên thấp hơn tên riêng/thuật ngữ).
 ${genreInstruction}
-7. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó) và context_vi_before/after (có thể để trống nếu không cần thiết).
+7. Với mỗi mục, phải có context_zh (câu gốc chứa từ đó).
 8. BẮT BUỘC: Nghĩa tiếng Việt (vietnamese) PHẢI LÀ MỘT NGHĨA DUY NHẤT, chuẩn xác nhất. Tuyệt đối KHÔNG dùng dấu gạch chéo (/), KHÔNG liệt kê nhiều nghĩa (Ví dụ: Sai: "Tống Cẩu / Tống Chó", Đúng: "Tống Cẩu").
 </requirements>
 

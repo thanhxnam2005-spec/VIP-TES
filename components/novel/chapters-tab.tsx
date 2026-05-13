@@ -113,6 +113,7 @@ export function ChaptersTab({
   chapters,
   analysisStatuses,
   wordCounts,
+  translatedChapterIds,
   onAnalyze,
   onTranslate,
   onReplace,
@@ -127,6 +128,7 @@ export function ChaptersTab({
     | { chapterId: string; status: ChapterAnalysisStatus }[]
     | undefined;
   wordCounts: Map<string, number>;
+  translatedChapterIds?: Set<string>;
   onAnalyze: (
     mode: "full" | "incremental" | "selected",
     selectedIds?: string[],
@@ -203,18 +205,38 @@ export function ChaptersTab({
   };
 
   const toggleAll = () => {
-    const filteredIds = filteredChapters.map((f) => f.chapter.id);
-    const allFilteredSelected = filteredIds.every((id) => selected.has(id));
-    if (allFilteredSelected) {
+    const validIds = filteredChapters
+      .map((f) => f.chapter.id)
+      .filter((id) => !translatedChapterIds?.has(id));
+
+    const currentlySelectedFiltered = filteredChapters.filter(f => selected.has(f.chapter.id));
+    const allValidSelected = validIds.length > 0 && validIds.every((id) => selected.has(id));
+
+    if (allValidSelected || (validIds.length === 0 && currentlySelectedFiltered.length > 0)) {
+      // Deselect all currently filtered ones
+      const filteredIds = filteredChapters.map((f) => f.chapter.id);
       setSelected((prev) => {
         const next = new Set(prev);
         for (const id of filteredIds) next.delete(id);
         return next;
       });
     } else {
-      setSelected((prev) => new Set([...prev, ...filteredIds]));
+      // Select all untranslated
+      setSelected((prev) => new Set([...prev, ...validIds]));
     }
   };
+
+  const isAllValidSelected = useMemo(() => {
+    if (filteredChapters.length === 0) return false;
+    const validIds = filteredChapters
+      .map((f) => f.chapter.id)
+      .filter((id) => !translatedChapterIds?.has(id));
+    if (validIds.length === 0) {
+      // If there are no valid chapters, check if any filtered ones are manually selected
+      return filteredChapters.every((f) => selected.has(f.chapter.id));
+    }
+    return validIds.every((id) => selected.has(id));
+  }, [filteredChapters, selected, translatedChapterIds]);
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -309,7 +331,7 @@ export function ChaptersTab({
           className="sm:hidden" 
           onClick={toggleAll}
         >
-          {filteredChapters.length > 0 && filteredChapters.every((f) => selected.has(f.chapter.id)) ? "Bỏ chọn tất cả" : "Chọn tất cả"}
+          {isAllValidSelected ? "Bỏ chọn tất cả" : "Chọn tất cả"}
         </Button>
         <div className="ml-auto flex gap-1.5 sm:gap-2">
           <Popover>
@@ -401,10 +423,7 @@ export function ChaptersTab({
           {/* Header row — hidden on mobile since layout changes */}
           <div className="hidden min-w-0 items-center gap-2 px-3 pb-2 text-xs text-muted-foreground sm:flex">
             <Checkbox
-              checked={
-                filteredChapters.length > 0 &&
-                filteredChapters.every((f) => selected.has(f.chapter.id))
-              }
+              checked={isAllValidSelected}
               onCheckedChange={toggleAll}
               className="size-3.5 shrink-0"
             />
@@ -452,6 +471,8 @@ export function ChaptersTab({
                     else if (tlStatus === "translating") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-blue-500/10 text-blue-600 whitespace-nowrap flex items-center gap-1"><LoaderIcon className="size-3 animate-spin" />Đang dịch</span>;
                     else if (tlStatus === "done") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 whitespace-nowrap">Đã dịch</span>;
                     else if (tlStatus === "error") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-600 whitespace-nowrap">Lỗi</span>;
+                  } else if (translatedChapterIds?.has(ch.id)) {
+                    TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 whitespace-nowrap">Đã dịch</span>;
                   }
 
                   return (

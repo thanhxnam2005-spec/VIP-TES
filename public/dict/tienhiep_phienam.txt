@@ -17,3 +17,5 @@ $RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))
 清水=Thanh Thủy
 罗天=La Thiên
 公孙=Công Tôn
+霄=Tiêu
+嘶唳=Tiếng rít gào

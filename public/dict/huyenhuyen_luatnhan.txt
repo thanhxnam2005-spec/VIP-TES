@@ -21,3 +21,5 @@ $RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))
 道友=Đạo hữu
 在下=Tại hạ
 族人=Tộc nhân
+老祖=Lão Tổ
+本妖=Bản yêu

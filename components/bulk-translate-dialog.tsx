@@ -278,15 +278,24 @@ export function BulkTranslateDialog({
   const [translateTitle, setTranslateTitle] = useState(true);
   const [autoSave, setAutoSave] = useState(false);
   const [delaySeconds, setDelaySeconds] = useState(settings.translateDelaySeconds ?? 0);
+  const [concurrency, setConcurrency] = useState(settings.translateConcurrency ?? 1);
 
   useEffect(() => {
     setDelaySeconds(settings.translateDelaySeconds ?? 0);
-  }, [settings.translateDelaySeconds]);
+    setConcurrency(settings.translateConcurrency ?? 1);
+  }, [settings.translateDelaySeconds, settings.translateConcurrency]);
 
   const handleDelayChange = (val: string) => {
     const num = parseInt(val) || 0;
     setDelaySeconds(num);
     updateAnalysisSettings({ translateDelaySeconds: num } as Partial<AnalysisSettings>);
+  };
+
+  const handleConcurrencyChange = (val: string) => {
+    const num = parseInt(val) || 1;
+    const clamped = Math.max(1, Math.min(20, num));
+    setConcurrency(clamped);
+    updateAnalysisSettings({ translateConcurrency: clamped } as Partial<AnalysisSettings>);
   };
 
   const selectedChapters = useMemo(
@@ -560,6 +569,20 @@ export function BulkTranslateDialog({
                       className="h-8 w-16 rounded-md border bg-background px-2 text-center text-xs focus:ring-1 focus:ring-primary"
                       value={delaySeconds}
                       onChange={(e) => handleDelayChange(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Label htmlFor="translate-concurrency" className="text-xs">
+                      Số luồng chạy song song
+                    </Label>
+                    <input
+                      id="translate-concurrency"
+                      type="number"
+                      min="1"
+                      max="20"
+                      className="h-8 w-16 rounded-md border bg-background px-2 text-center text-xs focus:ring-1 focus:ring-primary"
+                      value={concurrency}
+                      onChange={(e) => handleConcurrencyChange(e.target.value)}
                     />
                   </div>
                 </div>

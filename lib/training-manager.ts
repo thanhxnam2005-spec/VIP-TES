@@ -148,41 +148,7 @@ async function processAutoSaveLocal(suggestions: TrainingSuggestion[]) {
     }
   }
 
-  // ─── LƯU DATASET (JSONL) THEO THỂ LOẠI ───
-  const datasetByGenre: Record<string, string[]> = {};
-  
-  for (const t of suggestions) {
-    if (!t.context_zh || (!t.context_vi_after && !t.vietnamese)) continue;
-    
-    const genres = (t.genre || "global").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
-    
-    const line = JSON.stringify({
-      messages: [
-        { role: "system", content: "Bạn là hệ thống dịch thuật tiếng Trung sang tiếng Việt chuyên nghiệp." },
-        { role: "user", content: t.context_zh },
-        { role: "assistant", content: t.context_vi_after || t.context_zh.replace(t.chinese, t.vietnamese) }
-      ]
-    });
 
-    for (const g of genres) {
-      let mappedGenre = g === "global" ? "core" : g;
-      const dsKey = `${mappedGenre}_dataset`;
-      if (!datasetByGenre[dsKey]) datasetByGenre[dsKey] = [];
-      datasetByGenre[dsKey].push(line);
-    }
-  }
-
-  for (const [dsKey, lines] of Object.entries(datasetByGenre)) {
-    const cached = await db.dictCache.get(dsKey as any);
-    const oldText = cached?.rawText ? cached.rawText.trimEnd() + "\n" : "";
-    const newText = oldText + lines.join("\n") + "\n";
-    
-    // Deduplicate dataset lines
-    const uniqueLines = Array.from(new Set(newText.split("\n").filter(Boolean))).join("\n") + "\n";
-    
-    await db.dictCache.put({ source: dsKey as any, rawText: uniqueLines });
-    _dirtySourcesForUpload.add(dsKey);
-  }
   
   if (totalSaved > 0) {
     toast.success(`Đã lưu ${totalSaved} từ vào từ điển.`);
@@ -221,9 +187,8 @@ async function flushSupabaseUpload() {
       const cached = await db.dictCache.get(targetSource as any);
       if (!cached?.rawText) continue;
       
-      const isDataset = targetSource.endsWith("_dataset");
-      const filename = isDataset ? `datasets/${targetSource}.jsonl` : `${targetSource}.txt`;
-      const contentType = isDataset ? 'application/jsonl' : 'text/plain;charset=UTF-8';
+      const filename = `${targetSource}.txt`;
+      const contentType = 'text/plain;charset=UTF-8';
       
       const { error } = await supabase.storage
         .from("dictionaries")

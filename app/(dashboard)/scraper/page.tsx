@@ -15,6 +15,7 @@ import { extensionFetch, checkExtensionStatus, getExtensionId, setExtensionId } 
 import { serverAnalyzeNovel } from "@/lib/scraper/server-scraper-client";
 import { createCustomAdapter, type CustomScraperConfig } from "@/lib/scraper/adapters/Universal";
 import { useScraperQueueStore } from "@/lib/stores/scraper-queue";
+import { JobDetailsModal } from "@/components/scraper/job-details-modal";
 import { SettingsIcon, BookIcon, PauseIcon, PlayIcon, TrashIcon, DownloadIcon, CheckCircleIcon, GlobeIcon, ZapIcon, LoaderIcon, SlidersHorizontalIcon, SkipForwardIcon } from "lucide-react";
 
 /** URLs that can be fetched server-side (no extension needed) */
@@ -44,6 +45,8 @@ export default function ScraperLibraryPage() {
 
   const [extId, setExtId] = useState("");
   const [extVersion, setExtVersion] = useState<string | null>(null);
+
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isShowingChapters, setIsShowingChapters] = useState(false);
@@ -157,8 +160,10 @@ export default function ScraperLibraryPage() {
         adapter = detectAdapter(url);
         if (!adapter) throw new Error("Không tìm thấy adapter cho URL này");
 
-        const res = await extensionFetch(url, { waitSelector: adapter.novelWaitSelector });
-        if (res.timedOut) throw new Error("Timeout khi lấy thông tin truyện");
+        const res = await extensionFetch(url, { 
+          waitSelector: adapter.novelWaitSelector,
+          reuseTab: adapter.name === "STV" || adapter.name === "69书吧" || adapter.name === "Fanqie Novel" 
+        });
         html = res.html;
         novelInfo = await adapter.getNovelInfo(html, url, (count) => {
           setScannedCount(count);
@@ -323,9 +328,9 @@ export default function ScraperLibraryPage() {
 
                     <div className="border-t pt-4 mt-2">
                       <Button variant="secondary" className="w-full sm:w-auto" asChild>
-                        <a href="/novel-studio-connector-pc.zip?v=6.3" download>
+                        <a href="/novel-studio-connector-pc.zip?v=1.0" download>
                           <DownloadIcon className="mr-2 w-4 h-4" />
-                          Tải Extension v6.3 (.zip)
+                          Tải Extension v1.0 (.zip)
                         </a>
                       </Button>
                     </div>
@@ -457,11 +462,6 @@ export default function ScraperLibraryPage() {
 
       <div className="flex justify-between items-center mb-4 mt-8">
          <h2 className="text-xl font-semibold">Đang tải & Hoàn thành</h2>
-         {Object.values(jobs).length > 0 && (
-           <Button variant="ghost" size="sm" onClick={clearDone} className="text-muted-foreground">
-             Xóa lịch sử hoàn thành
-           </Button>
-         )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -473,7 +473,7 @@ export default function ScraperLibraryPage() {
           </div>
         ) : (
           Object.values(jobs).map(job => (
-            <Card key={job.id} className="overflow-hidden flex flex-col h-full hover:shadow-md transition-all group border-muted/60">
+            <Card key={job.id} className="overflow-hidden flex flex-col h-full hover:shadow-md transition-all group border-muted/60 cursor-pointer" onClick={() => setSelectedJobId(job.id)}>
                <div className="relative w-full aspect-[3/4] bg-muted/20 flex items-center justify-center overflow-hidden">
                  {job.coverImage ? (
                    <img src={job.coverImage} alt={job.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" referrerPolicy="no-referrer" />
@@ -513,17 +513,15 @@ export default function ScraperLibraryPage() {
                       
                       <div className="flex gap-0.5 shrink-0">
                         {(job.status !== "done") && (
-                           <Button size="icon" variant="ghost" title="Bỏ qua chương này" className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted" onClick={() => skipChapterJob(job.id)}><SkipForwardIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Bỏ qua chương này" className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted" onClick={(e) => { e.stopPropagation(); skipChapterJob(job.id); }}><SkipForwardIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {(job.status === "pending" || job.status === "paused" || job.status === "error") && (
-                           <Button size="icon" variant="ghost" title="Tiếp tục" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => resumeJob(job.id)}><PlayIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Tiếp tục" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); resumeJob(job.id); }}><PlayIcon className="w-3.5 h-3.5" /></Button>
                         )}
                         {job.status === "scraping" && (
-                           <Button size="icon" variant="ghost" title="Tạm dừng" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={() => pauseJob(job.id)}><PauseIcon className="w-3.5 h-3.5" /></Button>
+                           <Button size="icon" variant="ghost" title="Tạm dừng" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); pauseJob(job.id); }}><PauseIcon className="w-3.5 h-3.5" /></Button>
                         )}
-                        {(job.status !== "done") && (
-                           <Button size="icon" variant="ghost" title="Hủy bỏ" className="h-7 w-7 rounded-full text-destructive hover:bg-destructive/10" onClick={() => cancelJob(job.id)}><TrashIcon className="w-3.5 h-3.5" /></Button>
-                        )}
+
                         {job.status === "done" && (
                            <CheckCircleIcon className="w-5 h-5 text-green-500 mr-1" />
                         )}
@@ -650,6 +648,8 @@ export default function ScraperLibraryPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <JobDetailsModal jobId={selectedJobId} onClose={() => setSelectedJobId(null)} />
     </div>
   );
 }

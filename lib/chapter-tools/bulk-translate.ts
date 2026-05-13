@@ -207,25 +207,10 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
   // Fetch name dictionary once for dynamic filtering per chapter
   const nameDict = await getMergedNameDict(novelId);
 
-  let isFirst = true;
+  const concurrency = settings.translateConcurrency && settings.translateConcurrency > 0 ? settings.translateConcurrency : 1;
+  let currentIndex = 0;
 
-  for (const chapter of chapters) {
-    if (signal?.aborted) break;
-
-    // Apply delay between chapters (skip for the first one)
-    if (!isFirst && delayMs && delayMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-    isFirst = false;
-
-    // Pause loop
-    while (useBulkTranslateStore.getState().jobs[novelId]?.isPaused) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      if (signal?.aborted) break;
-    }
-
-    if (signal?.aborted) break;
-
+  async function processChapter(chapter: typeof chapters[0]) {
     onChapterStart(chapter.id, chapter.title);
 
     try {
@@ -237,11 +222,10 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
           chapterTitle: chapter.title,
           message: "Chương không có nội dung (scene)",
         });
-        continue;
+        return;
       }
 
       // Join scene contents — ALWAYS use ORIGINAL content (pre-translation)
-      // If a scene was previously translated, getOriginalContent returns the v1 snapshot
       const isMultiScene = scenes.length > 1;
       const originalContents = await Promise.all(
         scenes.map((s) => getOriginalContent(s.id))
@@ -250,8 +234,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
         ? originalContents.join(`\n\n${SCENE_BREAK}\n\n`)
         : originalContents[0];
 
-      // Build context with dynamic dictionary filtering:
-      // Only terms that appear in this chapter's source text are sent to AI
+      // Build context with dynamic dictionary filtering
       const context = await buildTranslateContext(
         novelId, chapter.order, depth, nameDict, joinedContent,
       );
@@ -288,8 +271,6 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
             system: systemPrompt,
             prompt: userPrompt,
             abortSignal: signal,
-            // No maxOutputTokens — let the model decide based on content length
-            // This prevents truncation on long chapters while being efficient on short ones
           });
 
           for await (const part of result.fullStream) {
@@ -315,7 +296,6 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
             throw new Error(classified.message);
           }
 
-          // Exponential backoff
           const backoffMs = RETRY_BASE_DELAY * Math.pow(2, attempt);
           console.warn(`[Translate] Retry ${attempt + 1}/${MAX_RETRIES} for "${chapter.title}" in ${backoffMs}ms: ${classified.message}`);
           await delay(backoffMs);
@@ -332,7 +312,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
           chapterTitle: chapter.title,
           message: "AI trả về nội dung trống — có thể bị chặn bởi bộ lọc an toàn.",
         });
-        continue;
+        return;
       }
 
       // Parse result
@@ -348,7 +328,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
             content: parts[i],
           }));
         } else {
-          // Fallback: put all in first scene, keep others unchanged
+          // Fallback
           sceneResults = scenes.map((s, i) => ({
             sceneId: s.id,
             content: i === 0 ? parsed.content.replaceAll(SCENE_BREAK, "").trim() : s.content,
@@ -375,7 +355,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       }
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        break;
+        return; // Bubble up abort
       }
       onChapterError({
         chapterId: chapter.id,
@@ -384,6 +364,33 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       });
     }
   }
+
+  async function worker() {
+    while (currentIndex < chapters.length) {
+      if (signal?.aborted) return;
+
+      // Pause loop
+      while (useBulkTranslateStore.getState().jobs[novelId]?.isPaused) {
+        await delay(1000);
+        if (signal?.aborted) return;
+      }
+
+      // Get the next chapter index atomically in the async execution context
+      const chapter = chapters[currentIndex];
+      if (!chapter) return;
+      currentIndex++;
+
+      await processChapter(chapter);
+
+      if (delayMs && delayMs > 0 && currentIndex < chapters.length && !signal?.aborted) {
+        await delay(delayMs);
+      }
+    }
+  }
+
+  // Start concurrent workers
+  const workers = Array.from({ length: Math.min(concurrency, chapters.length) }, () => worker());
+  await Promise.all(workers);
 
   onAllComplete();
 }

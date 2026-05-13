@@ -5,3 +5,6 @@ $RC=function(a,b){if(b=document.getElementById(b))(a=document.getElementById(a))
 翻天覆地=long trời lở đất
 磅礴之音=âm thanh hùng vĩ
 吞噬一切=nuốt chửng tất cả
+逼人太甚=Chèn ép người quá đáng
+七窍流血=Bảy khiếu chảy máu
+天地=Thiên địa

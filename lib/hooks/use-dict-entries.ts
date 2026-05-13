@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type DictSource, type DictMeta, DICT_GENRES, DICT_TYPES } from "@/lib/db";
+import { createClient } from "@/lib/supabase/client";
 
 // ─── Reads ───────────────────────────────────────────────────
 
@@ -260,6 +261,23 @@ export async function saveDictSource(source: DictSource, text: string): Promise<
   await db.dictMeta.put(meta);
 
   return parsed.length;
+}
+export async function uploadToCommunityDict(
+  entries: { chinese: string; vietnamese: string; category: string }[],
+  novelGenre: string = "tienhiep"
+) {
+  try {
+    const supabase = createClient();
+    const rows = entries.map(e => ({
+      chinese: e.chinese,
+      vietnamese: e.vietnamese,
+      category: e.category,
+      novel_genre: novelGenre
+    }));
+    await supabase.from("community_dict_entries").insert(rows);
+  } catch (err) {
+    console.error("Lỗi đẩy lên từ điển cộng đồng:", err);
+  }
 }
 
 export async function appendToDictSource(source: DictSource, entries: { chinese: string; vietnamese: string }[]): Promise<number> {
