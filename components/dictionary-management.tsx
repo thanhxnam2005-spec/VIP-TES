@@ -1136,36 +1136,34 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                                   </>
                                 )}
                                 {isAdmin && (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleSyncToLocalCode(source)}
-                                      disabled={count === 0}
-                                      title="Lưu thẳng vào thư mục public/dict (Chỉ Admin)"
-                                      className="text-amber-500 hover:text-amber-600"
-                                    >
-                                      <SaveIcon className="size-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleDownload(source)}
-                                      disabled={count === 0}
-                                      title="Tải xuống máy"
-                                    >
-                                      <DownloadIcon className="size-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleReplaceClick(source)}
-                                      title="Tải lên máy"
-                                    >
-                                      <FileUpIcon className="size-3.5" />
-                                    </Button>
-                                  </>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => handleSyncToLocalCode(source)}
+                                    disabled={count === 0}
+                                    title="Lưu thẳng vào thư mục public/dict (Chỉ Admin)"
+                                    className="text-amber-500 hover:text-amber-600"
+                                  >
+                                    <SaveIcon className="size-3.5" />
+                                  </Button>
                                 )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => handleDownload(source)}
+                                  disabled={count === 0}
+                                  title="Tải xuống máy"
+                                >
+                                  <DownloadIcon className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => handleReplaceClick(source)}
+                                  title="Tải lên từ máy"
+                                >
+                                  <FileUpIcon className="size-3.5" />
+                                </Button>
                               </div>
                             </TableCell>
                           </TableRow>
