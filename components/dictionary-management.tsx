@@ -65,6 +65,7 @@ import {
   useGlobalNameEntries,
   type DuplicateMode,
 } from "@/lib/hooks/use-name-entries";
+import { useNovels } from "@/lib/hooks/use-novels";
 import { formatRelativeTime } from "@/lib/scene-version-utils";
 import {
   BookTextIcon,
@@ -152,6 +153,8 @@ for (const g of DICT_GENRES) {
 export function DictionaryManagement({ compact }: { compact?: boolean }) {
   const drive = useGoogleDrive();
   const dictMeta = useDictMeta();
+  const novels = useNovels();
+  const [selectedNovelId, setSelectedNovelId] = useState<string>("global");
   const globalEntries = useGlobalNameEntries();
   const [isReloading, setIsReloading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -338,9 +341,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         .from("dictionaries")
         .getPublicUrl(filename);
       
-      // Dùng cache để tải nhanh hơn qua CDN, chỉ bypass cache khi cần dữ liệu mới nhất
       const res = await fetch(publicUrlData.publicUrl);
-
       if (!res.ok) {
         toast.error(`Từ điển ${filename} chưa có trên Kho chung!`, { id: toastId });
         return;
@@ -349,19 +350,77 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const text = await res.text();
       const entries = parseDictLines(text);
       const count = await appendToDictSource(source, entries);
+      toast.success(`Đã tự động gộp ${count.toLocaleString()} mục mới từ Kho chung!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(`Lỗi: ${err.message}`, { id: toastId });
+    }
+  };
 
-      if (isAdmin) {
-        const cached = await db.dictCache.get(source as any);
-        if (cached?.rawText) {
-          await fetch("/api/dev/sync-dict", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source, text: cached.rawText }),
-          }).catch(() => {});
-        }
-      }
+  const handleUploadToCloudPersonal = async (source: DictSource) => {
+    const toastId = toast.loading(`Đang lưu ${DICT_SOURCE_LABELS[source]} vào Kho cá nhân (Admin Drive)...`);
+    try {
+      const cached = await db.dictCache.get(source);
+      const text = cached?.rawText || "";
+      const filename = `${source}.txt`;
 
-      toast.success(`Đã tự động gộp ${count.toLocaleString()} mục mới từ Kho chung cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
+      const res = await fetch('/api/dict/cloud-storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'upload',
+          novelId: selectedNovelId,
+          filename,
+          content: text
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lỗi lưu kho");
+      toast.success(`Đã sao lưu ${filename} vào Kho cá nhân an toàn!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(`Lỗi: ${err.message}`, { id: toastId });
+    }
+  };
+
+  const handleDownloadFromCloudPersonal = async (source: DictSource) => {
+    const toastId = toast.loading(`Đang lấy ${DICT_SOURCE_LABELS[source]} từ Kho cá nhân...`);
+    try {
+      const filename = `${source}.txt`;
+      const res = await fetch('/api/dict/cloud-storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'download',
+          novelId: selectedNovelId,
+          filename
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không tìm thấy bản lưu");
+      
+      const entries = parseDictLines(data.content);
+      const count = await appendToDictSource(source, entries);
+      toast.success(`Đã khôi phục ${count.toLocaleString()} mục từ Kho cá nhân!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(`Lỗi: ${err.message}`, { id: toastId });
+    }
+  };
+
+  const handleSyncToLocalCode = async (source: DictSource) => {
+    const toastId = toast.loading(`Đang lưu ${source}.txt vào local...`);
+    try {
+      const cached = await db.dictCache.get(source as any);
+      if (!cached?.rawText) throw new Error("Không có dữ liệu trong cache");
+      
+      const res = await fetch("/api/dev/sync-dict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, text: cached.rawText }),
+      });
+      
+      if (!res.ok) throw new Error("Lỗi Server");
+      toast.success("Đã lưu vào mã nguồn thành công!", { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }
@@ -1007,59 +1066,45 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         onChange={handleImportFromFile}
       />
 
-
-
-
       {/* Dict Status — per source breakdown */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <BookTextIcon className="size-4" />
-                Từ điển QT
-              </CardTitle>
-              <CardDescription>
-                {dictMeta
-                  ? `Cập nhật ${formatRelativeTime(new Date(dictMeta.loadedAt))} - Tổng cộng: ${Object.values(dictMeta.sources).reduce((a, b) => a + b, 0).toLocaleString()} từ`
-                  : "Chưa tải"}
-              </CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadAllFromSupabase}
-                className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
-              >
-                <CloudDownloadIcon className="mr-2 size-3.5" />
-                Tải về tất cả từ Kho chung
-              </Button>
-              {isAdmin && (
-                <>
+        <CardHeader className="pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg">Danh sách từ điển</CardTitle>
+                <CardDescription>
+                  Quản lý và đồng bộ các bộ từ điển cá nhân và cộng đồng.
+                </CardDescription>
+              </div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <div className="flex flex-col gap-1.5 w-full sm:w-48">
+                   <Label className="text-[10px] font-medium text-muted-foreground uppercase ml-1">Bộ truyện đang lưu</Label>
+                   <Select value={selectedNovelId} onValueChange={setSelectedNovelId}>
+                      <SelectTrigger className="h-8 text-xs bg-muted/50 border-dashed">
+                        <SelectValue placeholder="Chọn truyện..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="global">Chung (Global)</SelectItem>
+                        {novels?.map(n => (
+                          <SelectItem key={n.id} value={n.id}>{n.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                   </Select>
+                </div>
+                <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleUploadAllToSupabase}
-                    className="text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-900 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950 dark:hover:bg-violet-900"
+                    onClick={handleDownloadAllFromSupabase}
+                    className="h-8 text-[11px] font-medium border-violet-200 hover:bg-violet-50 text-violet-600 dark:border-violet-900/50 dark:hover:bg-violet-950/30"
                   >
-                    <CloudUploadIcon className="mr-2 size-3.5" />
-                    Tải lên tất cả (Admin)
+                    <CloudDownloadIcon className="mr-1.5 size-3.5" />
+                    Tải về tất cả (Kho chung)
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReloadDicts}
-                    disabled={isReloading}
-                  >
-                    <RefreshCwIcon className="mr-2 size-3.5" />
-                    {isReloading ? "Đang tải..." : "Tải lại tất cả (File txt)"}
-                  </Button>
-                </>
-              )}
+                </div>
+              </div>
             </div>
-          </div>
-        </CardHeader>
+          </CardHeader>
         <CardContent>
           <Tabs defaultValue="core" className="w-full">
             <div className="overflow-x-auto pb-2">
@@ -1131,6 +1176,27 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                                         <ServerIcon className="size-3.5" />
                                       </Button>
                                     )}
+                                    <div className="w-px h-4 bg-border my-auto mx-1" />
+
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleDownloadFromCloudPersonal(source)}
+                                      title="Tải về từ Kho cá nhân (Drive Admin)"
+                                      className="text-blue-500 hover:text-blue-600"
+                                    >
+                                      <CloudDownloadIcon className="size-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-sm"
+                                      onClick={() => handleUploadToCloudPersonal(source)}
+                                      disabled={count === 0}
+                                      title="Lưu vào Kho cá nhân (Drive Admin)"
+                                      className="text-blue-500 hover:text-blue-600"
+                                    >
+                                      <CloudUploadIcon className="size-3.5" />
+                                    </Button>
                                     <div className="w-px h-4 bg-border my-auto mx-1" />
                                   </>
 
