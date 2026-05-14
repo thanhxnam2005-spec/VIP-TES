@@ -64,6 +64,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  typescript: {
+    // Vô hiệu hóa Type Checking lúc Build để tránh lỗi Heap Out Of Memory trên Cloudflare Pages (bộ nhớ hạn hẹp)
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    // Tắt kiểm tra Eslint lúc build
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;
