@@ -12,10 +12,12 @@ async function getAccessToken(): Promise<string> {
   let clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
   let refreshToken = process.env.GOOGLE_REFRESH_TOKEN || '';
 
+  let envKeys = "none";
   // Fallback lấy từ Cloudflare Context trong môi trường OpenNext
   try {
     const ctx = getCloudflareContext();
     if (ctx && ctx.env) {
+      envKeys = Object.keys(ctx.env).join(", ");
       clientId = clientId || (ctx.env.GOOGLE_CLIENT_ID as string) || '';
       clientSecret = clientSecret || (ctx.env.GOOGLE_CLIENT_SECRET as string) || '';
       refreshToken = refreshToken || (ctx.env.GOOGLE_REFRESH_TOKEN as string) || '';
@@ -25,7 +27,7 @@ async function getAccessToken(): Promise<string> {
   }
 
   if (!refreshToken) {
-    throw new Error(`Missing GOOGLE_REFRESH_TOKEN in environment variables.`);
+    throw new Error(`Missing GOOGLE_REFRESH_TOKEN. Available env keys: ${envKeys}`);
   }
 
   const params = new URLSearchParams({
