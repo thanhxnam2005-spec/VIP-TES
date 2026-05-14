@@ -46,7 +46,7 @@ async function fetchDriveAPI(url: string, options: RequestInit = {}) {
     headers.set('Authorization', `Bearer ${token}`);
   }
   
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { cache: 'no-store', ...options, headers });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Google Drive API Error (${res.status}): ${text}`);
@@ -69,7 +69,8 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
   }
 
   const createPromise = (async () => {
-    const q = encodeURIComponent(`name = '${name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false${parentId ? ` and '${parentId}' in parents` : ''}`);
+    const safeName = name.replace(/'/g, "\\'");
+    const q = encodeURIComponent(`name = '${safeName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false${parentId ? ` and '${parentId}' in parents` : ''}`);
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`;
     
     // 1. Thử tìm xem đã có chưa
@@ -156,8 +157,9 @@ async function uploadMultipart(filename: string, content: string, mimeType: stri
 export async function uploadToAdminDrive(userIdentifier: string, novelName: string, content: string) {
   const userFolderId = await getUserNovelFolder(userIdentifier);
   const filename = `${novelName}.json`;
+  const safeName = filename.replace(/'/g, "\\'");
   
-  const q = encodeURIComponent(`name = '${filename}' and '${userFolderId}' in parents and trashed = false`);
+  const q = encodeURIComponent(`name = '${safeName}' and '${userFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
   if (listRes.files && listRes.files.length > 0) {
@@ -178,8 +180,9 @@ export async function uploadToAdminDrive(userIdentifier: string, novelName: stri
 export async function uploadTxtToAdminDrive(type: 'text_trung' | 'text_dich', novelName: string, content: string) {
   const folderId = await getTxtFolder(type);
   const filename = `${novelName}.txt`;
+  const safeName = filename.replace(/'/g, "\\'");
   
-  const q = encodeURIComponent(`name = '${filename}' and '${folderId}' in parents and trashed = false`);
+  const q = encodeURIComponent(`name = '${safeName}' and '${folderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,size)`);
   
   // Tính size (tương đối cho UTF-8 bằng encoder)
@@ -217,8 +220,9 @@ export async function listTxtFromAdminDrive(type: 'text_trung' | 'text_dich') {
 export async function downloadFromAdminDrive(userIdentifier: string, novelName: string): Promise<string | null> {
   const userFolderId = await getUserNovelFolder(userIdentifier);
   const filename = `${novelName}.json`;
+  const safeName = filename.replace(/'/g, "\\'");
   
-  const q = encodeURIComponent(`name = '${filename}' and '${userFolderId}' in parents and trashed = false`);
+  const q = encodeURIComponent(`name = '${safeName}' and '${userFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
   if (!listRes.files || listRes.files.length === 0) return null;
@@ -237,17 +241,21 @@ export async function downloadAllUserNovelsFromAdminDrive(userIdentifier: string
 
   const results: { name: string, content: string }[] = [];
   
-  for (const file of listRes.files) {
-    try {
-      const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
-      let name = file.name;
-      if (name.endsWith('.json')) name = name.slice(0, -5);
-      
-      const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
-      results.push({ name, content: contentStr });
-    } catch (err) {
-      console.error(`Lỗi khi tải file ${file.name}:`, err);
-    }
+  const CONCURRENCY = 5;
+  for (let i = 0; i < listRes.files.length; i += CONCURRENCY) {
+    const batch = listRes.files.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(async (file: any) => {
+      try {
+        const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
+        let name = file.name;
+        if (name.endsWith('.json')) name = name.slice(0, -5);
+        
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+        results.push({ name, content: contentStr });
+      } catch (err) {
+        console.error(`Lỗi khi tải file ${file.name}:`, err);
+      }
+    }));
   }
 
   return results;
@@ -275,7 +283,8 @@ export async function uploadDictToAdminDrive(filename: string, content: string) 
   const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
   const dictFolderId = await findOrCreateFolder(DICT_FOLDER_NAME, masterId);
 
-  const q = encodeURIComponent(`name = '${filename}' and '${dictFolderId}' in parents and trashed = false`);
+  const safeName = filename.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name = '${safeName}' and '${dictFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
   if (listRes.files && listRes.files.length > 0) {
@@ -296,7 +305,8 @@ export async function downloadDictFromAdminDrive(filename: string) {
   const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
   const dictFolderId = await findOrCreateFolder(DICT_FOLDER_NAME, masterId);
 
-  const q = encodeURIComponent(`name = '${filename}' and '${dictFolderId}' in parents and trashed = false`);
+  const safeName = filename.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name = '${safeName}' and '${dictFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
   if (!listRes.files || listRes.files.length === 0) return null;
