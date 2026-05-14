@@ -26,19 +26,7 @@ export async function POST(req: Request) {
     // ── Dict actions: dùng service account, không cần user auth ──
     if (action === 'upload-dict') {
       if (!filename) return NextResponse.json({ error: 'Missing filename' }, { status: 400 });
-      let content = "";
-      if (req.body) {
-        const reader = req.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          content += decoder.decode(value, { stream: true });
-        }
-        content += decoder.decode();
-      } else {
-        content = await req.text();
-      }
+      let content = await req.text();
       console.log('UPLOAD-DICT RECEIVED SIZE:', content.length);
       await uploadDictToAdminDrive(filename, content);
       return NextResponse.json({ success: true, sizeReceived: content.length });
@@ -97,19 +85,7 @@ export async function POST(req: Request) {
       if (!novelName) {
         return NextResponse.json({ error: 'Missing novelName' }, { status: 400 });
       }
-      let content = "";
-      if (req.body) {
-        const reader = req.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          content += decoder.decode(value, { stream: true });
-        }
-        content += decoder.decode();
-      } else {
-        content = await req.text();
-      }
+      let content = await req.text();
       const fileId = await uploadToAdminDrive(userIdentifier, novelName, content);
       return NextResponse.json({ success: true, fileId });
     }
