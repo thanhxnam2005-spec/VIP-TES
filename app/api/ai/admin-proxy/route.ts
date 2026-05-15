@@ -60,7 +60,13 @@ export async function POST(req: NextRequest) {
       return acc;
     }, {});
 
-    const proxyUrl = settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1/chat/completions";
+    let proxyUrl = settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1/chat/completions";
+    
+    // Auto append /chat/completions if missing
+    if (!proxyUrl.includes("/chat/completions")) {
+      proxyUrl = proxyUrl.replace(/\/+$/, "") + "/chat/completions";
+    }
+
     const proxyKey = settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a";
 
     const response = await fetch(proxyUrl, {

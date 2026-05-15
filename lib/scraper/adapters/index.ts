@@ -18,6 +18,7 @@ import { BookQQAdapter } from "./BookQQ";
 import { WikiDichAdapter } from "./WikiDich";
 import { UniversalAdapter } from "./Universal";
 import { ZhihuAdapter } from "./Zhihu";
+import { Novel543Adapter } from "./Novel543";
 
 const adapters: SiteAdapter[] = [
   STVAdapter,
@@ -38,6 +39,7 @@ const adapters: SiteAdapter[] = [
   BookQQAdapter,
   WikiDichAdapter,
   ZhihuAdapter,
+  Novel543Adapter,
   UniversalAdapter,
 ];
 
@@ -58,4 +60,4 @@ export function getAdapters(): SiteAdapter[] {
   return adapters;
 }
 
-export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter };
+export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter, Novel543Adapter };

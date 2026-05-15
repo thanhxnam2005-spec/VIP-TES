@@ -6,7 +6,7 @@ export const CzbooksAdapter: SiteAdapter = {
   group: "cn",
   urlPattern: /czbooks\.net/,
   chapterWaitSelector: ".content, #content, .chapter-detail",
-  useSequentialTab: true,
+  useSequentialTab: false,
 
   async getNovelInfo(html, url, onProgress) {
     const doc = new DOMParser().parseFromString(html, "text/html");
@@ -47,7 +47,9 @@ export const CzbooksAdapter: SiteAdapter = {
       title,
       author,
       description,
-      coverImage: coverImg ? new URL(coverImg, url).toString() : undefined,
+      coverImage: coverImg 
+        ? `/api/proxy-image?url=${encodeURIComponent(new URL(coverImg, url).toString())}`
+        : undefined,
       chapters,
     };
   },

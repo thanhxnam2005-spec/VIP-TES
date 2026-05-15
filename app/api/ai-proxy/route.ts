@@ -72,9 +72,21 @@ export async function POST(req: NextRequest) {
       assignedModel = profile.admin_assigned_model;
     }
 
+    // Fetch config from app_settings
+    const { data: settingsData } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["admin_proxy_url", "admin_proxy_key"]);
+
+    const settingsMap = (settingsData || []).reduce((acc: any, curr: any) => {
+      acc[curr.key] = curr.value;
+      return acc;
+    }, {});
+
     // Inject hidden URL and Key
-    targetUrl = "https://catiecli.sukaka.top/v1/chat/completions";
-    authHeader = "Bearer cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a";
+    targetUrl = settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1/chat/completions";
+    const proxyKey = settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a";
+    authHeader = `Bearer ${proxyKey}`;
   }
 
   if (!targetUrl) {

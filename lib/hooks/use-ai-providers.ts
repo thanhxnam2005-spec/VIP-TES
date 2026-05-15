@@ -33,14 +33,14 @@ export function useAIProviders() {
   const dbProviders = useLiveQuery(() =>
     db.aiProviders.orderBy("createdAt").reverse().toArray(),
   );
-  const { profile, isVip, isAdmin } = useProfile();
+  const { profile, isVip, isAdmin, adminModelEnabled } = useProfile();
   
   return useMemo(() => {
     if (!dbProviders) return undefined;
     const all = [...dbProviders, WEBGPU_SYSTEM_PROVIDER];
     
-    // Show admin provider for VIPs or if they have some quota left (or are Admin)
-    if (isVip || isAdmin || (profile?.admin_model_quota && profile.admin_model_quota > 0)) {
+    // Show admin provider for VIPs or if they have some quota left (or are Admin), only if globally enabled
+    if (adminModelEnabled && (isVip || isAdmin || (profile?.admin_model_quota && profile.admin_model_quota > 0))) {
       const adminProvider: AIProvider = {
         id: "admin-provider",
         name: "Admin (Shared Pool)",
@@ -138,6 +138,18 @@ function sortModels<T extends { modelId: string; name?: string }>(
   );
 }
 
+function cleanProxyModelName(rawId: string): string {
+  let cleanName = rawId.replace("gcli-", "");
+  // Remove upstream proxy tags like -[星星公益站...] or [星星...]
+  cleanName = cleanName.replace(/-\[.*?\]/g, "");
+  cleanName = cleanName.replace(/\[.*?\]/g, "");
+  // Remove Chinese stream status tags
+  cleanName = cleanName.replace(/-(?:假流|真流)/g, "");
+  // Remove trailing hyphens
+  cleanName = cleanName.replace(/-+$/, "");
+  return cleanName;
+}
+
 export function useAIModels(providerId: string | undefined) {
   const { profile } = useProfile();
   const [adminModels, setAdminModels] = useState<AIModel[]>([]);
@@ -160,7 +172,7 @@ export function useAIModels(providerId: string | undefined) {
               id: m.id,
               providerId: "admin-provider",
               modelId: m.id,
-              name: m.id.replace("gcli-", ""),
+              name: cleanProxyModelName(m.id),
               createdAt: new Date()
             }));
             setAdminModels(models);
@@ -222,7 +234,7 @@ async function syncModels(
         id: crypto.randomUUID(),
         providerId,
         modelId: m.id,
-        name: m.name || m.id,
+        name: cleanProxyModelName(m.name || m.id),
         createdAt: now,
       })),
     );

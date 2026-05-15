@@ -12,6 +12,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { db, type Chapter } from "@/lib/db";
 import { runQtAiTranslate, type PromptType } from "@/lib/chapter-tools/qt-ai-translate";
+import { BotQueueSubmit } from "@/components/novel/bot-queue-submit";
 import { runHybridTranslate } from "@/lib/chapter-tools/hybrid-translate";
 import type { HybridTranslateResult, HybridTranslateError } from "@/lib/chapter-tools/hybrid-translate";
 import { PromptTunerDialog } from "@/components/novel/prompt-tuner-dialog";
@@ -89,19 +90,27 @@ export function TranslateWorkspaceDialog({
   const models = useAIModels(selectedProviderId);
 
   const currentModel = models?.find(m => m.modelId === selectedModelId);
+  const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
 
   // Initialize selection
   useEffect(() => {
     if (providers && providers.length > 0 && !selectedProviderId) {
-      // Default to admin model if available, but don't force a modelId
-      const adminP = providers.find(p => p.id === "admin-provider");
-      if (adminP) {
-        setSelectedProviderId("admin-provider");
+      if (novel?.customTranslateProviderId) {
+        setSelectedProviderId(novel.customTranslateProviderId);
+        if (novel.customTranslateModelId) {
+          setSelectedModelId(novel.customTranslateModelId);
+        }
       } else {
-        setSelectedProviderId(providers[0].id);
+        // Default to admin model if available, but don't force a modelId
+        const adminP = providers.find(p => p.id === "admin-provider");
+        if (adminP) {
+          setSelectedProviderId("admin-provider");
+        } else {
+          setSelectedProviderId(providers[0].id);
+        }
       }
     }
-  }, [providers, selectedProviderId]);
+  }, [providers, selectedProviderId, novel?.customTranslateProviderId, novel?.customTranslateModelId]);
 
   const handleProviderChange = async (val: string) => {
     setSelectedProviderId(val);
@@ -220,7 +229,7 @@ export function TranslateWorkspaceDialog({
   }, [dictMeta]);
   const allGenreSources = [...GENRE_DICTS, ...dynamicGenres];
 
-  const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
+
   const settings = useAnalysisSettings();
   const chatSettings = useChatSettings();
   const defaultProvider = useAIProvider(chatSettings?.providerId);
@@ -436,10 +445,11 @@ export function TranslateWorkspaceDialog({
         {step === "config" && (
           <div className="space-y-4 py-2">
             <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setConfirmMode(null); }} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="hybrid">Gốc + Thô + AI</TabsTrigger>
                 <TabsTrigger value="stv-hybrid">Converter AI</TabsTrigger>
-                <TabsTrigger value="pure-ai">Dịch thuần AI</TabsTrigger>
+                <TabsTrigger value="pure-ai">Thuần AI</TabsTrigger>
+                <TabsTrigger value="bot-queue" className="gap-1">🤖 Bot Dịch</TabsTrigger>
               </TabsList>
 
               <TabsContent value="stv-hybrid" className="space-y-4 mt-4">
@@ -602,6 +612,14 @@ export function TranslateWorkspaceDialog({
                     )}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="bot-queue" className="space-y-4 mt-4">
+                <BotQueueSubmit
+                  novelId={novelId}
+                  chapterIds={chapterIds}
+                  dictSources={qtDictSources}
+                />
               </TabsContent>
             </Tabs>
 

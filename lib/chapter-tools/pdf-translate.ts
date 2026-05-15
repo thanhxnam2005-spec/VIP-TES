@@ -454,12 +454,6 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
             extractedNamesCount = parsed.extractedNames.length;
             // Update nameDict for subsequent chapters in the loop
             nameDict = await getMergedNameDict(novelId);
-
-            // Upload to community dictionary
-            const novel = await db.novels.get(novelId);
-            const rawGenre = novel?.genre || (novel?.genres && novel.genres[0]) || "tienhiep";
-            const { uploadToCommunityDict } = await import("@/lib/hooks/use-dict-entries");
-            await uploadToCommunityDict(entriesWithCategory, rawGenre);
           } catch (err) {
             console.error("Lỗi lưu tên mới vào từ điển:", err);
           }

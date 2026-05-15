@@ -92,7 +92,7 @@ import { toast } from "sonner";
 
 import { DICT_GENRES, DICT_TYPES, type DictGenre, type DictType, type DictSource } from "@/lib/db";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CommunityDictionary } from "./community-dictionary";
+
 
 export const GENRE_LABELS: Record<DictGenre, string> = {
   core: "Cơ Bản (Core)",
@@ -675,28 +675,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
     setTimeout(() => replaceInputRef.current?.click(), 0);
   };
 
-  const handleUploadCommunity = async (source: DictSource) => {
-    const cached = await db.dictCache.get(source);
-    if (!cached?.rawText) {
-      toast.error("Từ điển này chưa có dữ liệu hoặc chưa được tải.");
-      return;
-    }
-    const genre = source.split("_")[0];
-    const filename = `user_dict_${source}`;
-    
-    const toastId = toast.loading("Đang gửi đóng góp cho cộng đồng...");
-    try {
-      const { submitCommunityDictAction } = await import("@/app/actions/dict-upload");
-      const res = await submitCommunityDictAction(genre, filename, cached.rawText);
-      if (res.success) {
-        toast.success("Đã gửi thành công! Cảm ơn bạn đã đóng góp.", { id: toastId });
-      } else {
-        toast.error(`Lỗi: ${res.error}`, { id: toastId });
-      }
-    } catch (err: any) {
-      toast.error(`Lỗi: ${err.message}`, { id: toastId });
-    }
-  };
+
 
   const handleReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1346,15 +1325,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                                 >
                                   <FileUpIcon className="size-3.5" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => handleUploadCommunity(source)}
-                                  disabled={count === 0}
-                                  title="Đóng góp cho Từ điển Cộng Đồng"
-                                >
-                                  <CloudUploadIcon className="size-3.5 text-blue-500" />
-                                </Button>
+
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1369,7 +1340,6 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         </CardContent>
       </Card>
 
-      {!compact && <CommunityDictionary isAdmin={isAdmin} />}
 
       {/* Global Name Entries has been removed by request */}
 

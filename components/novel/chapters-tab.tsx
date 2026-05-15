@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/tooltip";
 import { db, type Chapter } from "@/lib/db";
 import { fuzzyMatch } from "@/lib/fuzzy";
-import { deleteChapter, type ChapterAnalysisStatus } from "@/lib/hooks";
+import { deleteChapter, clearChapterTranslations, type ChapterAnalysisStatus } from "@/lib/hooks";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 import { useDebouncedValue } from "@/lib/hooks/use-debounce";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -59,6 +59,7 @@ import {
   CheckIcon,
   EyeOffIcon,
   EyeIcon,
+  EraserIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
@@ -146,6 +147,7 @@ export function ChaptersTab({
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkClearTranslationsOpen, setBulkClearTranslationsOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showTranslateStatus, setShowTranslateStatus] = useState(true);
@@ -305,6 +307,17 @@ export function ChaptersTab({
     setBulkDeleteOpen(false);
   };
 
+  const handleBulkClearTranslations = async () => {
+    if (selected.size === 0) return;
+    try {
+      await clearChapterTranslations(Array.from(selected));
+      toast.success(`Đã xóa bản dịch của ${selected.size} chương`);
+    } catch {
+      toast.error("Xóa bản dịch thất bại");
+    }
+    setBulkClearTranslationsOpen(false);
+  };
+
   return (
     <div className="max-w-full overflow-x-hidden">
       {/* Toolbar */}
@@ -358,6 +371,13 @@ export function ChaptersTab({
               >
                 <TrashIcon className="size-3.5" />
                 Xóa đã chọn
+              </button>
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted text-amber-600"
+                onClick={() => setBulkClearTranslationsOpen(true)}
+              >
+                <EraserIcon className="size-3.5" />
+                Xóa bản dịch
               </button>
               {onReplace && (
                 <button
@@ -734,6 +754,23 @@ export function ChaptersTab({
             <AlertDialogCancel>Hủy</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleBulkDelete}>
               Xóa {selected.size} chương
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={bulkClearTranslationsOpen} onOpenChange={setBulkClearTranslationsOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xóa bản dịch</AlertDialogTitle>
+            <AlertDialogDescription>
+              Bạn chuẩn bị xóa nội dung dịch của <strong>{selected.size}</strong> chương đã chọn và khôi phục về bản gốc. Hành động này không thể hoàn tác.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkClearTranslations}>
+              Khôi phục bản gốc
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

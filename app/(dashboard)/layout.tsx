@@ -64,6 +64,7 @@ export default function DashboardLayout({
   if (pathname.match(/^\/novels\/[^/]+\/chapters\/.+$/))
     pageTitle = "Soạn thảo";
   if (pathname === "/admin") pageTitle = "Quản trị";
+  if (pathname === "/bot-translate") pageTitle = "Bot Dịch";
   const novelIdMatch = pathname.match(/^\/novels\/([^/]+)/);
   const currentNovelId = novelIdMatch?.[1] ?? null;
   const chapterIdMatch = pathname.match(/^\/novels\/[^/]+\/chapters\/([^/]+)/);

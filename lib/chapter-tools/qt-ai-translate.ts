@@ -14,7 +14,7 @@ import { db } from "@/lib/db";
 import type { AnalysisSettings, Scene, DictSource } from "@/lib/db";
 import { createSceneVersion, ensureInitialVersion, getOriginalContent } from "@/lib/hooks/use-scene-versions";
 import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-entries";
-import { appendToDictSource, uploadToCommunityDict, normalizeGenre } from "@/lib/hooks/use-dict-entries";
+import { appendToDictSource, normalizeGenre } from "@/lib/hooks/use-dict-entries";
 import { convertText } from "@/lib/hooks/use-qt-engine";
 import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
@@ -143,7 +143,7 @@ async function triggerBackgroundLookahead(novelId: string, chapterId: string, mo
     
     const contents = await Promise.all(scenes.map(s => getOriginalContent(s.id)));
     const combinedText = contents.join("\n\n") + "\n\n";
-    const cleaned = cleanGarbageLines(combinedText).slice(0, 2500); 
+    const cleaned = cleanGarbageLines(combinedText); 
 
     if (cleaned.trim()) {
       const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -170,7 +170,7 @@ ${cleaned}`;
       if (match) {
         const arr = JSON.parse(match[0]);
         if (Array.isArray(arr) && arr.length > 0) {
-          const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string");
+          const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string" && /[\u4e00-\u9fa5]/.test(n.chinese));
           if (validNames.length > 0) {
             console.log(`[Lookahead] Đã trích xuất ngầm ${validNames.length} từ cho chương tiếp theo.`);
             const entriesWithCategory = validNames.map((entry: any) => ({
@@ -265,10 +265,6 @@ function buildPostEditPrompt(
 
 
   let prompt = buildGenreAwareSystemPrompt(novelCustomPrompt);
-  
-  if (promptType === "custom" && novelCustomPrompt) {
-     prompt = novelCustomPrompt.trim();
-  }
 
   // Name dictionary context is no longer appended here because names are now directly pre-injected into the Chinese text (Name Pre-translation)
   return prompt;
@@ -339,7 +335,10 @@ function parseHybridResult(
         const cleanedLine = tagMatch ? line.slice(tagMatch[0].length) : line;
         const [cn, vn] = cleanedLine.split("=").map(s => s.trim());
         if (cn && vn && cn !== vn) {
-          extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
+          // Validate that the left side actually contains Chinese characters
+          if (/[\u4e00-\u9fa5]/.test(cn)) {
+            extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
+          }
         }
       }
     }
@@ -417,8 +416,8 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
           combinedText += contents.join("\n\n") + "\n\n";
         }
         
-        // Cắt khoảng 2500 ký tự đầu để quét cực nhanh
-        const cleaned = cleanGarbageLines(combinedText).slice(0, 2500); 
+        // Quét toàn bộ nội dung chương để đảm bảo không lọt từ vựng
+        const cleaned = cleanGarbageLines(combinedText); 
 
         if (cleaned.trim()) {
           const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -453,7 +452,7 @@ ${cleaned}`;
                   vietnamese: entry.vietnamese || "",
                   category: entry.dictType === "names" ? "nhân vật" : "khác",
                   dictType: entry.dictType || "names"
-                })).filter(e => e.chinese && e.vietnamese);
+                })).filter(e => e.chinese && e.vietnamese && /[\u4e00-\u9fa5]/.test(e.chinese));
                 
                 if (entriesWithCategory.length > 0) {
                   await bulkImportNameEntries(novelId, entriesWithCategory, "khác", "skip");
@@ -622,6 +621,9 @@ ${cleaned}`;
 
       const cleanedContent = cleanGarbageLines(joinedContent);
 
+      // Fetch the latest dictionary (to include words extracted by Lookahead)
+      nameDict = await getMergedNameDict(novelId);
+
       // ═══════════════════════════════════════════
       // PHASE 1: Dictionary/STV Translation (fast)
       // ═══════════════════════════════════════════
@@ -729,11 +731,8 @@ ${cleaned}`;
           const classified = classifyError(err);
 
           if (!classified.retryable || attempt >= MAX_RETRIES) {
-            // AI failed → fall back to dictionary-only result
-            console.warn(`[HybridTranslate] AI post-edit failed for "${chapter.title}", using dictionary only: ${classified.message}`);
-            accumulated = "";
-            lastError = null;
-            break;
+            // AI failed → Do not fall back to dictionary, throw error to keep original content
+            throw new Error(`AI thất bại: ${classified.message}`);
           }
 
           const backoffMs = RETRY_BASE_DELAY * Math.pow(2, attempt);
@@ -794,7 +793,7 @@ ${cleaned}`;
                 }
                 
                 // Upload to community dictionary table (Google Drive) - chạy ngầm không chờ
-                uploadToCommunityDict(entriesWithCategory, genreKey).catch(e => console.warn("[ExtractDict] Tải lên từ điển cộng đồng chạy ngầm bị lỗi:", e));
+
               } catch (uploadErr) {
                 console.warn("[ExtractDict] Genre dict upload skipped:", uploadErr);
               }
@@ -815,11 +814,9 @@ ${cleaned}`;
           parsedScenes = [{ sceneId: scenes[0].id, content: finalContent }];
         }
       } else {
-        parsedTitle = dictTranslatedTitle;
-        parsedScenes = scenes.map((s, i) => ({
-          sceneId: s.id,
-          content: isMultiScene ? dictTranslatedContent.split(SCENE_BREAK)[i]?.trim() || s.content : dictTranslatedContent,
-        }));
+        // This branch should ideally not be reached if we throw on AI failure,
+        // but just in case, we'll keep it safe by not doing anything here or throwing.
+        throw new Error("AI trả về nội dung trống");
       }
 
       onPhase(chapter.id, "done");

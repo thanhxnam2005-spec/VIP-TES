@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type DictSource, type DictMeta, DICT_GENRES, DICT_TYPES, GENRE_LABELS } from "@/lib/db";
-import { submitCommunityDictAction } from "@/app/actions/dict-upload";
+
 
 // ─── Reads ───────────────────────────────────────────────────
 
@@ -334,43 +334,7 @@ export function normalizeGenre(genre: string): string {
   return "tienhiep";
 }
 
-export async function uploadToCommunityDict(
-  entries: { chinese: string; vietnamese: string; category: string }[],
-  novelGenre: string = "tienhiep"
-) {
-  if (!entries || entries.length === 0) return;
-  
-  try {
-    const genre = normalizeGenre(novelGenre);
-    
-    // Group entries by dictionary type to upload to correct files
-    const groups: Record<string, typeof entries> = {
-      "names": [],
-      "tuvung": [],
-      "ngucanh": []
-    };
 
-    for (const e of entries) {
-      if (e.category === "nhân vật") groups.names.push(e);
-      else if (e.category === "thuật ngữ") groups.tuvung.push(e);
-      else groups.ngucanh.push(e);
-    }
-
-    const timestamp = Date.now();
-    
-    for (const [type, groupEntries] of Object.entries(groups)) {
-      if (groupEntries.length === 0) continue;
-      
-      const content = groupEntries.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
-      // Use "user_dict_" prefix so CommunityDictionary.tsx can parse it correctly
-      const filename = `user_dict_${genre}_${type}_${timestamp}.txt`;
-      
-      await submitCommunityDictAction(genre, filename, content);
-    }
-  } catch (err) {
-    console.error("Lỗi đẩy lên từ điển cộng đồng (Drive):", err);
-  }
-}
 
 export async function appendToDictSource(source: DictSource, entries: { chinese: string; vietnamese: string }[]): Promise<{ added: number, skipped: number }> {
   const cached = await db.dictCache.get(source);

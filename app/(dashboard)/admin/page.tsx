@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [freeMode, setFreeMode] = useState(false);
+  const [adminModelEnabled, setAdminModelEnabled] = useState(true);
 
   // Temporary state for the input field of each user
   const [vipDays, setVipDays] = useState<Record<string, string>>({});
@@ -90,11 +91,14 @@ export default function AdminPage() {
     const { data: allSettingsData } = await supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["free_mode", "admin_proxy_url", "admin_proxy_key"]);
+      .in("key", ["free_mode", "admin_proxy_url", "admin_proxy_key", "admin_model_enabled"]);
 
     if (allSettingsData) {
       const freeModeSetting = allSettingsData.find(s => s.key === "free_mode");
       setFreeMode(freeModeSetting?.value === "true");
+
+      const adminModelSetting = allSettingsData.find(s => s.key === "admin_model_enabled");
+      setAdminModelEnabled(adminModelSetting?.value !== "false"); // default true
 
       const urlSetting = allSettingsData.find(s => s.key === "admin_proxy_url");
       if (urlSetting) setAdminProxyUrl(urlSetting.value);
@@ -138,6 +142,22 @@ export default function AdminPage() {
     } else {
       setFreeMode(!freeMode);
       toast.success(`Đã ${!freeMode ? "BẬT" : "TẮT"} chế độ Free Test cho toàn server!`, { id: toastId });
+    }
+  };
+
+  const toggleAdminModel = async () => {
+    const newValue = !adminModelEnabled ? "true" : "false";
+    const toastId = toast.loading("Đang cập nhật trạng thái Admin Model...");
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({ key: "admin_model_enabled", value: newValue });
+
+    if (error) {
+      toast.error(`Lỗi: ${error.message}`, { id: toastId });
+    } else {
+      setAdminModelEnabled(!adminModelEnabled);
+      toast.success(`Đã ${!adminModelEnabled ? "BẬT" : "TẮT"} cấp Model Admin cho toàn server!`, { id: toastId });
     }
   };
 
@@ -267,6 +287,14 @@ export default function AdminPage() {
             title={freeMode ? "Chế độ Free đang BẬT. Ai cũng được xài VIP." : "Bật để cho phép mọi người xài VIP miễn phí"}
           >
             {freeMode ? "ĐANG BẬT FREE TEST TOÀN SERVER" : "Bật Free Test Toàn Server"}
+          </Button>
+          <Button
+            variant={adminModelEnabled ? "default" : "outline"}
+            className={adminModelEnabled ? "bg-blue-600 hover:bg-blue-700 text-white" : "text-muted-foreground"}
+            onClick={toggleAdminModel}
+            title={adminModelEnabled ? "Đang cấp phát model Admin cho người dùng." : "Bật để cấp model Admin"}
+          >
+            {adminModelEnabled ? "ĐANG CẤP MODEL ADMIN" : "Bật cấp Model Admin"}
           </Button>
             <div className="flex items-center gap-2">
               <Button onClick={loadData} variant="outline" size="sm">

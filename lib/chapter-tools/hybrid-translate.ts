@@ -17,7 +17,7 @@ import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-e
 import { stvTranslate } from "@/lib/api/stv-translator";
 import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
-import { uploadToCommunityDict } from "@/lib/hooks/use-dict-entries";
+
 import { isSceneTranslated } from "@/lib/novel-io";
 
 // ── Constants ──
@@ -154,7 +154,7 @@ async function triggerBackgroundLookahead(novelId: string, chapterId: string, mo
     
     const contents = await Promise.all(scenes.map(s => getOriginalContent(s.id)));
     const combinedText = contents.join("\n\n") + "\n\n";
-    const cleaned = cleanGarbageLines(combinedText).slice(0, 2500); 
+    const cleaned = cleanGarbageLines(combinedText); 
 
     if (cleaned.trim()) {
       const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -181,7 +181,7 @@ ${cleaned}`;
       if (match) {
         const arr = JSON.parse(match[0]);
         if (Array.isArray(arr) && arr.length > 0) {
-          const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string");
+          const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string" && /[\u4e00-\u9fa5]/.test(n.chinese));
           if (validNames.length > 0) {
             console.log(`[Lookahead] Đã trích xuất ngầm ${validNames.length} từ cho chương tiếp theo.`);
             const entriesWithCategory = validNames.map((entry: any) => ({
@@ -262,7 +262,9 @@ function parseHybridResult(
         const cleanedLine = tagMatch ? line.slice(tagMatch[0].length) : line;
         const [cn, vn] = cleanedLine.split("=").map(s => s.trim());
         if (cn && vn && cn !== vn) {
-          extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
+          if (/[\u4e00-\u9fa5]/.test(cn)) {
+            extractedNames.push({ chinese: cn, vietnamese: vn, dictType });
+          }
         }
       }
     }
@@ -348,8 +350,8 @@ export async function runHybridTranslate(opts: HybridTranslateOptions): Promise<
           combinedText += contents.join("\n\n") + "\n\n";
         }
         
-        // Cắt khoảng 2500 ký tự đầu để quét cực nhanh
-        const cleaned = cleanGarbageLines(combinedText).slice(0, 2500); 
+        // Quét toàn bộ nội dung chương để đảm bảo không lọt từ vựng
+        const cleaned = cleanGarbageLines(combinedText); 
 
         if (cleaned.trim()) {
           const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -379,7 +381,7 @@ ${cleaned}`;
           if (match) {
             const arr = JSON.parse(match[0]);
             if (Array.isArray(arr) && arr.length > 0) {
-              const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string");
+              const validNames = arr.filter((n: any) => n.chinese && n.vietnamese && typeof n.chinese === "string" && /[\u4e00-\u9fa5]/.test(n.chinese));
                 if (validNames.length > 0) {
                   console.log(`[Cold Start Hybrid] Quét được ${validNames.length} từ. Cập nhật vào từ điển truyện...`);
                   await bulkImportNameEntries(novelId, validNames, "khác", "skip");
@@ -540,6 +542,9 @@ ${cleaned}`;
 
       const cleanedContent = cleanGarbageLines(joinedContent);
 
+      // Fetch the latest dictionary (to include words extracted by Lookahead)
+      nameDict = await getMergedNameDict(novelId);
+
       // ═══════════════════════════════════════════
       // PHASE 1: Dictionary/STV Translation (fast)
       // ═══════════════════════════════════════════
@@ -624,11 +629,8 @@ ${cleaned}`;
           const classified = classifyError(err);
 
           if (!classified.retryable || attempt >= MAX_RETRIES) {
-            // AI failed → fall back to dictionary-only result
-            console.warn(`[HybridTranslate] AI post-edit failed for "${chapter.title}", using dictionary only: ${classified.message}`);
-            accumulated = "";
-            lastError = null;
-            break;
+            // AI failed → Do not fall back to dictionary, throw error to keep original content
+            throw new Error(`AI thất bại: ${classified.message}`);
           }
 
           const backoffMs = RETRY_BASE_DELAY * Math.pow(2, attempt);
@@ -664,7 +666,7 @@ ${cleaned}`;
             // Upload to community dictionary - chạy ngầm không chờ
             const novel = await db.novels.get(novelId);
             const rawGenre = novel?.genre || (novel?.genres && novel.genres[0]) || "tienhiep";
-            uploadToCommunityDict(entriesWithCategory, rawGenre).catch(e => console.warn("[HybridTranslate] Tải lên từ điển cộng đồng chạy ngầm bị lỗi:", e));
+
           } catch (err) {
             console.error("Lỗi lưu tên mới vào từ điển:", err);
           }
@@ -681,11 +683,9 @@ ${cleaned}`;
           parsedScenes = [{ sceneId: scenes[0].id, content: finalContent }];
         }
       } else {
-        parsedTitle = dictTranslatedTitle;
-        parsedScenes = scenes.map((s, i) => ({
-          sceneId: s.id,
-          content: isMultiScene ? dictTranslatedContent.split(SCENE_BREAK)[i]?.trim() || s.content : dictTranslatedContent,
-        }));
+        // This branch should ideally not be reached if we throw on AI failure,
+        // but just in case, we'll keep it safe by not doing anything here or throwing.
+        throw new Error("AI trả về nội dung trống");
       }
 
       onPhase(chapter.id, "done");

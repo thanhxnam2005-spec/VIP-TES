@@ -60,6 +60,7 @@ const DICT_FOLDER_NAME = 'Tu_dien';
 const NOVEL_ROOT_FOLDER_NAME = 'Truyen_nguoi_dung';
 const TXT_ROOT_FOLDER_NAME = 'Kho_van_ban_TXT';
 const COMMUNITY_DICT_FOLDER_NAME = 'Tu_dien_cong_dong';
+const BOT_QUEUE_FOLDER_NAME = 'Bot_Queue';
 
 const folderCache: Record<string, Promise<string>> = {};
 
@@ -423,4 +424,29 @@ export async function getDriveFileContent(fileId: string) {
 
 export async function deleteDriveFile(fileId: string) {
   await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}`, { method: 'DELETE' });
+}
+
+// ─── Bot Queue Functions ────────────────────────────────────
+
+export async function uploadBotQueueFile(filename: string, content: string) {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const botQueueFolderId = await findOrCreateFolder(BOT_QUEUE_FOLDER_NAME, masterId);
+
+  const safeName = filename.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name = '${safeName}' and '${botQueueFolderId}' in parents and trashed = false`);
+  const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
+
+  if (listRes.files && listRes.files.length > 0) {
+    const fileId = listRes.files[0].id;
+    await uploadMultipart(filename, content, 'application/json', undefined, fileId);
+    return fileId;
+  } else {
+    const res = await uploadMultipart(filename, content, 'application/json', botQueueFolderId);
+    return res.id;
+  }
+}
+
+export async function downloadBotQueueFile(fileId: string) {
+  const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+  return typeof content === 'string' ? content : JSON.stringify(content);
 }

@@ -92,14 +92,22 @@ export default function ScraperLibraryPage() {
   };
 
   const handleAdd = async () => {
-    if (!url.trim()) return;
+    let finalUrl = url.trim();
+    if (!finalUrl) return;
+
+    // Bắt buộc dùng link trang chủ của Novel543 để lấy ảnh bìa
+    if (finalUrl.match(/novel543\.com\/\d+\/dir\/?$/)) {
+      finalUrl = finalUrl.replace(/\/dir\/?$/, "/");
+      setUrl(finalUrl);
+    }
+
     setIsAdding(true);
-    useScraperQueueStore.getState().setFetchingInfo({ visible: true, url, count: 0 });
+    useScraperQueueStore.getState().setFetchingInfo({ visible: true, url: finalUrl, count: 0 });
     try {
       // ── Server-side fetch for supported sites (no extension needed) ──
-      if (isServerFetchable(url)) {
+      if (isServerFetchable(finalUrl)) {
         toast.info("⚡ Đang tải bằng Server (không cần Extension)...");
-        const novelInfo = await serverAnalyzeNovel(url);
+        const novelInfo = await serverAnalyzeNovel(finalUrl);
         if (novelInfo.chapters.length === 0) throw new Error("Không tìm thấy chương nào");
 
         // Convert to adapter-compatible format
@@ -126,7 +134,7 @@ export default function ScraperLibraryPage() {
         // Fetch all novels and check existing
         const novels = await db.novels.toArray();
         setAllNovels(novels);
-        let existingNovel = await db.novels.where("sourceUrl").equals(url).first();
+        let existingNovel = await db.novels.where("sourceUrl").equals(finalUrl).first();
         if (!existingNovel) existingNovel = await db.novels.where("title").equals(novelInfo.title).first();
         if (existingNovel) {
           setSelectedNovelId(existingNovel.id);
@@ -149,25 +157,25 @@ export default function ScraperLibraryPage() {
       
       if (showCustomConfig) {
         adapter = createCustomAdapter(customConfig);
-        const res = await extensionFetch(url, { waitSelector: customConfig.waitSelector });
+        const res = await extensionFetch(finalUrl, { waitSelector: customConfig.waitSelector });
         if (res.timedOut) throw new Error("Timeout khi lấy thông tin truyện (Custom)");
         html = res.html;
-        novelInfo = await adapter.getNovelInfo(html, url, (count) => {
+        novelInfo = await adapter.getNovelInfo(html, finalUrl, (count) => {
           setScannedCount(count);
-          useScraperQueueStore.getState().setFetchingInfo({ visible: true, url, count });
+          useScraperQueueStore.getState().setFetchingInfo({ visible: true, url: finalUrl, count });
         });
       } else {
-        adapter = detectAdapter(url);
+        adapter = detectAdapter(finalUrl);
         if (!adapter) throw new Error("Không tìm thấy adapter cho URL này");
 
-        const res = await extensionFetch(url, { 
+        const res = await extensionFetch(finalUrl, { 
           waitSelector: adapter.novelWaitSelector,
           reuseTab: adapter.name === "STV" || adapter.name === "69书吧" || adapter.name === "Fanqie Novel" 
         });
         html = res.html;
-        novelInfo = await adapter.getNovelInfo(html, url, (count) => {
+        novelInfo = await adapter.getNovelInfo(html, finalUrl, (count) => {
           setScannedCount(count);
-          useScraperQueueStore.getState().setFetchingInfo({ visible: true, url, count });
+          useScraperQueueStore.getState().setFetchingInfo({ visible: true, url: finalUrl, count });
         });
       }
 
@@ -386,6 +394,7 @@ export default function ScraperLibraryPage() {
                       <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-emerald-600"/> 69Shu.TW</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://czbooks.net/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-600"/> Czbooks</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.po18.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-500"/> PO18</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://novel543.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-purple-500"/> Novel543</a></Button>
                       {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://fanqienovel.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600"/> Fanqie (Dev)</a></Button>}
                       {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://book.qq.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400"/> BookQQ (Dev)</a></Button>}
                       <Button variant="outline" size="sm" asChild><a href="https://www.popo.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-400"/> POPO</a></Button>

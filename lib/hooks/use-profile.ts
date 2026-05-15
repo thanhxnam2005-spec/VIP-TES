@@ -14,6 +14,7 @@ export interface UserProfile {
 // Module-level cache to prevent redundant Supabase calls across components
 let _cachedProfile: UserProfile | null = null;
 let _cachedFreeMode = false;
+let _cachedAdminModelEnabled = true;
 let _loadingPromise: Promise<void> | null = null;
 let _lastLoadTime = 0;
 const CACHE_TTL = 30_000; // 30 seconds
@@ -21,6 +22,7 @@ const CACHE_TTL = 30_000; // 30 seconds
 export function useProfile() {
   const [profile, setProfile] = useState<UserProfile | null>(_cachedProfile);
   const [freeMode, setFreeMode] = useState(_cachedFreeMode);
+  const [adminModelEnabled, setAdminModelEnabled] = useState(_cachedAdminModelEnabled);
   const [loading, setLoading] = useState(!_cachedProfile);
   const mountedRef = useRef(true);
 
@@ -39,6 +41,7 @@ export function useProfile() {
       if (mountedRef.current) {
         setProfile(_cachedProfile);
         setFreeMode(_cachedFreeMode);
+        setAdminModelEnabled(_cachedAdminModelEnabled);
         setLoading(false);
       }
       return;
@@ -52,12 +55,13 @@ export function useProfile() {
 
         // Fetch both in parallel for speed
         const [settingsResult, userResult] = await Promise.all([
-          supabase.from("app_settings").select("value").eq("key", "free_mode").single(),
+          supabase.from("app_settings").select("key, value").in("key", ["free_mode", "admin_model_enabled"]),
           supabase.auth.getUser(),
         ]);
 
-        const fm = settingsResult.data?.value === "true";
-        _cachedFreeMode = fm;
+        const settingsData = settingsResult.data || [];
+        _cachedFreeMode = settingsData.find(s => s.key === "free_mode")?.value === "true";
+        _cachedAdminModelEnabled = settingsData.find(s => s.key === "admin_model_enabled")?.value !== "false"; // default true
 
         const user = userResult.data?.user;
         if (user) {
@@ -83,6 +87,7 @@ export function useProfile() {
     if (mountedRef.current) {
       setProfile(_cachedProfile);
       setFreeMode(_cachedFreeMode);
+      setAdminModelEnabled(_cachedAdminModelEnabled);
       setLoading(false);
     }
   }, []);
@@ -109,5 +114,5 @@ export function useProfile() {
     return new Date(profile.vip_until) > new Date();
   };
 
-  return { profile, loading, isVip: isVip(), isAdmin: isUserAdmin(), freeMode, loadProfile: () => loadProfile(true) };
+  return { profile, loading, isVip: isVip(), isAdmin: isUserAdmin(), freeMode, adminModelEnabled, loadProfile: () => loadProfile(true) };
 }

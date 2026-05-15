@@ -41,6 +41,7 @@ import {
   LogOutIcon,
   LockIcon,
   SparklesIcon,
+  BotMessageSquareIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -115,7 +116,13 @@ export function AppSidebar() {
   );
 
   const [logoError, setLogoError] = useState(false);
-  const sidebarNav = isAdmin ? [...mainNav, adminNavItem] : mainNav;
+  const botNavItem = {
+    title: "Bot Dịch",
+    href: "/bot-translate",
+    icon: BotMessageSquareIcon,
+  } as const;
+
+  const sidebarNav = isAdmin ? [...mainNav, adminNavItem, botNavItem] : mainNav;
 
   return (
     <Sidebar collapsible="offcanvas" variant="sidebar">

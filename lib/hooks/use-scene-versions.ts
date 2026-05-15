@@ -142,3 +142,49 @@ export async function deleteSceneVersions(ids: string[]): Promise<void> {
 export async function deleteAllSceneVersions(sceneId: string): Promise<void> {
   await db.scenes.where("activeSceneId").equals(sceneId).delete();
 }
+
+/** 
+ * Revert translations for multiple chapters:
+ * Deletes all inactive versions (translations) and restores the original manual content
+ * as the active scene.
+ */
+export async function clearChapterTranslations(chapterIds: string[]): Promise<void> {
+  await db.transaction("rw", [db.scenes], async () => {
+    for (const chapterId of chapterIds) {
+      // Find the active scene for this chapter
+      const activeScenes = await db.scenes
+        .where("[chapterId+isActive]")
+        .equals([chapterId, 1])
+        .toArray();
+        
+      if (activeScenes.length === 0) continue;
+      const activeScene = activeScenes[0];
+
+      // Get original content (v1/manual)
+      const versions = await db.scenes
+        .where("activeSceneId")
+        .equals(activeScene.id)
+        .sortBy("version");
+        
+      let originalContent = activeScene.content;
+      if (versions.length > 0) {
+        const v1 = versions[0];
+        if (v1.content?.trim()) {
+          originalContent = v1.content;
+        }
+      }
+      
+      // Delete all inactive versions
+      await db.scenes.where("activeSceneId").equals(activeScene.id).delete();
+      
+      // Update the active scene to be manual and contain original text
+      await db.scenes.update(activeScene.id, {
+        content: originalContent,
+        version: 1,
+        versionType: "manual",
+        wordCount: originalContent.split(/\s+/).filter(Boolean).length,
+        updatedAt: new Date()
+      });
+    }
+  });
+}
