@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const all = url.searchParams.get("all") === "true";
     const statusFilter = url.searchParams.get("status");
+    const assignedWorkerFilter = url.searchParams.get("assignedWorker");
     const jobId = url.searchParams.get("jobId");
 
     // Single job detail with chapters
@@ -63,6 +64,10 @@ export async function GET(req: NextRequest) {
 
     if (statusFilter) {
       query = query.eq("status", statusFilter);
+    }
+
+    if (assignedWorkerFilter) {
+      query = query.eq("assigned_worker", assignedWorkerFilter);
     }
 
     const { data: jobs, error } = await query.limit(50);

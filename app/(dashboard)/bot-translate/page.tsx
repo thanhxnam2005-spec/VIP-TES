@@ -381,7 +381,8 @@ export default function BotTranslatePage() {
       if (!isRunning) break;
 
       try {
-        const res = await fetch("/api/bot-translate/queue?all=true&status=pending");
+        const slotName = SLOT_NAMES[slotIdx];
+        const res = await fetch(`/api/bot-translate/queue?all=true&status=pending&assignedWorker=${slotName}`);
         if (!res.ok) throw new Error("Lỗi fetch queue");
         const data = await res.json();
         const pendingJobs = (data.jobs || []).filter((j: QueueJob) => j.status === "pending");
