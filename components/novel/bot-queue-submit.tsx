@@ -241,8 +241,12 @@ export function BotQueueSubmit({
       for (const queueChapter of data.chapters) {
         if (!queueChapter.translated_scenes) continue;
 
+        // Tìm chương khớp theo order (số thứ tự)
         const localChapter = localChapters.find(c => c.order === queueChapter.order);
-        if (!localChapter) continue;
+        if (!localChapter) {
+          console.warn(`[import] Không tìm thấy chương cục bộ cho order: ${queueChapter.order}`);
+          continue;
+        }
 
         const localScenes = await db.scenes.where("chapterId").equals(localChapter.id).sortBy("order");
 
@@ -250,12 +254,15 @@ export function BotQueueSubmit({
           const localScene = localScenes.find(s => s.order === translatedScene.order);
           if (!localScene) continue;
 
+          // 1. Lưu bản gốc vào lịch sử nếu chưa có (để có Tab Gốc/Dịch)
           await ensureInitialVersion(localScene.id, novelId, localScene.content);
+          
+          // 2. Lưu bản dịch AI vào lịch sử phiên bản
           await createSceneVersion(localScene.id, novelId, "ai", translatedScene.content);
           
-          // Cập nhật trực tiếp nội dung chính để hiển thị ngay trong trình đọc
+          // 3. Ghi đè trực tiếp nội dung hiển thị chính bằng bản dịch AI mới
           await db.scenes.update(localScene.id, {
-            content: translatedScene.content,
+            content: translatedScene.content || "",
             versionType: "ai",
             updatedAt: new Date(),
             wordCount: (translatedScene.content || "").split(/\s+/).filter(Boolean).length
