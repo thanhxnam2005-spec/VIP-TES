@@ -26,6 +26,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "workerName is required" }, { status: 400 });
     }
 
+    // 0. Check if this worker is already busy with another job
+    const { data: busyJob } = await supabase
+      .from("translation_queue")
+      .select("id, novel_name")
+      .eq("worker_name", workerName)
+      .eq("status", "translating")
+      .limit(1)
+      .single();
+
+    if (busyJob) {
+      return NextResponse.json({ 
+        error: "Worker busy", 
+        message: `Worker ${workerName} is already translating: ${busyJob.novel_name}` 
+      }, { status: 400 });
+    }
+
     // 1. Find the oldest pending job
     const { data: pendingJobs, error: fetchError } = await supabase
       .from("translation_queue")

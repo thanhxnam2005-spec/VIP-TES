@@ -417,9 +417,15 @@ export function BotQueueSubmit({
                         {job.chapter_count} chương • {MODE_LABELS[job.translate_mode] || job.translate_mode}
                         {job.prompt_type === "custom" || job.custom_prompt ? " • Có Prompt riêng" : ""}
                         {job.extract_dict ? " • Học từ vựng (Bật)" : ""}
-                        {job.worker_name && <span className="text-blue-500 font-medium"> • AI: {job.worker_name}</span>}
                         {" • "}{new Date(job.created_at).toLocaleString("vi-VN")}
                       </p>
+                      {job.status === "translating" && (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-600 bg-blue-50/50">
+                             AI: {job.worker_name || "Chưa xác định"}
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                     <Badge className={`text-[10px] gap-1 shrink-0 ${statusInfo.color}`}>
                       {statusInfo.icon}
