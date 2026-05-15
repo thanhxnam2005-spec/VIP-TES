@@ -37,8 +37,13 @@ const SLOT_NAMES = ["Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5"];
 export default function BotTranslatePage() {
   const { isAdmin } = useProfile();
   const providers = useApiInferenceProviders();
+  const [mounted, setMounted] = useState(false);
   const [jobs, setJobs] = useState<QueueJob[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [activeSlot, setActiveSlot] = useState("0");
   const [slots, setSlots] = useState<SlotConfig[]>(
     SLOT_NAMES.map(() => ({ providerId: "", modelId: "", running: false }))
@@ -70,7 +75,15 @@ export default function BotTranslatePage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadJobs(); const i = setInterval(loadJobs, 10000); return () => clearInterval(i); }, [loadJobs]);
+  useEffect(() => {
+    if (mounted) loadJobs();
+    const i = setInterval(() => {
+      if (mounted) loadJobs();
+    }, 10000);
+    return () => clearInterval(i);
+  }, [loadJobs, mounted]);
+
+  if (!mounted) return null;
 
   const addLog = (slotIdx: number, msg: string) => {
     setSlotLogs(prev => ({ ...prev, [slotIdx]: [...(prev[slotIdx] || []).slice(-50), `[${new Date().toLocaleTimeString("vi-VN")}] ${msg}`] }));

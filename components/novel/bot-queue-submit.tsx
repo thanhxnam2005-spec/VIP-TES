@@ -58,11 +58,16 @@ export function BotQueueSubmit({
   chapterIds,
   dictSources,
 }: BotQueueSubmitProps) {
+  const [mounted, setMounted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myJobs, setMyJobs] = useState<QueueJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [importingJobId, setImportingJobId] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<string>("hybrid");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
   const hasPrompt = !!novel?.customTranslatePrompt?.trim();
@@ -97,10 +102,14 @@ export function BotQueueSubmit({
   }, [importingJobId]);
 
   useEffect(() => {
-    loadJobs();
-    const interval = setInterval(loadJobs, 15000);
+    if (mounted) loadJobs();
+    const interval = setInterval(() => {
+      if (mounted) loadJobs();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [loadJobs]);
+  }, [loadJobs, mounted]);
+
+  if (!mounted) return null;
 
   // Submit novel to queue
   const handleSubmit = async () => {
