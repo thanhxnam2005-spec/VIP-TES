@@ -54,7 +54,7 @@ export async function createSceneVersion(
       title: activeScene.title,
       content,
       order: activeScene.order,
-      wordCount: content.split(/\s+/).filter(Boolean).length,
+      wordCount: (content || "").split(/\s+/).filter(Boolean).length,
       version: nextVersion,
       versionType: type,
       isActive: 0,
@@ -94,7 +94,7 @@ export async function ensureInitialVersion(
       title: activeScene.title,
       content,
       order: activeScene.order,
-      wordCount: content.split(/\s+/).filter(Boolean).length,
+      wordCount: (content || "").split(/\s+/).filter(Boolean).length,
       version: 1,
       versionType: "manual",
       isActive: 0,
@@ -182,7 +182,7 @@ export async function clearChapterTranslations(chapterIds: string[]): Promise<vo
         content: originalContent,
         version: 1,
         versionType: "manual",
-        wordCount: originalContent.split(/\s+/).filter(Boolean).length,
+        wordCount: (originalContent || "").split(/\s+/).filter(Boolean).length,
         updatedAt: new Date()
       });
     }

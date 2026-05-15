@@ -250,8 +250,8 @@ export function BotQueueSubmit({
           const localScene = localScenes.find(s => s.order === translatedScene.order);
           if (!localScene) continue;
 
-          await ensureInitialVersion(localScene.id, localScene.content);
-          await createSceneVersion(localScene.id, translatedScene.content, "ai");
+          await ensureInitialVersion(localScene.id, novelId, localScene.content);
+          await createSceneVersion(localScene.id, novelId, "ai", translatedScene.content);
         }
 
         if (queueChapter.translated_title) {
