@@ -37,7 +37,7 @@ export function useAIProviders() {
   
   return useMemo(() => {
     if (!dbProviders) return undefined;
-    const all = [...dbProviders, WEBGPU_SYSTEM_PROVIDER];
+    const all = [...dbProviders];
     
     // Show admin provider for VIPs or if they have some quota left (or are Admin), only if globally enabled
     if (adminModelEnabled && (isVip || isAdmin || (profile?.admin_model_quota && profile.admin_model_quota > 0))) {
