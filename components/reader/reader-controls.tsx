@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { useReaderPanel } from "@/lib/stores/reader-panel";
 import { Loader2Icon, PauseIcon, PlayIcon } from "lucide-react";
+import { DownloadAudioButton } from "./download-audio-button";
 
 export function ReaderControls() {
   const isPlaying = useReaderPanel((s) => s.isPlaying);
@@ -66,6 +67,7 @@ export function ReaderControls() {
       <span className="ml-auto text-xs tabular-nums text-muted-foreground">
         {current} / {total}
       </span>
+      <DownloadAudioButton />
     </div>
   );
 }

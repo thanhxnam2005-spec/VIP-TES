@@ -21,6 +21,7 @@ import { ZhihuAdapter } from "./Zhihu";
 import { Novel543Adapter } from "./Novel543";
 import { Shuku52Adapter } from "./Shuku52";
 import { WordpressAdapter } from "./Wordpress";
+import { TruyenFullVisionAdapter } from "./TruyenFullVision";
 
 const adapters: SiteAdapter[] = [
   STVAdapter,
@@ -44,7 +45,8 @@ const adapters: SiteAdapter[] = [
   Novel543Adapter,
   Shuku52Adapter,
   WordpressAdapter,
-  UniversalAdapter,
+  TruyenFullVisionAdapter,
+  UniversalAdapter,  // Must be LAST — detectAdapter uses slice(0, -1) to skip it
 ];
 
 /** Find the adapter that matches the given URL, or null. */
@@ -64,4 +66,4 @@ export function getAdapters(): SiteAdapter[] {
   return adapters;
 }
 
-export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter, Novel543Adapter, Shuku52Adapter, WordpressAdapter };
+export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter, Novel543Adapter, Shuku52Adapter, WordpressAdapter, TruyenFullVisionAdapter };

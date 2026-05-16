@@ -9,7 +9,7 @@ const BING_WS_URL =
   "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
 const PROXY_WS_URL =
   "wss://103.82.20.93/bing/consumer/speech/synthesize/readaloud/edge/v1";
-const KEY_SERVER_URL = "http://103.82.20.93/io/s1213/edgeTTSClientKey";
+const KEY_SERVER_URL = "/api/tts/bing-key";
 const TIMEOUT_MS = 10_000;
 const MAX_RETRY_ATTEMPTS = 3;
 const IDLE_TIMEOUT_MS = 300_000; // 5 minutes
@@ -38,9 +38,11 @@ function isEdgeBrowser(): boolean {
   return navigator.userAgent.includes("Edg/");
 }
 
-/** Get the appropriate WebSocket URL. */
 function getServerUrl(): string {
-  return isEdgeBrowser() ? BING_WS_URL : PROXY_WS_URL;
+  // Use the official BING_WS_URL directly because the proxy API already provides
+  // the TrustedClientToken and Sec-MS-GEC signatures to bypass Microsoft's protection.
+  // The PROXY_WS_URL (103.82.20.93) has an invalid SSL certificate.
+  return BING_WS_URL;
 }
 
 // ---------------------------------------------------------------------------
