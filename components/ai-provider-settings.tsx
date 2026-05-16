@@ -123,13 +123,7 @@ function ProviderFormDialog({
     setSaving(true);
     try {
       if (!isEditing) {
-        // Check 2-provider limit (excluding WebGPU system provider)
-        const currentCount = await db.aiProviders.count();
-        if (currentCount >= 2) {
-          toast.error("Mỗi tài khoản chỉ được phép thêm tối đa 2 model (Key AI) riêng. Hãy xóa bớt để thêm mới.");
-          setSaving(false);
-          return;
-        }
+        // No limit on custom providers
       }
 
       const data = {
@@ -205,11 +199,10 @@ function ProviderFormDialog({
                             <button
                               type="button"
                               onClick={() => handlePresetChange(p.type)}
-                              className={`relative flex size-10 items-center justify-center rounded-lg border transition-colors cursor-pointer ${
-                                providerType === p.type
+                              className={`relative flex size-10 items-center justify-center rounded-lg border transition-colors cursor-pointer ${providerType === p.type
                                   ? "border-primary bg-primary/10"
                                   : "hover:bg-muted/50"
-                              }`}
+                                }`}
                             >
                               <ProviderIcon
                                 iconKey={p.iconKey}
@@ -264,30 +257,30 @@ function ProviderFormDialog({
               {/* API Key */}
               <Field>
                 <FieldLabel>Khóa API</FieldLabel>
-                  <Input
-                    type="password"
-                    placeholder={preset?.apiKeyPlaceholder ?? "Khóa API"}
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                  />
-                  <FieldDescription>
-                    Chỉ lưu trữ cục bộ trong trình duyệt của bạn.
-                    {preset?.apiKeyHelpUrl && (
-                      <>
-                        {" "}
-                        <a
-                          href={preset.apiKeyHelpUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-0.5 text-primary underline"
-                        >
-                          Lấy khóa API
-                          <ExternalLinkIcon className="size-3" />
-                        </a>
-                      </>
-                    )}
-                  </FieldDescription>
-                </Field>
+                <Input
+                  type="password"
+                  placeholder={preset?.apiKeyPlaceholder ?? "Khóa API"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+                <FieldDescription>
+                  Chỉ lưu trữ cục bộ trong trình duyệt của bạn.
+                  {preset?.apiKeyHelpUrl && (
+                    <>
+                      {" "}
+                      <a
+                        href={preset.apiKeyHelpUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 text-primary underline"
+                      >
+                        Lấy khóa API
+                        <ExternalLinkIcon className="size-3" />
+                      </a>
+                    </>
+                  )}
+                </FieldDescription>
+              </Field>
             </FieldGroup>
           </FieldSet>
           <DialogFooter className="mt-4">
@@ -553,7 +546,7 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
               )}
             </div>
           )}
-          
+
           {provider.id === "admin-provider" && (
             <div className="flex items-center gap-2 text-xs text-emerald-600 font-medium">
               <CrownIcon className="size-3" />
