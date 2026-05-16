@@ -105,15 +105,15 @@ export async function loadDictDataForWorker(
     const counts: Record<string, number> = {};
     for (let ci = 0; ci < cached.length; ci++) {
       const entry = cached[ci];
-      // Báo tiến trình cho UI + nhả main thread để tránh đóng băng
+      // Báo tiến trình cho UI
       const pct = Math.round((ci / cached.length) * 100);
       onProgress?.(entry.source, pct);
-      // Yield giữa các file lớn để UI không bị treo
-      if (ci % 3 === 0) await new Promise(r => setTimeout(r, 0));
+      // Yield SAU MỖI file để UI không bị treo (parseDictText có thể mất trăm ms cho file lớn)
+      await new Promise(r => setTimeout(r, 0));
       
       result[entry.source] = parseDictText(entry.rawText);
       counts[entry.source] = result[entry.source].length;
-      sourceCounts[entry.source] = counts[entry.source]; // Keep track of cached counts!
+      sourceCounts[entry.source] = counts[entry.source];
     }
 
     void db.dictMeta.put({
@@ -336,15 +336,24 @@ export function normalizeGenre(genre: string): string {
 
 
 
+/** Yield to main thread — uses scheduler.yield() if available (Chrome 129+), else setTimeout */
+async function yieldToMain(): Promise<void> {
+  if (typeof globalThis !== "undefined" && "scheduler" in globalThis && typeof (globalThis as any).scheduler?.yield === "function") {
+    return (globalThis as any).scheduler.yield();
+  }
+  return new Promise(r => setTimeout(r, 0));
+}
+
 export async function appendToDictSource(source: DictSource, entries: { chinese: string; vietnamese: string }[]): Promise<{ added: number, skipped: number }> {
   const cached = await db.dictCache.get(source);
   let currentText = cached?.rawText || "";
   
   const map = new Map<string, Set<string>>();
   
-  // 1. Load existing entries into map
+  // 1. Load existing entries into map — chunked to avoid blocking main thread
   const lines = currentText.split("\n");
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const eqIdx = line.indexOf("=");
     if (eqIdx > 0) {
       const key = line.slice(0, eqIdx).trim();
@@ -352,20 +361,21 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
       if (!map.has(key)) map.set(key, new Set());
       meanings.forEach(m => map.get(key)!.add(m));
     }
+    // Yield every 20k lines to keep UI responsive
+    if (i > 0 && i % 20_000 === 0) await yieldToMain();
   }
 
   // 2. Add new entries into map and track what's actually new
   let addedEntriesCount = 0;
-  const uniqueNewEntries: { chinese: string; vietnamese: string }[] = [];
 
-  for (const entry of entries) {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
     const key = entry.chinese;
     const newMeanings = entry.vietnamese.split("/").map(m => m.trim()).filter(Boolean);
     
     if (!map.has(key)) {
       map.set(key, new Set(newMeanings));
       addedEntriesCount++;
-      uniqueNewEntries.push({ chinese: key, vietnamese: newMeanings.join("/") });
     } else {
       const existingMeanings = map.get(key)!;
       let hasNewMeaning = false;
@@ -377,9 +387,10 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
       }
       if (hasNewMeaning) {
         addedEntriesCount++;
-        // We track this as "added" because it was modified
       }
     }
+    // Yield every 10k entries
+    if (i > 0 && i % 10_000 === 0) await yieldToMain();
   }
 
   if (addedEntriesCount === 0) {
@@ -391,42 +402,19 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
     .map(([k, vs]) => `${k}=${Array.from(vs).join("/")}`)
     .join("\n") + "\n";
   
-  // 2. Update dictCache with new text
+  // 4. Update dictCache with new text (single fast put)
   await db.dictCache.put({ source, rawText: updatedText });
 
-  // 3. Update dictEntries (structured table for search)
-  // Since we merged, it's safer to clear and rebuild if the change is large, 
-  // but for performance with append, we only add actually new keys or update modified ones.
-  // For simplicity and speed in this append-style function, we'll just update the modified ones.
-  // BUT: dictEntries is for SEARCH, it doesn't need to be 100% perfect for every slash.
-  // To keep it simple, we'll just add the NEW entries as before.
-  try {
-    const entriesToUpdate = Array.from(map.entries())
-      .filter(([k]) => entries.some(e => e.chinese === k)) // only those we touched
-      .map(([k, vs]) => ({
-        id: crypto.randomUUID(),
-        source,
-        chinese: k,
-        vietnamese: Array.from(vs).join("/")
-      }));
-    
-    // Clear old entries for these keys first to avoid duplicates in search
-    const keysToClear = entriesToUpdate.map(e => e.chinese);
-    await db.dictEntries.where("chinese").anyOf(keysToClear).and(e => e.source === source).delete();
-    await db.dictEntries.bulkAdd(entriesToUpdate);
-  } catch (err) {
-    console.warn("[appendToDictSource] Failed to update dictEntries table:", err);
-  }
+  // dictEntries table bỏ qua — dictCache là nguồn dữ liệu chính.
+  // Các hàm saveDictSource & importDictFile đã bỏ dictEntries từ trước.
+  // dictEntries chỉ dùng cho search trong splitter-manager, sẽ rebuild lazy khi cần.
 
-  // 4. Update meta count (Recalculate based on actual lines in cache for accuracy)
+  // 5. Update meta count
   let meta = await db.dictMeta.get("dict-meta");
   if (!meta) {
     meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
   }
-  
-  // Count lines that look like valid entries
-  const totalEntries = map.size;
-  meta.sources[source] = totalEntries;
+  meta.sources[source] = map.size;
   meta.loadedAt = new Date();
   await db.dictMeta.put(meta);
 

@@ -31,13 +31,37 @@ function classifyError(err: unknown): { retryable: boolean; message: string } {
   if (lower.includes('rate limit') || lower.includes('429') || lower.includes('too many requests')) {
     return { retryable: true, message: `Rate limit — đang chờ retry... (${msg})` };
   }
-  // Server errors (500, 502, 503)
-  if (lower.includes('500') || lower.includes('502') || lower.includes('503') || lower.includes('server error') || lower.includes('internal error')) {
+  // Server errors (500, 502, 503, 504)
+  if (lower.includes('500') || lower.includes('502') || lower.includes('503') || lower.includes('504') || lower.includes('server error') || lower.includes('internal error')) {
     return { retryable: true, message: `Server lỗi tạm thời — đang retry... (${msg})` };
   }
   // Timeout
-  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('econnreset')) {
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('econnreset') || lower.includes('etimedout')) {
     return { retryable: true, message: `Timeout — đang retry... (${msg})` };
+  }
+  // Network / connection errors (common with third-party proxies like beijixingxing, catiecli)
+  if (lower.includes('fetch failed') || lower.includes('econnrefused') || lower.includes('enotfound') || lower.includes('network') || lower.includes('dns')) {
+    return { retryable: true, message: `Lỗi kết nối proxy — đang retry... (${msg})` };
+  }
+  // Socket / connection dropped
+  if (lower.includes('socket hang up') || lower.includes('socket') || lower.includes('epipe') || lower.includes('broken pipe') || lower.includes('ehostunreach') || lower.includes('econnaborted')) {
+    return { retryable: true, message: `Mất kết nối — đang retry... (${msg})` };
+  }
+  // Gateway / upstream errors (proxy-specific)
+  if (lower.includes('gateway') || lower.includes('upstream') || lower.includes('proxy') || lower.includes('bad gateway') || lower.includes('service unavailable')) {
+    return { retryable: true, message: `Lỗi gateway proxy — đang retry... (${msg})` };
+  }
+  // SSL / TLS errors
+  if (lower.includes('ssl') || lower.includes('tls') || lower.includes('certificate') || lower.includes('cert')) {
+    return { retryable: true, message: `Lỗi SSL/TLS — đang retry... (${msg})` };
+  }
+  // Empty / malformed response (proxy returned HTML error page or empty body)
+  if (lower.includes('unexpected end') || lower.includes('unexpected token') || lower.includes('json') || lower.includes('empty') || lower.includes('no body') || lower.includes('invalid json')) {
+    return { retryable: true, message: `Response lỗi/rỗng từ proxy — đang retry... (${msg})` };
+  }
+  // Generic "failed to" errors
+  if (lower.includes('failed to') || lower.includes('request failed') || lower.includes('unable to')) {
+    return { retryable: true, message: `Request thất bại — đang retry... (${msg})` };
   }
   // Auth errors (not retryable)
   if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('invalid api key') || lower.includes('authentication')) {
@@ -55,8 +79,8 @@ function classifyError(err: unknown): { retryable: boolean; message: string } {
   if (lower.includes('content filter') || lower.includes('safety') || lower.includes('blocked')) {
     return { retryable: false, message: `Nội dung bị chặn bởi bộ lọc an toàn. (${msg})` };
   }
-  // Default: try once more
-  return { retryable: true, message: msg };
+  // Default: treat as retryable (proxy errors are unpredictable)
+  return { retryable: true, message: `Lỗi không xác định — đang retry... (${msg})` };
 }
 
 async function delay(ms: number): Promise<void> {
@@ -404,10 +428,16 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       if (err instanceof Error && err.name === "AbortError") {
         return; // Bubble up abort
       }
+      // Re-throw retryable errors so the worker-level retry loop catches them
+      const classified = classifyError(err);
+      if (classified.retryable) {
+        throw err; // Let worker retry this chapter
+      }
+      // Non-retryable: report and move on
       onChapterError({
         chapterId: chapter.id,
         chapterTitle: chapter.title,
-        message: err instanceof Error ? err.message : "Lỗi không xác định",
+        message: classified.message,
       });
     }
   }
@@ -423,11 +453,49 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       }
 
       // Get the next chapter index atomically in the async execution context
-      const chapter = chapters[currentIndex];
+      const chapterIdx = currentIndex;
+      const chapter = chapters[chapterIdx];
       if (!chapter) return;
       currentIndex++;
 
-      await processChapter(chapter);
+      // Retry loop for entire chapter processing
+      let chapterRetries = 0;
+      let chapterSuccess = false;
+
+      while (!chapterSuccess && chapterRetries <= MAX_RETRIES) {
+        if (signal?.aborted) return;
+
+        try {
+          await processChapter(chapter);
+          chapterSuccess = true; // processChapter didn't throw = success (or non-retryable error already reported)
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") return;
+
+          const classified = classifyError(err);
+          chapterRetries++;
+
+          if (!classified.retryable || chapterRetries > MAX_RETRIES) {
+            // Non-retryable or exhausted retries — report and move on
+            onChapterError({
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              message: classified.message,
+            });
+            chapterSuccess = true; // Move to next chapter
+          } else {
+            // Retryable — wait 30s and retry this SAME chapter
+            console.warn(
+              `[BulkTranslate] Chương "${chapter.title}" lỗi (lần ${chapterRetries}): ${classified.message}. Chờ 30s retry...`
+            );
+            onChapterError({
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              message: `⏳ Retry lần ${chapterRetries}: ${classified.message} — đang chờ 30s...`,
+            });
+            await delay(RETRY_BASE_DELAY);
+          }
+        }
+      }
 
       if (delayMs && delayMs > 0 && currentIndex < chapters.length && !signal?.aborted) {
         await delay(delayMs);

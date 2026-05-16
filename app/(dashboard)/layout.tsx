@@ -223,7 +223,7 @@ export default function DashboardLayout({
             </Button>
           </div>
         </header>
-        <div className="min-w-0 flex-1 overflow-auto">
+        <div className="min-w-0 flex-1 overflow-auto animate-page-enter">
           <VipGuard pathname={pathname}>
             {children}
           </VipGuard>

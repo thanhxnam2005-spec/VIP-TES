@@ -468,7 +468,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
   };
 
   const handleDownloadAllFromWarehouse = async () => {
-    const toastId = toast.loading("Đang tải toàn bộ từ Tổng kho (Siêu tốc)...");
+    const toastId = toast.loading("Đang tải toàn bộ từ Tổng kho...");
     try {
       const params = new URLSearchParams({ action: 'download-all-dicts' });
       const res = await fetch(`/api/dict/cloud-storage?${params.toString()}`, { method: 'POST' });
@@ -482,17 +482,37 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       let newEntriesCount = 0;
       let processedCount = 0;
 
+      // Import: saveDictSource for fast-replace when local is empty
+      const { saveDictSource } = await import("@/lib/hooks/use-dict-entries");
+
       for (const [source, content] of Object.entries(allDicts)) {
         processedCount++;
-        const entries = parseDictLines(content);
-        if (entries.length > 0) {
-          const result = await appendToDictSource(source as any, entries);
-          if (typeof result === "object") {
-            newEntriesCount += result.added || 0;
+        const pct = Math.round((processedCount / total) * 100);
+        toast.loading(`Đang xử lý ${source} (${pct}%)...`, { id: toastId });
+
+        if (!content || content.trim().length === 0) continue;
+
+        // Check if local has data — if empty, use fast saveDictSource (no merge needed)
+        const localCached = await db.dictCache.get(source as any);
+        const localHasData = localCached?.rawText && localCached.rawText.trim().length > 0;
+
+        if (!localHasData) {
+          // Fast path: no local data, direct save (no merge overhead)
+          await saveDictSource(source as any, content);
+          const lineCount = content.split("\n").filter((l: string) => l.includes("=")).length;
+          newEntriesCount += lineCount;
+        } else {
+          // Merge path: local has data, use appendToDictSource
+          const entries = parseDictLines(content);
+          if (entries.length > 0) {
+            const result = await appendToDictSource(source as any, entries);
+            if (typeof result === "object") {
+              newEntriesCount += result.added || 0;
+            }
           }
         }
-        toast.loading(`Đang xử lý dữ liệu: ${Math.round((processedCount / total) * 100)}%...`, { id: toastId });
-        await new Promise(r => setTimeout(r, 50)); // Yield
+        // Yield to main thread between sources
+        await new Promise(r => setTimeout(r, 0));
       }
       
       toast.success(`Đã cập nhật ${newEntriesCount.toLocaleString()} mục mới từ Tổng kho!`, { id: toastId });
@@ -570,19 +590,8 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
 
     const text = cleaned.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
     await db.dictCache.put({ source, rawText: text });
-    await db.dictEntries.where("source").equals(source).delete();
     
-    // Tạo ID duy nhất cho mỗi mục để tránh lỗi IDBObjectStore DataError
-    const entriesWithIds = cleaned.map(e => ({ 
-      id: crypto.randomUUID(),
-      source,
-      chinese: e.chinese,
-      vietnamese: e.vietnamese
-    }));
-    
-    await db.dictEntries.bulkAdd(entriesWithIds);
-    
-    // Refresh meta bằng cách cập nhật trực tiếp vào DB (useLiveQuery sẽ tự động nhận diện)
+    // Update meta (dictEntries bỏ qua — dictCache là nguồn chính)
     let meta = await db.dictMeta.get("dict-meta");
     if (!meta) {
       meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
@@ -628,14 +637,6 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
             totalRemoved += removed;
             const text = cleaned.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
             await db.dictCache.put({ source, rawText: text });
-            await db.dictEntries.where("source").equals(source).delete();
-            const entriesWithIds = cleaned.map(e => ({ 
-              id: crypto.randomUUID(),
-              source,
-              chinese: e.chinese,
-              vietnamese: e.vietnamese
-            }));
-            await db.dictEntries.bulkAdd(entriesWithIds);
 
             // Update meta in DB
             let meta = await db.dictMeta.get("dict-meta");

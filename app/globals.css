@@ -230,3 +230,110 @@ html, body {
                     radial-gradient(at 100% 0%, color-mix(in oklch, var(--chart-1) 8%, transparent) 0px, transparent 50%);
   background-attachment: fixed;
 }
+
+/* ─── Smooth Global Transitions ─────────────────────────────── */
+
+/* Smooth scrolling everywhere */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Page content fade-in animation */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Subtle scale-in for cards and dialogs */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Shimmer effect for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Content appear on scroll / mount */
+@utility animate-page-enter {
+  animation: page-enter 0.25s ease-out both;
+}
+
+@utility animate-scale-in {
+  animation: scale-in 0.2s ease-out both;
+}
+
+@utility animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    color-mix(in oklch, var(--muted) 60%, transparent) 50%,
+    transparent 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Smooth transitions for interactive elements */
+[data-slot="button"],
+[data-slot="sidebar-menu-button"],
+a[href] {
+  transition: all 0.15s ease;
+}
+
+/* Card hover lift effect */
+[data-slot="card"],
+.group\/card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+[data-slot="card"]:hover,
+.group\/card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* Smooth badge transitions */
+[data-slot="badge"] {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Smoother dialog/popover appearance */
+[data-state="open"][data-slot="dialog-content"],
+[data-state="open"][data-slot="popover-content"],
+[data-state="open"][data-slot="select-content"] {
+  animation: scale-in 0.15s ease-out;
+}
+
+/* Toast smoother entrance */
+[data-sonner-toaster] [data-sonner-toast] {
+  transition: all 0.2s ease !important;
+}
+
+/* Progress bar smooth transition */
+[data-slot="progress-indicator"] {
+  transition: width 0.3s ease-out !important;
+}
+
+/* Sidebar smooth transitions */
+[data-slot="sidebar"] {
+  transition: width 0.2s ease, transform 0.2s ease;
+}
+
+/* Table row hover */
+[data-slot="table-row"] {
+  transition: background-color 0.1s ease;
+}
+
+/* Tab content smooth switch */
+[data-slot="tabs-content"] {
+  animation: page-enter 0.15s ease-out;
+}
+
+/* Input focus glow */
+[data-slot="input"]:focus,
+[data-slot="textarea"]:focus {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+

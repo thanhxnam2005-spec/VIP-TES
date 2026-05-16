@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { DICT_GENRES, DICT_TYPES, type DictSource } from "@/lib/db";
-import { appendToDictSource } from "@/lib/hooks/use-dict-entries";
+import { db, DICT_GENRES, DICT_TYPES, type DictSource } from "@/lib/db";
+import { appendToDictSource, saveDictSource } from "@/lib/hooks/use-dict-entries";
 
 const ALL_SOURCES: DictSource[] = [];
 for (const g of DICT_GENRES) {
@@ -39,32 +39,41 @@ export function AutoDictSync() {
         if (!data.success || !data.dicts) return;
 
         const allDicts: Record<string, string> = data.dicts;
-        const total = Object.keys(allDicts).length;
-        let processedCount = 0;
 
         for (const [source, text] of Object.entries(allDicts)) {
           if (!mounted) return;
           if (source === "core_vietphrase") continue;
 
           const clean = text.startsWith("\uFEFF") ? text.slice(1) : text;
-          const entries = clean
-            .split(/\r?\n/)
-            .map((line) => {
-              const idx = line.indexOf("=");
-              if (idx < 1) return null;
-              return {
-                chinese: line.slice(0, idx).trim(),
-                vietnamese: line.slice(idx + 1).trim(),
-              };
-            })
-            .filter((e) => e !== null);
+          if (!clean || clean.trim().length === 0) continue;
 
-          if (entries.length > 0) {
-            await appendToDictSource(source as any, entries);
+          // Fast path: nếu local rỗng, dùng saveDictSource (instant put, không cần merge)
+          const localCached = await db.dictCache.get(source as DictSource);
+          const localHasData = localCached?.rawText && localCached.rawText.trim().length > 0;
+
+          if (!localHasData) {
+            await saveDictSource(source as DictSource, clean);
+          } else {
+            // Merge path: chỉ khi local đã có data
+            const entries = clean
+              .split(/\r?\n/)
+              .map((line) => {
+                const idx = line.indexOf("=");
+                if (idx < 1) return null;
+                return {
+                  chinese: line.slice(0, idx).trim(),
+                  vietnamese: line.slice(idx + 1).trim(),
+                };
+              })
+              .filter((e) => e !== null);
+
+            if (entries.length > 0) {
+              await appendToDictSource(source as DictSource, entries);
+            }
           }
           
-          processedCount++;
-          await new Promise((resolve) => setTimeout(resolve, 50)); // Yield to main thread
+          // Yield to main thread giữa mỗi source
+          await new Promise((resolve) => setTimeout(resolve, 0));
         }
 
         // Đánh dấu đã sync
@@ -75,10 +84,11 @@ export function AutoDictSync() {
       }
     };
 
-    // Chờ 5 giây sau khi load trang xong mới bắt đầu tải ngầm để không làm chậm lúc khởi động
+    // Chờ 8 giây sau khi load trang xong mới bắt đầu tải ngầm
+    // (tăng từ 5s lên 8s để đảm bảo DictInitializer xong trước)
     const timeout = setTimeout(() => {
       syncDicts();
-    }, 5000);
+    }, 8000);
 
     return () => {
       mounted = false;
