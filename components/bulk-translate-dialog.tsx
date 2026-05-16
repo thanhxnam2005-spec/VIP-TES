@@ -37,7 +37,6 @@ import {
   useAnalysisSettings,
   useApiInferenceProviders,
   useChatSettings,
-  useClearWebGpuStepModel,
   useConfirmInterrupt,
 } from "@/lib/hooks";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
@@ -176,10 +175,7 @@ export function BulkTranslateDialog({
     }
   }, [novelId]);
 
-  const clearWebGpu = useCallback(async () => {
-    await saveModel(undefined);
-  }, [saveModel]);
-  useClearWebGpuStepModel(currentModel?.providerId, clearWebGpu);
+
 
   const handleProviderChange = (providerId: string) => {
     saveModel(providerId ? { providerId, modelId: "" } : undefined);

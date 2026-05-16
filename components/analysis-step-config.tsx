@@ -19,7 +19,6 @@ import {
   useAIModels,
   useAnalysisSettings,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
 } from "@/lib/hooks";
 import { useDebouncedCallback } from "@/lib/hooks/use-debounce";
 import { ChevronDownIcon, ChevronRightIcon, RotateCcwIcon } from "lucide-react";
@@ -47,10 +46,7 @@ function InlineModelPicker({ modelKey }: { modelKey: StepDef["modelKey"] }) {
   const selectedProviderId = value?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
-  const clearWebGpu = useCallback(() => {
-    updateAnalysisSettings({ [modelKey]: undefined });
-  }, [modelKey]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   const handleProviderChange = (providerId: string) => {
     if (!providerId) {

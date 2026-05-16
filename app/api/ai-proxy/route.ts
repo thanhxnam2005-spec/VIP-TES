@@ -41,20 +41,20 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ error: "Forbidden. Lỗi truy xuất thông tin." }), { status: 403 });
     }
 
-    const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+    const currentVnDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" })).toDateString();
     let currentQuota = profile.admin_model_quota || 0;
     const dailyLimit = profile.admin_daily_quota_limit || 0;
 
     // Lazy Reset: Bơm đầy lại nếu đã sang ngày mới (Giờ VN)
     if (profile.admin_quota_last_reset !== currentVnDate && dailyLimit > 0) {
       currentQuota = dailyLimit;
-      
+
       // Update reset status and decrement 1 for this request
       await supabase
         .from("profiles")
-        .update({ 
-          admin_model_quota: currentQuota - 1, 
-          admin_quota_last_reset: currentVnDate 
+        .update({
+          admin_model_quota: currentQuota - 1,
+          admin_quota_last_reset: currentVnDate
         })
         .eq("id", userId);
     } else {
@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
       if (existingLease.user_id !== userId) {
         // Model is locked by another user
         return new Response(
-          JSON.stringify({ 
-            error: `Model "${assignedModel}" đang được sử dụng bởi ${existingLease.email || "người khác"}. Vui lòng đợi hoặc liên hệ Admin để được cấp model khác.` 
-          }), 
+          JSON.stringify({
+            error: `Model "${assignedModel}" đang được sử dụng bởi ${existingLease.email || "người khác"}. Vui lòng đợi hoặc liên hệ Admin để được cấp model khác.`
+          }),
           { status: 423, headers: { "Content-Type": "application/json" } }
         );
       }
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     const { data: settingsData } = await supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["admin_proxy_url", "admin_proxy_key"]);
+      .in("key", ["admin_proxy_url", "admin_proxy_key", "admin_chat_model"]);
 
     const settingsMap = (settingsData || []).reduce((acc: any, curr: any) => {
       acc[curr.key] = curr.value;
@@ -128,8 +128,12 @@ export async function POST(req: NextRequest) {
     }, {});
 
     // Inject hidden URL and Key
-    targetUrl = settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1/chat/completions";
-    const proxyKey = settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a";
+    let resolvedUrl = (settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1").trim().replace(/[^\x20-\x7E]/g, '');
+    if (!resolvedUrl.includes("/chat/completions")) {
+      resolvedUrl = resolvedUrl.replace(/\/+$/, "") + "/chat/completions";
+    }
+    targetUrl = resolvedUrl;
+    const proxyKey = (settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a").trim().replace(/[^\x20-\x7E]/g, '');
     authHeader = `Bearer ${proxyKey}`;
   }
 
@@ -144,7 +148,14 @@ export async function POST(req: NextRequest) {
       // Parse the body and inject the actual model name required by the backend
       try {
         const payload = JSON.parse(body);
-        payload.model = assignedModel;
+        // Chat requests use "admin-chat-model" marker — resolve to global chat model or fallback
+        if (payload.model === "admin-chat-model") {
+          // Temporarily fetch settings Map again here if needed, or query from DB
+          const { data: sData } = await supabase.from("app_settings").select("value").eq("key", "admin_chat_model").single();
+          payload.model = sData?.value || assignedModel;
+        } else {
+          payload.model = assignedModel;
+        }
         body = JSON.stringify(payload);
       } catch (e) {
         // Ignore if body is not JSON
@@ -166,7 +177,7 @@ export async function POST(req: NextRequest) {
     const resHeaders: Record<string, string> = {
       "Content-Type": response.headers.get("Content-Type") || "application/json",
     };
-    
+
     // Add streaming headers only if it's an event stream
     if (resHeaders["Content-Type"].includes("text/event-stream")) {
       resHeaders["Cache-Control"] = "no-cache";

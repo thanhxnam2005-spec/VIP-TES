@@ -242,7 +242,7 @@ export default function ConvertPage() {
 
   // AI Training state
   const aiProviders = useAIProviders();
-  const availableProviders = useMemo(() => aiProviders?.filter(p => p.isActive && p.providerType !== "webgpu") || [], [aiProviders]);
+  const availableProviders = useMemo(() => aiProviders?.filter(p => p.isActive) || [], [aiProviders]);
 
   // Use persisted extractedTerms from store
   const extractedTerms = store.extractedTerms;

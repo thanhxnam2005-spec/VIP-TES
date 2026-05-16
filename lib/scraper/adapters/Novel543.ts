@@ -15,15 +15,16 @@ export const Novel543Adapter: SiteAdapter = {
     let title = "Unknown Title";
     let coverImgStr = "";
 
-    const coverImgEl = doc.querySelector("img[src*='thumb'], .cover img, .book-img img, .novel-cover img") || doc.querySelector("img[alt]");
-    if (coverImgEl && coverImgEl.getAttribute("alt")) {
+    const coverImgEl = doc.querySelector(".novel-cover img, .book-img img, .detail-img img, .m-bookinfo img, .cover img, img[src*='cover'], img[src*='upload'], img[src*='thumb']") || doc.querySelector("img[alt]:not([alt*='logo']):not([alt*='Logo'])");
+    if (coverImgEl && coverImgEl.getAttribute("src")) {
       title = coverImgEl.getAttribute("alt") || title;
       coverImgStr = coverImgEl.getAttribute("src") || "";
-    } else {
-      title = doc.querySelector("h1")?.textContent?.trim() || doc.title.split("-")[0].trim() || title;
+    }
+    if (!title || title === "Unknown Title") {
+      title = doc.querySelector("h1")?.textContent?.trim() || doc.title.split("-")[0].trim() || "Unknown Title";
     }
 
-    const coverImage = coverImgStr 
+    const coverImage = coverImgStr
       ? `/api/proxy-image?url=${encodeURIComponent(new URL(coverImgStr, currentBase).toString())}`
       : undefined;
 
@@ -54,13 +55,35 @@ export const Novel543Adapter: SiteAdapter = {
       });
 
       const chs = Array.from(urlMap.values());
-      
+
+      const extractChapterNumber = (titleText: string): number | null => {
+        const matchA = titleText.match(/第(\d+)章/);
+        if (matchA) return parseInt(matchA[1], 10);
+
+        const matchZh = titleText.match(/第([零一二三四五六七八九十百千]+)章/);
+        if (matchZh) {
+          const cnNums: Record<string, number> = { '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10, '百': 100, '千': 1000 };
+          let res = 0; let tmp = 0;
+          for (let i = 0; i < matchZh[1].length; i++) {
+            const val = cnNums[matchZh[1][i]] || 0;
+            if (val === 10 || val === 100 || val === 1000) {
+              if (tmp === 0) tmp = 1;
+              res += tmp * val;
+              tmp = 0;
+            } else {
+              tmp = val;
+            }
+          }
+          res += tmp;
+          return res;
+        }
+        return null;
+      };
+
       // Sort by chapter number first, then by part number (1/2 before 2/2)
       chs.sort((a, b) => {
-        const matchA = a.title.match(/第(\d+)章/);
-        const matchB = b.title.match(/第(\d+)章/);
-        const chA = matchA ? parseInt(matchA[1], 10) : Infinity;
-        const chB = matchB ? parseInt(matchB[1], 10) : Infinity;
+        const chA = extractChapterNumber(a.title) ?? Infinity;
+        const chB = extractChapterNumber(b.title) ?? Infinity;
         if (chA !== chB) return chA - chB;
 
         // Same chapter number — sort by part (1/2 before 2/2)
@@ -72,30 +95,28 @@ export const Novel543Adapter: SiteAdapter = {
       });
 
       // ── MERGE SPLIT PARTS ──
-      // Chapters split into (1/2), (2/2), etc. → keep only (1/N) URL (first page).
-      // The adapter's getChapterContent will follow 下一頁 links to fetch remaining parts.
       const merged: { title: string; url: string; order: number }[] = [];
       const seenChapterNums = new Set<number>();
+      const seenRawTitles = new Set<string>();
 
       for (const ch of chs) {
-        const chNumMatch = ch.title.match(/第(\d+)章/);
-        const chNum = chNumMatch ? parseInt(chNumMatch[1], 10) : null;
+        const chNum = extractChapterNumber(ch.title);
         const partMatch = ch.title.match(/\((\d+)\/(\d+)\)/);
 
         if (partMatch) {
           const partNum = parseInt(partMatch[1], 10);
-          // Only keep the first part — subsequent parts will be fetched automatically
           if (partNum === 1) {
             const cleanTitle = ch.title.replace(/\s*\(\d+\/\d+\)/, "").trim();
             merged.push({ title: cleanTitle, url: ch.url, order: merged.length });
             if (chNum !== null) seenChapterNums.add(chNum);
+            seenRawTitles.add(cleanTitle);
           }
-          // Skip parts 2, 3, etc. — they will be fetched by getChapterContent
         } else {
-          // No split marker — check we haven't already added this chapter number
-          if (chNum === null || !seenChapterNums.has(chNum)) {
+          // No split marker
+          if ((chNum !== null && !seenChapterNums.has(chNum)) || (chNum === null && !seenRawTitles.has(ch.title))) {
             merged.push({ title: ch.title, url: ch.url, order: merged.length });
             if (chNum !== null) seenChapterNums.add(chNum);
+            seenRawTitles.add(ch.title);
           }
         }
       }
@@ -110,14 +131,14 @@ export const Novel543Adapter: SiteAdapter = {
       const href = tocLink.getAttribute("href")!;
       const tocUrl = new URL(href, currentBase).toString();
       try {
-         const res = await extensionFetch(tocUrl);
-         const tocDoc = new DOMParser().parseFromString(res.html, "text/html");
-         const fullChapters = parseChapters(tocDoc, tocUrl);
-         if (fullChapters.length > 0) {
-           chapters = fullChapters;
-         }
-      } catch(e) {
-         console.warn("Failed to fetch TOC", e);
+        const res = await extensionFetch(tocUrl);
+        const tocDoc = new DOMParser().parseFromString(res.html, "text/html");
+        const fullChapters = parseChapters(tocDoc, tocUrl);
+        if (fullChapters.length > 0) {
+          chapters = fullChapters;
+        }
+      } catch (e) {
+        console.warn("Failed to fetch TOC", e);
       }
     }
 
@@ -134,7 +155,7 @@ export const Novel543Adapter: SiteAdapter = {
 
   async getChapterContent(html, _url, contentText) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    
+
     // Hàm làm sạch tiêu đề để so sánh chính xác (loại bỏ mọi định dạng đánh số trang)
     const cleanTitleText = (t: string) => {
       if (!t) return "";
@@ -143,20 +164,20 @@ export const Novel543Adapter: SiteAdapter = {
 
     // Lấy tiêu đề thô từ các nguồn có thể có
     const getRawTitle = (d: Document) => {
-      return d.querySelector("h1")?.textContent?.trim() || 
-             d.querySelector(".chapter-title")?.textContent?.trim() || 
-             d.title.split("-")[0].trim() || 
-             "";
+      return d.querySelector("h1")?.textContent?.trim() ||
+        d.querySelector(".chapter-title")?.textContent?.trim() ||
+        d.title.split("-")[0].trim() ||
+        "";
     };
 
     const chapterTitle = cleanTitleText(getRawTitle(doc));
 
     const extractText = (d: Document): string => {
-      const contentNode = d.querySelector(".content.py-5") || 
-                          d.querySelector(".content") || 
-                          d.querySelector(".chapter-content .content") ||
-                          d.querySelector("#content");
-                          
+      const contentNode = d.querySelector(".content.py-5") ||
+        d.querySelector(".content") ||
+        d.querySelector(".chapter-content .content") ||
+        d.querySelector("#content");
+
       if (!contentNode) return "";
 
       const junk = [".gadBlock", "ins", "[data-ad]", "iframe", "script", ".adBlock", ".float-wrap", ".foot-nav", "footer", ".modal"];
@@ -191,10 +212,10 @@ export const Novel543Adapter: SiteAdapter = {
       try {
         const res = await extensionFetch(potentialNextUrl);
         const nextDoc = new DOMParser().parseFromString(res.html, "text/html");
-        
+
         // Lấy tiêu đề của trang vừa tải và làm sạch
         const nextTitle = cleanTitleText(getRawTitle(nextDoc));
-        
+
         // NẾU TIÊU ĐỀ GIỐNG NHAU -> Đây là phần tiếp theo của CÙNG MỘT CHƯƠNG
         if (nextTitle === chapterTitle || !chapterTitle || !nextTitle) {
           const nextText = extractText(nextDoc);
@@ -203,7 +224,7 @@ export const Novel543Adapter: SiteAdapter = {
           }
           currentDoc = nextDoc;
           currentUrl = potentialNextUrl;
-        } 
+        }
         // NẾU TIÊU ĐỀ KHÁC NHAU -> Đây thực sự là CHƯƠNG MỚI
         else {
           nextChapterUrl = potentialNextUrl;
@@ -220,9 +241,13 @@ export const Novel543Adapter: SiteAdapter = {
       nextChapterUrl = getAnyNextUrl(currentDoc, currentUrl, true); // true để ưu tiên "下一章"
     }
 
+    let finalContent = cleanGarbageLines(rawText);
+    // Xoá các câu thông báo rác như 溫馨提示
+    finalContent = finalContent.split('\n').filter(line => !line.includes('溫馨提示')).join('\n');
+
     return {
       title: chapterTitle || "Chương không tên",
-      content: cleanGarbageLines(rawText),
+      content: finalContent,
       nextChapterUrl
     };
   },
@@ -231,13 +256,13 @@ export const Novel543Adapter: SiteAdapter = {
 // ==================== HELPERS ====================
 const getAnyNextUrl = (d: Document, base: string, preferChapter = false): string => {
   const links = Array.from(d.querySelectorAll("a[href]"));
-  
+
   // Các text thường dùng cho nút "Tiếp theo"
   const markers = ["下一頁", "下一页", "下頁", "下页", "下一章"];
-  
+
   for (const marker of markers) {
     if (preferChapter && marker !== "下一章") continue;
-    
+
     for (const a of links) {
       const text = a.textContent?.trim() || "";
       if (text.includes(marker)) {

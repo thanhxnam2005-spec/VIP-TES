@@ -7,7 +7,7 @@ import { SixNineShuAdapter } from "./SixNineShu";
 import { SixNineShuTwAdapter } from "./SixNineShuTw";
 import { JjwxcAdapter } from "./Jjwxc";
 import { XTruyenAdapter } from "./XTruyen";
-import { MeTruyenChuAdapter } from "./MeTruyenChu";
+
 import { ChomeredAdapter } from "./Chomered";
 import { Po18Adapter } from "./Po18";
 import { GuihuaAdapter } from "./Guihua";
@@ -19,6 +19,8 @@ import { WikiDichAdapter } from "./WikiDich";
 import { UniversalAdapter } from "./Universal";
 import { ZhihuAdapter } from "./Zhihu";
 import { Novel543Adapter } from "./Novel543";
+import { Shuku52Adapter } from "./Shuku52";
+import { WordpressAdapter } from "./Wordpress";
 
 const adapters: SiteAdapter[] = [
   STVAdapter,
@@ -29,7 +31,7 @@ const adapters: SiteAdapter[] = [
   SixNineShuTwAdapter,
   JjwxcAdapter,
   XTruyenAdapter,
-  MeTruyenChuAdapter,
+
   ChomeredAdapter,
   Po18Adapter,
   GuihuaAdapter,
@@ -40,6 +42,8 @@ const adapters: SiteAdapter[] = [
   WikiDichAdapter,
   ZhihuAdapter,
   Novel543Adapter,
+  Shuku52Adapter,
+  WordpressAdapter,
   UniversalAdapter,
 ];
 
@@ -48,10 +52,10 @@ export function detectAdapter(url: string): SiteAdapter | null {
   // Try to find a specific adapter first
   const specific = adapters.slice(0, -1).find((a) => a.urlPattern.test(url));
   if (specific) return specific;
-  
+
   // Fallback to Universal if it's a novel site URL (broad check)
   if (url.startsWith("http")) return UniversalAdapter;
-  
+
   return null;
 }
 
@@ -60,4 +64,4 @@ export function getAdapters(): SiteAdapter[] {
   return adapters;
 }
 
-export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter, Novel543Adapter };
+export { STVAdapter, UukanshuAdapter, PiaotiaAdapter, CuocengAdapter, SixNineShuAdapter, SixNineShuTwAdapter, JjwxcAdapter, XTruyenAdapter, ChomeredAdapter, FanqieAdapter, BookQQAdapter, WikiDichAdapter, UniversalAdapter, ZhihuAdapter, Novel543Adapter, Shuku52Adapter, WordpressAdapter };

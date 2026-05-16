@@ -24,7 +24,6 @@ import {
   updateAnalysisSettings,
   useAIModels,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
 } from "@/lib/hooks";
 import type { StepModelConfig } from "@/lib/db";
 
@@ -65,8 +64,7 @@ function StepModelSelector({
   const selectedProviderId = value?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
-  const clearWebGpu = useCallback(() => onChange(undefined), [onChange]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   const handleProviderChange = (providerId: string) => {
     if (!providerId) {

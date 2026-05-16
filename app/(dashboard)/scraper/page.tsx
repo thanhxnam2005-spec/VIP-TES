@@ -82,11 +82,11 @@ export default function ScraperLibraryPage() {
     setExtensionId(extId.trim());
     checkExtensionStatus().then((res) => {
       if (res.available) {
-         setExtVersion(res.version);
-         toast.success("Đã kết nối Extension!");
+        setExtVersion(res.version);
+        toast.success("Đã kết nối Extension!");
       } else {
-         setExtVersion(null);
-         toast.error("Không thể kết nối Extension!");
+        setExtVersion(null);
+        toast.error("Không thể kết nối Extension!");
       }
     });
   };
@@ -156,7 +156,7 @@ export default function ScraperLibraryPage() {
       let adapter;
       let novelInfo;
       let html = "";
-      
+
       if (showCustomConfig) {
         adapter = createCustomAdapter(customConfig);
         const res = await extensionFetch(finalUrl, { waitSelector: customConfig.waitSelector });
@@ -170,9 +170,9 @@ export default function ScraperLibraryPage() {
         adapter = detectAdapter(finalUrl);
         if (!adapter) throw new Error("Không tìm thấy adapter cho URL này");
 
-        const res = await extensionFetch(finalUrl, { 
+        const res = await extensionFetch(finalUrl, {
           waitSelector: adapter.novelWaitSelector,
-          reuseTab: adapter.name === "STV" || adapter.name === "69书吧" || adapter.name === "Fanqie Novel" 
+          reuseTab: adapter.name === "STV" || adapter.name === "69书吧" || adapter.name === "Fanqie Novel"
         });
         html = res.html;
         novelInfo = await adapter.getNovelInfo(html, finalUrl, (count) => {
@@ -232,7 +232,7 @@ export default function ScraperLibraryPage() {
       }
 
       let novelId = selectedNovelId;
-      
+
       if (selectedNovelId === "new") {
         novelId = crypto.randomUUID();
         const now = new Date();
@@ -248,16 +248,16 @@ export default function ScraperLibraryPage() {
       } else {
         const target = await db.novels.get(selectedNovelId);
         if (target) {
-           toast.info(`📚 Đang thêm chương vào truyện "${target.title}"`);
+          toast.info(`📚 Đang thêm chương vào truyện "${target.title}"`);
         }
       }
 
       useScraperQueueStore.getState().addJob(
-        novelId, 
-        scrapedNovelInfo.title, 
-        url, 
-        selectedChapters, 
-        chapterDelay * 1000, 
+        novelId,
+        scrapedNovelInfo.title,
+        url,
+        selectedChapters,
+        chapterDelay * 1000,
         scrapedNovelInfo.coverImage,
         currentAdapter?.name,
         showCustomConfig ? customConfig : undefined
@@ -276,12 +276,12 @@ export default function ScraperLibraryPage() {
           <h1 className="text-3xl font-bold tracking-tight">Thư viện tải truyện</h1>
           <p className="text-sm text-muted-foreground mt-1">Dán URL để thêm truyện mới vào danh sách tải tự động.</p>
         </div>
-        
+
         <div className="flex w-full md:w-auto items-center gap-2">
-          <Input 
-            className="w-full md:w-[300px]" 
-            placeholder="https://truyen..." 
-            value={url} 
+          <Input
+            className="w-full md:w-[300px]"
+            placeholder="https://truyen..."
+            value={url}
             onChange={e => setUrl(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleAdd()}
           />
@@ -292,7 +292,7 @@ export default function ScraperLibraryPage() {
             {isAdding ? <LoaderIcon className="w-4 h-4 animate-spin mr-2" /> : (isServerFetchable(url) && !showCustomConfig ? <ZapIcon className="w-4 h-4 mr-2" /> : <DownloadIcon className="w-4 h-4 mr-2" />)}
             {isAdding ? (scannedCount > 0 ? `Đã quét: ${scannedCount}` : "⚡ Đang tải...") : (isServerFetchable(url) && !showCustomConfig ? (extVersion ? "⚡ Tải (Extension)" : "⚡ Tải nhanh") : "Thêm")}
           </Button>
-          
+
           <Dialog>
             <DialogTrigger asChild>
               <Button variant="outline"><SettingsIcon className="w-4 h-4 mr-2" /> Hỗ trợ & Cài đặt</Button>
@@ -306,34 +306,34 @@ export default function ScraperLibraryPage() {
                   <TabsTrigger value="settings">Tiện ích kết nối</TabsTrigger>
                   <TabsTrigger value="guides">Web hỗ trợ & Hướng dẫn</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="settings" className="space-y-4 py-4">
                   <div className="space-y-4">
                     <Label>Cấu hình kết nối Extension</Label>
-                    
+
                     {extVersion ? (
-                       <div className="flex flex-col gap-3">
-                         <div className="flex items-center justify-between bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                           <p className="text-sm text-green-600 dark:text-green-400 font-medium">✅ Đã kết nối thành công (v{extVersion})</p>
-                           <Button variant="outline" size="sm" className="h-8" onClick={() => { setExtId(""); setExtVersion(null); setExtensionId(""); }}>Đổi ID khác</Button>
-                         </div>
-                       </div>
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                          <p className="text-sm text-green-600 dark:text-green-400 font-medium">✅ Đã kết nối thành công (v{extVersion})</p>
+                          <Button variant="outline" size="sm" className="h-8" onClick={() => { setExtId(""); setExtVersion(null); setExtensionId(""); }}>Đổi ID khác</Button>
+                        </div>
+                      </div>
                     ) : (
-                       <div className="flex flex-col gap-2">
-                         <div className="flex gap-2">
-                           <Input value={extId} onChange={e => setExtId(e.target.value)} placeholder="Nhập Extension ID..." />
-                           <Button onClick={handleSaveExtId}>Lưu</Button>
-                         </div>
-                         <div className="flex flex-col gap-2 mt-2 bg-muted/30 p-4 rounded-lg border">
-                            <p className="text-sm font-semibold text-red-500">Trạng thái: Chưa kết nối Extension</p>
-                            <ol className="list-inside list-decimal text-xs text-muted-foreground space-y-1.5 mt-1">
-                              <li>Tải và giải nén extension bản PC bên dưới.</li>
-                              <li>Mở <code className="bg-muted px-1 rounded">chrome://extensions</code>, bật <b>Developer mode</b>.</li>
-                              <li>Chọn <b>Load unpacked</b> &rarr; Trỏ tới thư mục vừa giải nén.</li>
-                              <li>Copy ID của extension dán vào ô bên trên và nhấn Lưu.</li>
-                            </ol>
-                         </div>
-                       </div>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <Input value={extId} onChange={e => setExtId(e.target.value)} placeholder="Nhập Extension ID..." />
+                          <Button onClick={handleSaveExtId}>Lưu</Button>
+                        </div>
+                        <div className="flex flex-col gap-2 mt-2 bg-muted/30 p-4 rounded-lg border">
+                          <p className="text-sm font-semibold text-red-500">Trạng thái: Chưa kết nối Extension</p>
+                          <ol className="list-inside list-decimal text-xs text-muted-foreground space-y-1.5 mt-1">
+                            <li>Tải và giải nén extension bản PC bên dưới.</li>
+                            <li>Mở <code className="bg-muted px-1 rounded">chrome://extensions</code>, bật <b>Developer mode</b>.</li>
+                            <li>Chọn <b>Load unpacked</b> &rarr; Trỏ tới thư mục vừa giải nén.</li>
+                            <li>Copy ID của extension dán vào ô bên trên và nhấn Lưu.</li>
+                          </ol>
+                        </div>
+                      </div>
                     )}
 
                     <div className="border-t pt-4 mt-2">
@@ -349,65 +349,50 @@ export default function ScraperLibraryPage() {
 
                 <TabsContent value="guides" className="space-y-4 py-4 max-h-[60vh] overflow-y-auto pr-2">
                   <div className="space-y-3">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase">⚡ Tải nhanh (Extension ưu tiên, Server làm dự phòng)</Label>
+                    <Label className="text-xs font-bold text-muted-foreground uppercase">CÁC WEB HỖ TRỢ TẢI</Label>
                     <div className="flex flex-wrap gap-2">
                       <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://chomered.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500"/> Chomered</a>
+                        <a href="https://chomered.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500" /> Chomered</a>
                       </Button>
                       <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://welove-gourmet.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500"/> Welove-gourmet</a>
+                        <a href="https://welove-gourmet.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500" /> Welove-gourmet</a>
                       </Button>
-                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://metruyenchu.com.vn" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500"/> MeTruyenChu.vn</a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://www.piaotia.com/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-green-600"/> PiaoTian</a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://www.jjwxc.net/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-purple-600"/> Jjwxc</a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://www.guihualianpian.cn/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-orange-600"/> Guihua</a>
-                      </Button>
-                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
-                        <a href="https://www.timotxt.com/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-indigo-600"/> Timotxt</a>
-                      </Button>
-                    </div>
-                    <Label className="text-xs font-bold text-muted-foreground uppercase mt-4">Web Việt (Cần Extension)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" asChild>
-                        <a href="https://sangtacviet.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-500"/> SangTacViet</a>
-                      </Button>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href="https://xtruyen.vn" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-orange-500"/> XTruyen</a>
-                      </Button>
-                      <Button variant="outline" size="sm" asChild>
-                        <a href="https://wikicv.net" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-500"/> WikiDich</a>
-                      </Button>
-                    </div>
-                  </div>
 
-                  <div className="space-y-3 mt-4">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase">Truy cập nhanh (Web Trung)</Label>
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" asChild><a href="https://uukanshu.cc/quanben/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-500"/> Uukanshu</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-700"/> 69Shu</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://www.cuoceng.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-indigo-600"/> CuoCeng</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-emerald-600"/> 69Shu.TW</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://czbooks.net/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-600"/> Czbooks</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://www.po18.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-500"/> PO18</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://novel543.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-purple-500"/> Novel543</a></Button>
-                      {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://fanqienovel.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600"/> Fanqie (Dev)</a></Button>}
-                      {isLocalhost && <Button variant="outline" size="sm" asChild><a href="https://book.qq.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400"/> BookQQ (Dev)</a></Button>}
-                      <Button variant="outline" size="sm" asChild><a href="https://www.popo.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-400"/> POPO</a></Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 mt-4">
-                    <Label className="text-xs font-bold text-muted-foreground uppercase">📚 Tải truyện Text</Label>
-                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://www.piaotia.com/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-green-600" /> PiaoTian</a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://www.jjwxc.net/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-purple-600" /> Jjwxc</a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://www.guihualianpian.cn/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-orange-600" /> Guihua</a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://www.timotxt.com/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-indigo-600" /> Timotxt</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://sangtacviet.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-500" /> SangTacViet</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://xtruyen.vn" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-orange-500" /> XTruyen</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://wikicv.net" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-500" /> WikiDich</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://wordpress.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400" /> WordPress Blogs</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://uukanshu.cc/quanben/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-500" /> Uukanshu</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-700" /> 69Shu</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.cuoceng.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-indigo-600" /> CuoCeng</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-emerald-600" /> 69Shu.TW</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://czbooks.net/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-600" /> Czbooks</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.po18.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-500" /> PO18</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://novel543.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-purple-500" /> Novel543</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.52shuku.net/yanqing/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-cyan-600" /> 52Shuku</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://www.popo.tw/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-pink-400" /> POPO</a></Button>
                       <Button variant="outline" size="sm" className="border-amber-200 bg-amber-50 dark:bg-amber-950/20" asChild>
-                        <a href="https://www.zhihu.com/question/661752607/answer/2036424617104037236" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-amber-600"/> Zhihu — Tải truyện Text</a>
+                        <a href="https://www.zhihu.com/question/661752607/answer/2036424617104037236" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-amber-600" /> Zhihu</a>
                       </Button>
                     </div>
                   </div>
@@ -446,100 +431,100 @@ export default function ScraperLibraryPage() {
           </div>
           <div>
             <Label className="text-xs">Chờ phần tử (Wait Selector)</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: .list-chapter" value={customConfig.waitSelector || ""} onChange={e => setCustomConfig({...customConfig, waitSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: .list-chapter" value={customConfig.waitSelector || ""} onChange={e => setCustomConfig({ ...customConfig, waitSelector: e.target.value })} />
           </div>
           <div>
             <Label className="text-xs">Danh sách chương (Link &lt;a&gt;)</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: .list-chapter li a" value={customConfig.chapterListSelector || ""} onChange={e => setCustomConfig({...customConfig, chapterListSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: .list-chapter li a" value={customConfig.chapterListSelector || ""} onChange={e => setCustomConfig({ ...customConfig, chapterListSelector: e.target.value })} />
           </div>
           <div>
             <Label className="text-xs">Tiêu đề Truyện</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: h1.title" value={customConfig.titleSelector || ""} onChange={e => setCustomConfig({...customConfig, titleSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: h1.title" value={customConfig.titleSelector || ""} onChange={e => setCustomConfig({ ...customConfig, titleSelector: e.target.value })} />
           </div>
           <div>
             <Label className="text-xs">Ảnh bìa (Thẻ &lt;img&gt;)</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: .book-info img" value={customConfig.coverSelector || ""} onChange={e => setCustomConfig({...customConfig, coverSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: .book-info img" value={customConfig.coverSelector || ""} onChange={e => setCustomConfig({ ...customConfig, coverSelector: e.target.value })} />
           </div>
           <div>
             <Label className="text-xs">Tiêu đề Chương</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: h2.chapter-title" value={customConfig.chapterTitleSelector || ""} onChange={e => setCustomConfig({...customConfig, chapterTitleSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: h2.chapter-title" value={customConfig.chapterTitleSelector || ""} onChange={e => setCustomConfig({ ...customConfig, chapterTitleSelector: e.target.value })} />
           </div>
           <div>
             <Label className="text-xs">Nội dung Chương</Label>
-            <Input className="mt-1 h-8 text-sm" placeholder="VD: #chapter-content" value={customConfig.contentSelector || ""} onChange={e => setCustomConfig({...customConfig, contentSelector: e.target.value})} />
+            <Input className="mt-1 h-8 text-sm" placeholder="VD: #chapter-content" value={customConfig.contentSelector || ""} onChange={e => setCustomConfig({ ...customConfig, contentSelector: e.target.value })} />
           </div>
         </div>
       )}
 
       <div className="flex justify-between items-center mb-4 mt-8">
-         <h2 className="text-xl font-semibold">Đang tải & Hoàn thành</h2>
+        <h2 className="text-xl font-semibold">Đang tải & Hoàn thành</h2>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {Object.values(jobs).length === 0 ? (
           <div className="col-span-full py-20 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed">
-             <BookIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
-             <p>Chưa có truyện nào trong thư viện tải.</p>
-             <p className="text-xs mt-1">Hãy dán URL truyện ở trên để bắt đầu.</p>
+            <BookIcon className="w-12 h-12 mx-auto mb-4 opacity-20" />
+            <p>Chưa có truyện nào trong thư viện tải.</p>
+            <p className="text-xs mt-1">Hãy dán URL truyện ở trên để bắt đầu.</p>
           </div>
         ) : (
           Object.values(jobs).map(job => (
             <Card key={job.id} className="overflow-hidden flex flex-col h-full hover:shadow-md transition-all group border-muted/60 cursor-pointer" onClick={() => setSelectedJobId(job.id)}>
-               <div className="relative w-full aspect-[3/4] bg-muted/20 flex items-center justify-center overflow-hidden">
-                 {job.coverImage ? (
-                   <img src={job.coverImage} alt={job.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" referrerPolicy="no-referrer" />
-                 ) : (
-                   <BookIcon className="w-12 h-12 text-muted-foreground/20" />
-                 )}
-                 
-                 <div className="absolute top-2 right-2 flex gap-1">
-                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm shadow-sm backdrop-blur-md ${job.status === 'error' ? 'bg-destructive/90 text-destructive-foreground' : job.status === 'done' ? 'bg-green-500/90 text-white' : job.status === 'paused' ? 'bg-muted/90 text-foreground' : 'bg-primary/90 text-primary-foreground'}`}>
-                      {job.status === 'error' ? 'Lỗi' : job.status === 'done' ? 'Hoàn thành' : job.status === 'paused' ? 'Tạm dừng' : 'Đang tải'}
-                    </span>
-                 </div>
-               </div>
-               
-               <div className="p-3 flex-1 flex flex-col">
-                 <h3 className="font-bold text-sm line-clamp-2 leading-snug mb-1" title={job.title}>{job.title}</h3>
-                 <p className="text-xs text-muted-foreground truncate mb-3">{job.adapter.name}</p>
-                 
-                 <div className="mt-auto space-y-2">
-                   <div className="flex items-center justify-between text-xs">
-                     <span className="font-medium text-primary">{job.progress.completed} <span className="text-muted-foreground font-normal">/ {job.progress.total} chương</span></span>
-                   </div>
-                   <Progress value={(job.progress.completed / (job.progress.total || 1)) * 100} className="h-1.5 bg-muted/50" />
-                   
-                   <div className="flex items-center justify-between pt-1">
-                      <div className="flex-1 overflow-hidden pr-2">
-                         {job.status === 'scraping' ? (
-                           <p className="text-[10px] text-muted-foreground line-clamp-1 break-all" title={job.progress.current}>
-                             {job.progress.current || "Đang kết nối..."}
-                           </p>
-                         ) : job.error ? (
-                           <p className="text-[10px] text-destructive line-clamp-1" title={job.error}>
-                             {job.error}
-                           </p>
-                         ) : null}
-                      </div>
-                      
-                      <div className="flex gap-0.5 shrink-0">
-                        {(job.status !== "done") && (
-                           <Button size="icon" variant="ghost" title="Bỏ qua chương này" className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted" onClick={(e) => { e.stopPropagation(); skipChapterJob(job.id); }}><SkipForwardIcon className="w-3.5 h-3.5" /></Button>
-                        )}
-                        {(job.status === "pending" || job.status === "paused" || job.status === "error") && (
-                           <Button size="icon" variant="ghost" title="Tiếp tục" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); resumeJob(job.id); }}><PlayIcon className="w-3.5 h-3.5" /></Button>
-                        )}
-                        {job.status === "scraping" && (
-                           <Button size="icon" variant="ghost" title="Tạm dừng" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); pauseJob(job.id); }}><PauseIcon className="w-3.5 h-3.5" /></Button>
-                        )}
+              <div className="relative w-full aspect-[3/4] bg-muted/20 flex items-center justify-center overflow-hidden">
+                {job.coverImage ? (
+                  <img src={job.coverImage} alt={job.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" referrerPolicy="no-referrer" />
+                ) : (
+                  <BookIcon className="w-12 h-12 text-muted-foreground/20" />
+                )}
 
-                        {job.status === "done" && (
-                           <CheckCircleIcon className="w-5 h-5 text-green-500 mr-1" />
-                        )}
-                      </div>
-                   </div>
-                 </div>
-               </div>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-sm shadow-sm backdrop-blur-md ${job.status === 'error' ? 'bg-destructive/90 text-destructive-foreground' : job.status === 'done' ? 'bg-green-500/90 text-white' : job.status === 'paused' ? 'bg-muted/90 text-foreground' : 'bg-primary/90 text-primary-foreground'}`}>
+                    {job.status === 'error' ? 'Lỗi' : job.status === 'done' ? 'Hoàn thành' : job.status === 'paused' ? 'Tạm dừng' : 'Đang tải'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 flex-1 flex flex-col">
+                <h3 className="font-bold text-sm line-clamp-2 leading-snug mb-1" title={job.title}>{job.title}</h3>
+                <p className="text-xs text-muted-foreground truncate mb-3">{job.adapter.name}</p>
+
+                <div className="mt-auto space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-primary">{job.progress.completed} <span className="text-muted-foreground font-normal">/ {job.progress.total} chương</span></span>
+                  </div>
+                  <Progress value={(job.progress.completed / (job.progress.total || 1)) * 100} className="h-1.5 bg-muted/50" />
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex-1 overflow-hidden pr-2">
+                      {job.status === 'scraping' ? (
+                        <p className="text-[10px] text-muted-foreground line-clamp-1 break-all" title={job.progress.current}>
+                          {job.progress.current || "Đang kết nối..."}
+                        </p>
+                      ) : job.error ? (
+                        <p className="text-[10px] text-destructive line-clamp-1" title={job.error}>
+                          {job.error}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="flex gap-0.5 shrink-0">
+                      {(job.status !== "done") && (
+                        <Button size="icon" variant="ghost" title="Bỏ qua chương này" className="h-7 w-7 rounded-full text-muted-foreground hover:bg-muted" onClick={(e) => { e.stopPropagation(); skipChapterJob(job.id); }}><SkipForwardIcon className="w-3.5 h-3.5" /></Button>
+                      )}
+                      {(job.status === "pending" || job.status === "paused" || job.status === "error") && (
+                        <Button size="icon" variant="ghost" title="Tiếp tục" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); resumeJob(job.id); }}><PlayIcon className="w-3.5 h-3.5" /></Button>
+                      )}
+                      {job.status === "scraping" && (
+                        <Button size="icon" variant="ghost" title="Tạm dừng" className="h-7 w-7 rounded-full hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); pauseJob(job.id); }}><PauseIcon className="w-3.5 h-3.5" /></Button>
+                      )}
+
+                      {job.status === "done" && (
+                        <CheckCircleIcon className="w-5 h-5 text-green-500 mr-1" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </Card>
           ))
         )}
@@ -567,93 +552,93 @@ export default function ScraperLibraryPage() {
               </div>
             ) : (
               <div className="space-y-4 py-2">
-                 <div className="flex gap-3 bg-muted/20 p-3 rounded-lg border items-center">
-                   {scrapedNovelInfo.coverImage ? (
-                      <img src={scrapedNovelInfo.coverImage} alt={scrapedNovelInfo.title} className="w-14 h-20 object-cover rounded shadow-sm bg-muted shrink-0" referrerPolicy="no-referrer" />
-                   ) : (
-                      <div className="w-14 h-20 rounded bg-muted/50 flex items-center justify-center shrink-0">
-                        <BookIcon className="w-6 h-6 text-muted-foreground/30" />
-                      </div>
-                   )}
-                   <div className="flex-1">
-                      <h3 className="font-bold line-clamp-2 text-sm">{scrapedNovelInfo.title}</h3>
-                      <div className="flex items-center justify-between mt-2">
-                        <p className="text-sm text-muted-foreground">Đã quét được: <strong className="text-foreground">{scrapedNovelInfo.chapters.length}</strong> chương</p>
-                        <Button variant="secondary" size="sm" onClick={() => setIsShowingChapters(true)}>Xem danh sách</Button>
-                      </div>
-                   </div>
-                 </div>
-
-                 <div className="space-y-3 mt-4">
-                    <Label className="font-semibold">📖 Chọn phạm vi chương tải</Label>
-                    <div className="flex gap-2 items-center">
-                      <div className="flex-1">
-                        <Label className="text-xs text-muted-foreground">Từ chương</Label>
-                        <Input type="number" min={1} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterFrom} onChange={e => setChapterFrom(Math.max(1, Number(e.target.value)))} />
-                      </div>
-                      <span className="mt-5 text-muted-foreground">→</span>
-                      <div className="flex-1">
-                        <Label className="text-xs text-muted-foreground">Đến chương</Label>
-                        <Input type="number" min={chapterFrom} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterTo} onChange={e => setChapterTo(Math.min(scrapedNovelInfo?.chapters?.length || 1, Math.max(chapterFrom, Number(e.target.value))))} />
-                      </div>
+                <div className="flex gap-3 bg-muted/20 p-3 rounded-lg border items-center">
+                  {scrapedNovelInfo.coverImage ? (
+                    <img src={scrapedNovelInfo.coverImage} alt={scrapedNovelInfo.title} className="w-14 h-20 object-cover rounded shadow-sm bg-muted shrink-0" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-14 h-20 rounded bg-muted/50 flex items-center justify-center shrink-0">
+                      <BookIcon className="w-6 h-6 text-muted-foreground/30" />
                     </div>
-                    <p className="text-xs text-muted-foreground">Tổng: <strong>{Math.max(0, chapterTo - chapterFrom + 1)}</strong> chương sẽ được tải (trong {scrapedNovelInfo?.chapters?.length || 0} chương)</p>
-                 </div>
-
-                 <div className="space-y-3 mt-4">
-                    <Label className="font-semibold">📚 Gộp vào thư viện</Label>
-                    <div className="flex flex-col gap-2">
-                       <select 
-                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                         value={selectedNovelId}
-                         onChange={async (e) => {
-                           const val = e.target.value;
-                           setSelectedNovelId(val);
-                           if (val !== "new") {
-                             const count = await db.chapters.where("novelId").equals(val).count();
-                             setExistingChaptersCount(count);
-                           } else {
-                             setExistingChaptersCount(0);
-                           }
-                         }}
-                       >
-                         <option value="new">➕ Tạo bộ truyện mới</option>
-                         {allNovels.map(n => (
-                           <option key={n.id} value={n.id}>{n.title}</option>
-                         ))}
-                       </select>
-                       {selectedNovelId !== "new" && (
-                         <div className="bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 p-2.5 rounded border border-blue-100 dark:border-blue-900/30 text-xs">
-                           Truyện này đã có <strong>{existingChaptersCount}</strong> chương trong thư viện. 
-                           <br/>Các chương trùng tên sẽ được tự động bỏ qua khi tải để tránh bị lặp.
-                         </div>
-                       )}
+                  )}
+                  <div className="flex-1">
+                    <h3 className="font-bold line-clamp-2 text-sm">{scrapedNovelInfo.title}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-sm text-muted-foreground">Đã quét được: <strong className="text-foreground">{scrapedNovelInfo.chapters.length}</strong> chương</p>
+                      <Button variant="secondary" size="sm" onClick={() => setIsShowingChapters(true)}>Xem danh sách</Button>
                     </div>
-                 </div>
+                  </div>
+                </div>
 
-                 <div className="space-y-2 mt-4 pt-2 border-t">
-                    <Label>Thời gian chờ mỗi chương (giây)</Label>
-                    <Input type="number" min={0} value={chapterDelay} onChange={e => setChapterDelay(Number(e.target.value))} />
-                    <p className="text-xs text-muted-foreground">Mặc định là 7 giây để tránh bị website chặn IP.</p>
-                 </div>
+                <div className="space-y-3 mt-4">
+                  <Label className="font-semibold">📖 Chọn phạm vi chương tải</Label>
+                  <div className="flex gap-2 items-center">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Từ chương</Label>
+                      <Input type="number" min={1} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterFrom} onChange={e => setChapterFrom(Math.max(1, Number(e.target.value)))} />
+                    </div>
+                    <span className="mt-5 text-muted-foreground">→</span>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Đến chương</Label>
+                      <Input type="number" min={chapterFrom} max={scrapedNovelInfo?.chapters?.length || 1} value={chapterTo} onChange={e => setChapterTo(Math.min(scrapedNovelInfo?.chapters?.length || 1, Math.max(chapterFrom, Number(e.target.value))))} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Tổng: <strong>{Math.max(0, chapterTo - chapterFrom + 1)}</strong> chương sẽ được tải (trong {scrapedNovelInfo?.chapters?.length || 0} chương)</p>
+                </div>
 
-                 {currentAdapter?.name === "STV" && (
-                   <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
-                     <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với SangTacViet</p>
-                     <p className="leading-relaxed">Bạn cần mở tab web SangTacViet ở trình duyệt, <b>bấm vào chương 1</b> để trang load nội dung ra, sau đó mới quay lại app ấn <b>Bắt đầu tải</b>.</p>
-                   </div>
-                 )}
-                 {currentAdapter?.name === "Fanqie Novel" && (
-                   <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
-                     <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với Fanqie</p>
-                     <p className="leading-relaxed">Đã chuyển sang chế độ tải từng chương giống các web khác (tự động chuyển tab). Nếu bạn thấy chương bị kẹt hoặc lỗi, hãy kiểm tra xem tab Fanqie có đang bị dính Captcha không nhé!</p>
-                   </div>
-                 )}
-                 
-                 <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-                   <Button variant="ghost" onClick={() => setIsConfirmOpen(false)}>Hủy</Button>
-                   <Button onClick={confirmAdd}>Bắt đầu tải</Button>
-                 </div>
+                <div className="space-y-3 mt-4">
+                  <Label className="font-semibold">📚 Gộp vào thư viện</Label>
+                  <div className="flex flex-col gap-2">
+                    <select
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      value={selectedNovelId}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setSelectedNovelId(val);
+                        if (val !== "new") {
+                          const count = await db.chapters.where("novelId").equals(val).count();
+                          setExistingChaptersCount(count);
+                        } else {
+                          setExistingChaptersCount(0);
+                        }
+                      }}
+                    >
+                      <option value="new">➕ Tạo bộ truyện mới</option>
+                      {allNovels.map(n => (
+                        <option key={n.id} value={n.id}>{n.title}</option>
+                      ))}
+                    </select>
+                    {selectedNovelId !== "new" && (
+                      <div className="bg-blue-50/50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300 p-2.5 rounded border border-blue-100 dark:border-blue-900/30 text-xs">
+                        Truyện này đã có <strong>{existingChaptersCount}</strong> chương trong thư viện.
+                        <br />Các chương trùng tên sẽ được tự động bỏ qua khi tải để tránh bị lặp.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2 mt-4 pt-2 border-t">
+                  <Label>Thời gian chờ mỗi chương (giây)</Label>
+                  <Input type="number" min={0} value={chapterDelay} onChange={e => setChapterDelay(Number(e.target.value))} />
+                  <p className="text-xs text-muted-foreground">Mặc định là 7 giây để tránh bị website chặn IP.</p>
+                </div>
+
+                {currentAdapter?.name === "STV" && (
+                  <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
+                    <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với SangTacViet</p>
+                    <p className="leading-relaxed">Bạn cần mở tab web SangTacViet ở trình duyệt, <b>bấm vào chương 1</b> để trang load nội dung ra, sau đó mới quay lại app ấn <b>Bắt đầu tải</b>.</p>
+                  </div>
+                )}
+                {currentAdapter?.name === "Fanqie Novel" && (
+                  <div className="bg-orange-50 dark:bg-orange-950/20 text-orange-600 dark:text-orange-400 p-3 rounded-md text-sm border border-orange-200 dark:border-orange-900 mt-2">
+                    <p className="font-bold mb-1 flex items-center gap-1.5"><GlobeIcon className="w-4 h-4" /> Lưu ý với Fanqie</p>
+                    <p className="leading-relaxed">Đã chuyển sang chế độ tải từng chương giống các web khác (tự động chuyển tab). Nếu bạn thấy chương bị kẹt hoặc lỗi, hãy kiểm tra xem tab Fanqie có đang bị dính Captcha không nhé!</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
+                  <Button variant="ghost" onClick={() => setIsConfirmOpen(false)}>Hủy</Button>
+                  <Button onClick={confirmAdd}>Bắt đầu tải</Button>
+                </div>
               </div>
             )
           )}

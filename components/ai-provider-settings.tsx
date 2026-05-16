@@ -50,7 +50,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { WebGPUModelManagerDialog } from "@/components/webgpu-model-status";
 import { PROVIDER_PRESETS, getPreset } from "@/lib/ai/presets";
 import { db, type AIProvider, type AIModel, type ProviderType } from "@/lib/db";
 import {
@@ -59,7 +58,6 @@ import {
   deleteAIModel,
   deleteAIProvider,
   fetchAndSyncModels,
-  isSystemProvider,
   updateAIModel,
   updateAIProvider,
   useAIModels,
@@ -117,8 +115,6 @@ function ProviderFormDialog({
     }
   }
 
-  const isWebGPU = providerType === "webgpu";
-
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!name.trim()) return;
@@ -157,24 +153,20 @@ function ProviderFormDialog({
           updatedAt: now,
         };
 
-        if (providerType !== "webgpu") {
-          try {
-            const count = await fetchAndSyncModels(fullProvider);
-            toast.success(
-              count > 0
-                ? `Đã thêm nhà cung cấp — đã đồng bộ ${count} mô hình`
-                : "Đã thêm nhà cung cấp — API không trả về mô hình nào",
-            );
-          } catch (err) {
-            toast.success("Đã thêm nhà cung cấp");
-            toast.warning(
-              err instanceof Error
-                ? err.message
-                : "Không thể tải danh sách mô hình. Thử nút làm mới trên thẻ nhà cung cấp.",
-            );
-          }
-        } else {
+        try {
+          const count = await fetchAndSyncModels(fullProvider);
+          toast.success(
+            count > 0
+              ? `Đã thêm nhà cung cấp — đã đồng bộ ${count} mô hình`
+              : "Đã thêm nhà cung cấp — API không trả về mô hình nào",
+          );
+        } catch (err) {
           toast.success("Đã thêm nhà cung cấp");
+          toast.warning(
+            err instanceof Error
+              ? err.message
+              : "Không thể tải danh sách mô hình. Thử nút làm mới trên thẻ nhà cung cấp.",
+          );
         }
       }
       onOpenChange(false);
@@ -251,8 +243,8 @@ function ProviderFormDialog({
                 />
               </Field>
 
-              {/* Base URL — only shown if editable or openai-compatible (not for webgpu) */}
-              {!isWebGPU && (preset?.baseUrlEditable || isEditing) && (
+              {/* Base URL — only shown if editable or openai-compatible */}
+              {(preset?.baseUrlEditable || isEditing) && (
                 <Field>
                   <FieldLabel>Base URL</FieldLabel>
                   <Input
@@ -269,23 +261,9 @@ function ProviderFormDialog({
                 </Field>
               )}
 
-              {/* WebGPU info banner */}
-              {isWebGPU && (
-                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
-                  <p className="font-medium text-primary">
-                    Chạy AI miễn phí trên trình duyệt
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    Model sẽ được tải về và chạy trực tiếp trên GPU của bạn qua
-                    WebGPU. Không cần API key hay kết nối internet sau khi tải.
-                  </p>
-                </div>
-              )}
-
-              {/* API Key — hidden for webgpu */}
-              {!isWebGPU && (
-                <Field>
-                  <FieldLabel>Khóa API</FieldLabel>
+              {/* API Key */}
+              <Field>
+                <FieldLabel>Khóa API</FieldLabel>
                   <Input
                     type="password"
                     placeholder={preset?.apiKeyPlaceholder ?? "Khóa API"}
@@ -310,7 +288,6 @@ function ProviderFormDialog({
                     )}
                   </FieldDescription>
                 </Field>
-              )}
             </FieldGroup>
           </FieldSet>
           <DialogFooter className="mt-4">
@@ -480,7 +457,6 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
   const models = useAIModels(provider.id);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [modelManagerOpen, setModelManagerOpen] = useState(false);
   const [modelFormOpen, setModelFormOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<AIModel | undefined>();
   const [fetching, setFetching] = useState(false);
@@ -497,7 +473,6 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
   }
 
   const preset = getPreset(provider.providerType ?? "openai-compatible");
-  const isWebGPU = provider.providerType === "webgpu";
 
   async function handleFetchModels() {
     setFetching(true);
@@ -560,8 +535,8 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          {/* API key display — hidden for WebGPU and Admin models */}
-          {!isWebGPU && provider.id !== "admin-provider" && (
+          {/* API key display — hidden for Admin models */}
+          {provider.id !== "admin-provider" && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="font-medium">Khóa API:</span>
               <code className="flex-1 truncate">
@@ -586,23 +561,7 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
             </div>
           )}
 
-          {/* WebGPU info + manage button */}
-          {isWebGPU && (
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <Badge variant="outline" className="gap-1">
-                <span className="size-1.5 rounded-full bg-green-500" />
-                Miễn phí
-              </Badge>
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => setModelManagerOpen(true)}
-              >
-                <HardDriveIcon className="size-3" />
-                Quản lý model
-              </Button>
-            </div>
-          )}
+
 
           <div>
             <div className="mb-2 flex items-center justify-between">
@@ -707,12 +666,7 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
         </AlertDialog>
       )}
 
-      {isWebGPU && modelManagerOpen && (
-        <WebGPUModelManagerDialog
-          open={modelManagerOpen}
-          onOpenChange={setModelManagerOpen}
-        />
-      )}
+
 
       {modelFormOpen && (
         <ModelFormDialog
@@ -729,58 +683,6 @@ function ProviderCard({ provider }: { provider: AIProvider }) {
   );
 }
 
-// ─── WebGPU System Card ──────────────────────────────────────
-
-function WebGPUSystemCard() {
-  const [modelManagerOpen, setModelManagerOpen] = useState(false);
-
-  return (
-    <>
-      <div className="mt-2">
-        <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-          Nhà cung cấp hệ thống
-        </h2>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ProviderIcon iconKey="webgpu" className="size-4" />
-              <CardTitle>WebGPU (Miễn phí)</CardTitle>
-            </div>
-            <CardDescription>
-              Chạy AI trực tiếp trên trình duyệt — không cần API key
-            </CardDescription>
-            <CardAction>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setModelManagerOpen(true)}
-              >
-                <HardDriveIcon className="size-3" />
-                Quản lý model
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xs text-muted-foreground">
-              <Badge variant="outline" className="gap-1">
-                <span className="size-1.5 rounded-full bg-green-500" />
-                Luôn sẵn sàng — chọn trong cài đặt chat
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {modelManagerOpen && (
-        <WebGPUModelManagerDialog
-          open={modelManagerOpen}
-          onOpenChange={setModelManagerOpen}
-        />
-      )}
-    </>
-  );
-}
-
 // ─── Main Component ─────────────────────────────────────────
 
 export function AIProviderSettings() {
@@ -788,7 +690,7 @@ export function AIProviderSettings() {
   const [addOpen, setAddOpen] = useState(false);
 
   // Filter out system providers — they are not user-manageable
-  const providers = allProviders?.filter((p) => !isSystemProvider(p.id));
+  const providers = allProviders?.filter((p) => p.id !== "admin-provider");
 
   return (
     <div className="space-y-6">
@@ -797,9 +699,8 @@ export function AIProviderSettings() {
           <h1 className="font-heading text-2xl font-bold tracking-tight">
             Nhà cung cấp AI
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Cấu hình nền tảng AI cho trò chuyện và phân tích. WebGPU (miễn phí)
-            luôn sẵn sàng trong danh sách nhà cung cấp.
+          <p className="mt-1 text-muted-foreground">
+            Cấu hình nền tảng AI cho trò chuyện và phân tích.
           </p>
         </div>
         <Button onClick={() => setAddOpen(true)}>
@@ -820,8 +721,7 @@ export function AIProviderSettings() {
             </EmptyMedia>
             <EmptyTitle>Chưa cấu hình nhà cung cấp</EmptyTitle>
             <EmptyDescription>
-              WebGPU (miễn phí) đã sẵn sàng cho trò chuyện. Thêm nhà cung cấp
-              cloud AI để sử dụng phân tích và các công cụ khác.
+              Thêm nhà cung cấp cloud AI để sử dụng phân tích và các công cụ khác.
             </EmptyDescription>
           </EmptyHeader>
           <Button variant="outline" onClick={() => setAddOpen(true)}>
@@ -837,8 +737,7 @@ export function AIProviderSettings() {
         </div>
       )}
 
-      {/* System WebGPU provider — always shown, no CRUD */}
-      <WebGPUSystemCard />
+
 
       {addOpen && (
         <ProviderFormDialog open={addOpen} onOpenChange={setAddOpen} />

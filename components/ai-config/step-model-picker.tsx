@@ -9,9 +9,7 @@ import type { StepModelConfig } from "@/lib/db";
 import {
   useAIModels,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
 } from "@/lib/hooks";
-import { useCallback } from "react";
 
 interface StepModelPickerProps {
   value: StepModelConfig | undefined;
@@ -28,10 +26,7 @@ export function StepModelPicker({
   const selectedProviderId = value?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
-  const clearWebGpu = useCallback(() => {
-    onChange(undefined);
-  }, [onChange]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   const handleProviderChange = (providerId: string) => {
     if (!providerId) {

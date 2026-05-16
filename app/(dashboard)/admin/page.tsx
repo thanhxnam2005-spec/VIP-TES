@@ -48,6 +48,43 @@ export default function AdminPage() {
   // Admin Proxy Settings
   const [adminProxyUrl, setAdminProxyUrl] = useState("");
   const [adminProxyKey, setAdminProxyKey] = useState("");
+  const [adminChatModel, setAdminChatModel] = useState("");
+  const [scanning, setScanning] = useState(false);
+
+  const handleScanModels = async () => {
+    if (!adminProxyUrl || !adminProxyKey) {
+      toast.error("Vui lòng nhập URL và API Key trước khi quét");
+      return;
+    }
+    setScanning(true);
+    const toastId = toast.loading("Đang quét model từ Proxy...");
+    try {
+      const res = await fetch("/api/admin/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proxyUrl: adminProxyUrl, proxyKey: adminProxyKey })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.data && Array.isArray(data.data)) {
+          const models = data.data.map((m: any) => ({
+            id: m.id,
+            name: m.id.replace("gcli-", "").replace("假流式/", "[No Stream] ")
+          }));
+          setAvailableModels(models);
+          toast.success(`Đã tìm thấy ${models.length} models`, { id: toastId });
+        } else {
+          toast.error("Không tìm thấy model nào", { id: toastId });
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || `Lỗi khi quét model: HTTP ${res.status}`, { id: toastId });
+      }
+    } catch (err) {
+      toast.error("Lỗi kết nối", { id: toastId });
+    }
+    setScanning(false);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -91,7 +128,7 @@ export default function AdminPage() {
     const { data: allSettingsData } = await supabase
       .from("app_settings")
       .select("key, value")
-      .in("key", ["free_mode", "admin_proxy_url", "admin_proxy_key", "admin_model_enabled"]);
+      .in("key", ["free_mode", "admin_proxy_url", "admin_proxy_key", "admin_model_enabled", "admin_chat_model"]);
 
     if (allSettingsData) {
       const freeModeSetting = allSettingsData.find(s => s.key === "free_mode");
@@ -105,6 +142,9 @@ export default function AdminPage() {
 
       const keySetting = allSettingsData.find(s => s.key === "admin_proxy_key");
       if (keySetting) setAdminProxyKey(keySetting.value);
+
+      const chatModelSetting = allSettingsData.find(s => s.key === "admin_chat_model");
+      if (chatModelSetting) setAdminChatModel(chatModelSetting.value);
     }
 
     const { data: profilesData, error: profilesError } = await supabase
@@ -329,6 +369,56 @@ export default function AdminPage() {
               type="password"
             />
           </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Model cho Chat AI (toàn hệ thống)</label>
+          <div className="flex items-center gap-2">
+            {availableModels.length > 0 ? (
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={adminChatModel}
+                onChange={e => setAdminChatModel(e.target.value)}
+              >
+                <option value="">-- Dùng cùng model dịch --</option>
+                {availableModels.map(m => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                value={adminChatModel}
+                onChange={e => setAdminChatModel(e.target.value)}
+                placeholder="Nhập model ID cho chat (bỏ trống = dùng model dịch)"
+              />
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const supabase = createClient();
+                const { error } = await supabase
+                  .from("app_settings")
+                  .upsert({ key: "admin_chat_model", value: adminChatModel });
+                if (error) {
+                  toast.error("Lỗi: " + error.message);
+                } else {
+                  toast.success(adminChatModel ? `Đã đặt model chat: ${adminChatModel}` : "Chat sẽ dùng model dịch");
+                }
+              }}
+            >
+              Lưu
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleScanModels}
+              disabled={scanning}
+            >
+              {scanning ? <RefreshCwIcon className="mr-2 size-4 animate-spin" /> : <RefreshCwIcon className="mr-2 size-4" />}
+              Quét Model
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Model này dùng cho AI Chat của toàn bộ người dùng. Bỏ trống = dùng model dịch đã cấp cho từng user.</p>
         </div>
         <Button onClick={handleSaveAdminSettings} variant="default">Lưu cấu hình Server</Button>
       </div>

@@ -16,10 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  WEBGPU_BLOCKED_FOR_API_INFERENCE_VI,
-  isWebGpuInferenceProvider,
-} from "@/lib/ai/api-inference";
+
 import {
   DEFAULT_CHAPTER_ANALYSIS_SYSTEM,
   DEFAULT_CHARACTER_PROFILING_SYSTEM,
@@ -178,8 +175,7 @@ export function AnalysisDialog({
 
   const chatDefaultEligible =
     !!chatProvider &&
-    !!chatSettings?.modelId &&
-    !isWebGpuInferenceProvider(chatProvider);
+    !!chatSettings?.modelId;
 
   const hasConfiguredStepModel = (
     cfg:
@@ -251,9 +247,7 @@ export function AnalysisDialog({
               ? "Tổng hợp tiểu thuyết"
               : "Hồ sơ nhân vật";
         const missing = res.missingPhases.map(label);
-        const baseMsg = res.chatIsWebGpu
-          ? WEBGPU_BLOCKED_FOR_API_INFERENCE_VI
-          : "Chưa đủ cấu hình model để chạy phân tích";
+        const baseMsg = "Chưa đủ cấu hình model để chạy phân tích";
         toast.error(`${baseMsg} (Thiếu mô hình cho: ${missing.join(", ")}).`);
         return null;
       }
@@ -374,9 +368,7 @@ export function AnalysisDialog({
   const handleRun = useCallback(async () => {
     if (!canStartAnalysis) {
       toast.error(
-        chatProvider && isWebGpuInferenceProvider(chatProvider)
-          ? WEBGPU_BLOCKED_FOR_API_INFERENCE_VI
-          : "Vui lòng cấu hình model cho phân tích trước.",
+        "Vui lòng cấu hình model cho phân tích trước.",
       );
       return;
     }
@@ -575,9 +567,7 @@ export function AnalysisDialog({
 
                 {!canStartAnalysis && (
                   <p className="text-xs text-amber-500">
-                    {chatProvider && isWebGpuInferenceProvider(chatProvider)
-                      ? "Chat đang dùng WebGPU. Hãy chọn model API cho các bước phân tích (hoặc đổi model chat)."
-                      : "Chưa đủ cấu hình để chạy phân tích."}{" "}
+                    Chưa đủ cấu hình để chạy phân tích.{" "}
                     <a href="/settings/providers" className="underline">
                       Cấu hình nhà cung cấp
                     </a>

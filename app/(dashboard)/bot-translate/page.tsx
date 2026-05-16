@@ -26,6 +26,7 @@ interface QueueJob {
   translate_mode: string; created_at: string; error_message: string | null;
   dict_sources: string[]; custom_prompt: string | null; prompt_type: string;
   extract_dict: boolean; name_dict: any[];
+  worker_name: string | null; assigned_worker: string | null;
 }
 
 interface SlotConfig {
@@ -131,7 +132,7 @@ export default function BotTranslatePage() {
       const dlRes = await fetch(`/api/bot-translate/queue/download?fileId=${inputDriveId}`);
       if (!dlRes.ok) throw new Error("Không thể tải file đầu vào từ kho");
       const fullData = await dlRes.json();
-      
+
       const queueChapters = fullData.chapters;
       if (!queueChapters || !Array.isArray(queueChapters)) throw new Error("Dữ liệu chương không hợp lệ");
 
@@ -178,7 +179,7 @@ export default function BotTranslatePage() {
             id: tempSceneId, chapterId: tempChapterId, novelId: tempNovelId,
             title: `Scene ${sc.order}`, content: sc.content,
             order: sc.order, wordCount: typeof sc.content === "string" ? sc.content.split(/\s+/).length : 0,
-            version: 1, versionType: "manual", isActive: 1, 
+            version: 1, versionType: "manual", isActive: 1,
             createdAt: new Date(), updatedAt: new Date(),
           });
         }
@@ -191,7 +192,7 @@ export default function BotTranslatePage() {
         promptType: (job.prompt_type || "khuyen_nghi") as any,
         extractDict: job.extract_dict || false,
         skipTranslated: false, signal: controller.signal, delayMs: 1000,
-        onPhase: () => {},
+        onPhase: () => { },
         onChapterStart: async (chapterId: string, chapterTitle: string) => {
           const idx = allTempChapterIds.indexOf(chapterId);
           if (idx !== -1) {
@@ -201,12 +202,12 @@ export default function BotTranslatePage() {
           }
         },
         onChapterComplete: (res: any) => {
-           addLog(slotIdx, `✅ Hoàn thành: ${res?.chapterTitle || 'Chương'}`);
+          addLog(slotIdx, `✅ Hoàn thành: ${res?.chapterTitle || 'Chương'}`);
         },
-        onChapterError: (err: any) => { 
-           addLog(slotIdx, `⚠️ Lỗi: ${err.message}`); 
+        onChapterError: (err: any) => {
+          addLog(slotIdx, `⚠️ Lỗi: ${err.message}`);
         },
-        onAllComplete: () => {},
+        onAllComplete: () => { },
       };
 
       try {
@@ -397,11 +398,11 @@ export default function BotTranslatePage() {
           try {
             const genreSource = `${job.novel_genre}_names`;
             const filename = `${genreSource}.txt`;
-            
+
             // Tải bản hiện tại trên Kho về để gộp
             const dlParams = new URLSearchParams({ action: 'download-dict', filename });
             const dlRes = await fetch(`/api/dict/cloud-storage?${dlParams.toString()}`, { method: 'POST' });
-            
+
             let cloudText = "";
             if (dlRes.ok) {
               cloudText = await dlRes.text();
@@ -410,7 +411,7 @@ export default function BotTranslatePage() {
             // Gộp từ điển
             const novelEntries = await db.nameEntries.where("scope").equals(tempNovelId).toArray();
             const map = new Map<string, Set<string>>();
-            
+
             const addToMap = (chinese: string, vietnamese: string) => {
               const key = chinese.trim();
               if (!key) return;
@@ -449,7 +450,7 @@ export default function BotTranslatePage() {
                   total: chunks.length
                 })
               });
-              if (!res.ok) throw new Error(`Upload phần ${i+1} thất bại`);
+              if (!res.ok) throw new Error(`Upload phần ${i + 1} thất bại`);
             }
             addLog(slotIdx, `✅ Đã đồng bộ ${novelEntries.length} từ mới lên Tổng Kho (${genreSource})!`);
           } catch (syncErr: any) {
@@ -461,22 +462,22 @@ export default function BotTranslatePage() {
           chapters: translatedChaptersData,
           name_dict: newNameDict.map(n => ({ chinese: n.chinese, vietnamese: n.vietnamese })),
         };
-        
+
         const outputFileName = `job_${job.id}_output.json`;
         const uploadRes = await fetch("/api/bot-translate/queue/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename: outputFileName, content: JSON.stringify(outputPayload) }),
         });
-        
+
         const uploadData = await uploadRes.json();
         if (!uploadRes.ok) throw new Error(`Lỗi tải file kết quả: ${uploadData.error}`);
 
         await updateJobStatus(job.id, "completed", { errorMessage: `output_drive_id:${uploadData.fileId}` });
         addLog(slotIdx, `🎉 Hoàn thành toàn bộ: "${job.novel_name}"`);
-        
+
         // Tùy chọn: Xóa file input để dọn dẹp (đã gọi API xóa)
-        fetch(`/api/bot-translate/queue/upload`, { method: "DELETE", body: JSON.stringify({ fileId: inputDriveId }) }).catch(() => {});
+        fetch(`/api/bot-translate/queue/upload`, { method: "DELETE", body: JSON.stringify({ fileId: inputDriveId }) }).catch(() => { });
       }
     } catch (err: any) {
       if (err.name !== "AbortError") {
@@ -500,7 +501,7 @@ export default function BotTranslatePage() {
         const parsed = JSON.parse(currentSlotsRaw);
         isRunning = parsed[slotIdx]?.running;
       }
-      
+
       if (!isRunning) break;
 
       try {
@@ -558,7 +559,7 @@ export default function BotTranslatePage() {
           }
         });
       }
-    } catch {}
+    } catch { }
   }, [runSlotLoop]);
 
   const toggleSlot = (slotIdx: number) => {
@@ -591,8 +592,11 @@ export default function BotTranslatePage() {
     const slot = slots[slotIdx];
     const models = useAIModels(slot.providerId || undefined);
     const progress = slotProgress[slotIdx];
-    const logs = slotLogs[slotIdx] || [];
     const currentJobId = processingJobId[slotIdx];
+
+    // Filter queue jobs assigned to this slot specifically
+    const workerName = `AI-${slotIdx + 1}`;
+    const slotJobs = jobs.filter(j => j.assigned_worker === workerName || j.worker_name === workerName || (workerName === "AI-1" && (!j.assigned_worker || j.assigned_worker === "any") && !j.worker_name));
 
     return (
       <div className="space-y-4">
@@ -637,14 +641,36 @@ export default function BotTranslatePage() {
           </div>
         )}
 
-        {/* Logs */}
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-1 max-h-[300px] overflow-y-auto">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase">Log</p>
-          {logs.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground">Chưa có hoạt động...</p>
-          ) : logs.map((l, i) => (
-            <p key={i} className="text-[10px] font-mono text-muted-foreground leading-relaxed">{l}</p>
-          ))}
+        {/* Queue for this slot */}
+        <div className="space-y-3 mt-6 border-t pt-4">
+          <h2 className="text-sm font-semibold">Hàng đợi của {SLOT_NAMES[slotIdx]}</h2>
+          {slotJobs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Chưa có yêu cầu dịch nào ở Slot này.</p>
+          ) : (
+            <div className="space-y-2">
+              {slotJobs.map((job) => {
+                const jobProgress = job.chapter_count > 0 ? (job.current_chapter / job.chapter_count) * 100 : 0;
+                return (
+                  <div key={job.id} className="rounded-lg border bg-card p-3 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{job.novel_name}</p>
+                      <p className="text-[10px] text-muted-foreground">{job.user_email} • {job.chapter_count} chương • {new Date(job.created_at).toLocaleString("vi-VN")}</p>
+                      {job.status === "translating" && <Progress value={jobProgress} className="h-1 mt-1.5" />}
+                      {job.error_message && <p className="text-[10px] text-destructive mt-1">{job.error_message}</p>}
+                    </div>
+                    <Badge className={`shrink-0 text-[10px] ${job.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                      job.status === "translating" ? "bg-blue-100 text-blue-800" :
+                        job.status === "completed" ? "bg-green-100 text-green-800" :
+                          "bg-red-100 text-red-800"
+                      }`}>
+                      {job.status === "pending" ? <span>Chờ</span> : job.status === "translating" ? <span>Đang dịch {job.current_chapter}/{job.chapter_count}</span> : job.status === "completed" ? <span>Xong</span> : <span>Lỗi</span>}
+                    </Badge>
+                    <Button variant="ghost" size="icon-sm" onClick={() => handleDeleteJob(job.id)} title="Xóa"><TrashIcon className="size-3.5 text-destructive" /></Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -661,51 +687,42 @@ export default function BotTranslatePage() {
 
       {/* 5 Slot Tabs */}
       <Tabs value={activeSlot} onValueChange={setActiveSlot}>
-        <TabsList className="grid w-full grid-cols-5">
-          {SLOT_NAMES.map((name, i) => (
-            <TabsTrigger key={i} value={String(i)} className="gap-1.5 text-xs">
-              {slots[i].running && <span className="size-2 rounded-full bg-green-500 animate-pulse" />}
-              {name}
-            </TabsTrigger>
-          ))}
+        <TabsList className="grid w-full grid-cols-5 h-auto items-stretch p-1">
+          {SLOT_NAMES.map((name, i) => {
+            const isRunning = slots[i].running;
+            const workerName = `AI-${i + 1}`;
+            const slotJobs = jobs.filter(j => j.assigned_worker === workerName || j.worker_name === workerName || (workerName === "AI-1" && (!j.assigned_worker || j.assigned_worker === "any") && !j.worker_name));
+            const translatingJob = slotJobs.find(j => j.status === "translating");
+
+            const isActuallyTranslating = isRunning && translatingJob;
+
+            return (
+              <TabsTrigger key={i} value={String(i)} className="flex flex-col gap-1 text-xs py-2 px-1 items-center justify-start min-h-[50px]">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isActuallyTranslating ? (
+                    <span className="size-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+                  ) : (
+                    <span className="size-2 rounded-full bg-slate-300 shrink-0" />
+                  )}
+                  <span className="font-semibold whitespace-nowrap">
+                    {name} - {isActuallyTranslating ? "Đang dịch" : "Đang chờ"}
+                  </span>
+                </div>
+                {isActuallyTranslating && translatingJob && (
+                  <div className="flex flex-col items-center max-w-[140px] px-2 w-full text-[10px] opacity-80 gap-0.5 overflow-hidden">
+                    <span className="truncate w-full text-center" title={translatingJob.novel_name}>{translatingJob.novel_name}</span>
+                    <span className="font-mono text-[9px] bg-background border px-1.5 rounded">{translatingJob.current_chapter}/{translatingJob.chapter_count}</span>
+                  </div>
+                )}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
         {SLOT_NAMES.map((_, i) => (
           <TabsContent key={i} value={String(i)}><SlotPanel slotIdx={i} /></TabsContent>
         ))}
       </Tabs>
 
-      {/* Queue */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Hàng đợi ({jobs.length})</h2>
-        {jobs.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Chưa có yêu cầu dịch nào.</p>
-        ) : (
-          <div className="space-y-2">
-            {jobs.map(job => {
-              const progress = job.chapter_count > 0 ? (job.current_chapter / job.chapter_count) * 100 : 0;
-              return (
-                <div key={job.id} className="rounded-lg border bg-card p-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">{job.novel_name}</p>
-                    <p className="text-[10px] text-muted-foreground">{job.user_email} • {job.chapter_count} chương • {new Date(job.created_at).toLocaleString("vi-VN")}</p>
-                    {job.status === "translating" && <Progress value={progress} className="h-1 mt-1.5" />}
-                    {job.error_message && <p className="text-[10px] text-destructive mt-1">{job.error_message}</p>}
-                  </div>
-                  <Badge className={`shrink-0 text-[10px] ${
-                    job.status === "pending" ? "bg-yellow-100 text-yellow-800" :
-                    job.status === "translating" ? "bg-blue-100 text-blue-800" :
-                    job.status === "completed" ? "bg-green-100 text-green-800" :
-                    "bg-red-100 text-red-800"
-                  }`}>
-                    {job.status === "pending" ? <span>Chờ</span> : job.status === "translating" ? <span>Đang dịch {job.current_chapter}/{job.chapter_count}</span> : job.status === "completed" ? <span>Xong</span> : <span>Lỗi</span>}
-                  </Badge>
-                  <Button variant="ghost" size="icon-sm" onClick={() => handleDeleteJob(job.id)} title="Xóa"><TrashIcon className="size-3.5 text-destructive" /></Button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

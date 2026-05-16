@@ -1,33 +1,12 @@
 "use client";
 
-import {
-  WEBGPU_SYSTEM_PROVIDER_ID,
-  filterApiInferenceProviders,
-} from "@/lib/ai/api-inference";
+// ─── Provider Queries ───────────────────────────────────────
+
+import { filterApiInferenceProviders } from "@/lib/ai/api-inference";
 import { db, type AIProvider, type AIModel } from "@/lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useProfile } from "./use-profile";
-
-// ─── System Provider (always available, no CRUD) ────────────
-
-export const WEBGPU_SYSTEM_PROVIDER: AIProvider = {
-  id: WEBGPU_SYSTEM_PROVIDER_ID,
-  name: "WebGPU (Miễn phí)",
-  baseUrl: "",
-  apiKey: "",
-  isActive: true,
-  providerType: "webgpu",
-  createdAt: new Date(0),
-  updatedAt: new Date(0),
-};
-
-export function isSystemProvider(id: string | undefined): boolean {
-  return id === WEBGPU_SYSTEM_PROVIDER_ID;
-}
-
 import { useMemo, useState, useEffect } from "react";
-
-// ─── Provider Queries ───────────────────────────────────────
 
 export function useAIProviders() {
   const dbProviders = useLiveQuery(() =>
@@ -65,12 +44,10 @@ export function useApiInferenceProviders() {
 }
 
 export function useAIProvider(id: string | undefined) {
-  const dbProvider = useLiveQuery(
-    () => (id && !isSystemProvider(id) ? db.aiProviders.get(id) : undefined),
+  return useLiveQuery(
+    () => (id ? db.aiProviders.get(id) : undefined),
     [id],
   );
-  if (isSystemProvider(id)) return WEBGPU_SYSTEM_PROVIDER;
-  return dbProvider;
 }
 
 export function useActiveProviders() {
@@ -104,30 +81,6 @@ export async function deleteAIProvider(id: string) {
 
 // ─── Model Queries ──────────────────────────────────────────
 
-// Static model entries for the system WebGPU provider (no DB storage)
-const WEBGPU_SYSTEM_MODELS = (() => {
-  // Lazy import to avoid circular deps — WEBGPU_MODELS is a simple array
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { WEBGPU_MODELS } = require("@/lib/ai/webgpu-provider");
-    return (
-      WEBGPU_MODELS as Array<{
-        modelId: string;
-        name: string;
-        sizeLabel: string;
-      }>
-    ).map((m) => ({
-      id: m.modelId,
-      providerId: WEBGPU_SYSTEM_PROVIDER.id,
-      modelId: m.modelId,
-      name: `${m.name} (${m.sizeLabel})`,
-      createdAt: new Date(0),
-    }));
-  } catch {
-    return [];
-  }
-})();
-
 function sortModels<T extends { modelId: string; name?: string }>(
   models: T[],
 ): T[] {
@@ -156,7 +109,7 @@ export function useAIModels(providerId: string | undefined) {
 
   const dbModels = useLiveQuery(
     () =>
-      providerId && !isSystemProvider(providerId) && providerId !== "admin-provider"
+      providerId && providerId !== "admin-provider"
         ? db.aiModels.where("providerId").equals(providerId).toArray()
         : [],
     [providerId],
@@ -184,8 +137,6 @@ export function useAIModels(providerId: string | undefined) {
     }
   }, [providerId]);
 
-  if (isSystemProvider(providerId)) return WEBGPU_SYSTEM_MODELS;
-  
   if (providerId === "admin-provider") {
     return adminModels;
   }
@@ -327,9 +278,6 @@ export async function fetchAndSyncModels(provider: AIProvider) {
     case "google":
       models = await fetchGoogleModels(provider.apiKey);
       break;
-    case "webgpu":
-      // System provider — models are static, no fetch needed
-      return WEBGPU_SYSTEM_MODELS.length;
     case "openai":
     case "groq":
     case "mistral":

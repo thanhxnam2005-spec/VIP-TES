@@ -3,25 +3,37 @@
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/utils";
 
+import { createClient as createAdminClient } from "@supabase/supabase-js";
+
 export async function saveAdminSettingsAction(url: string, apiKey: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  
+
   if (!user || !isAdmin(user.email)) {
     return { success: false, error: "Unauthorized" };
   }
 
+  // Create admin client to bypass RLS for app_settings
+  const adminDb = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // Clean strings
+  const cleanUrl = url.trim().replace(/[^\x20-\x7E]/g, '');
+  const cleanKey = apiKey.trim().replace(/[^\x20-\x7E]/g, '');
+
   // Save URL
-  const { error: err1 } = await supabase
+  const { error: err1 } = await adminDb
     .from("app_settings")
-    .upsert({ key: "admin_proxy_url", value: url }, { onConflict: "key" });
-    
+    .upsert({ key: "admin_proxy_url", value: cleanUrl }, { onConflict: "key" });
+
   if (err1) return { success: false, error: err1.message };
 
   // Save Key
-  const { error: err2 } = await supabase
+  const { error: err2 } = await adminDb
     .from("app_settings")
-    .upsert({ key: "admin_proxy_key", value: apiKey }, { onConflict: "key" });
+    .upsert({ key: "admin_proxy_key", value: cleanKey }, { onConflict: "key" });
 
   if (err2) return { success: false, error: err2.message };
 

@@ -1,4 +1,3 @@
-import { isWebGpuInferenceProviderId } from "@/lib/ai/api-inference";
 import { resolveStep } from "@/lib/ai/resolve-step";
 import type { AnalysisSettings, ChatSettings } from "@/lib/db";
 import type { LanguageModel } from "ai";
@@ -18,7 +17,6 @@ export interface ResolvedAnalysisModels {
 export interface ResolveAnalysisModelsResult {
   models: ResolvedAnalysisModels | null;
   missingPhases: AnalysisModelPhase[];
-  chatIsWebGpu: boolean;
 }
 
 function needsPhase(
@@ -34,7 +32,7 @@ function needsPhase(
  * Rules:
  * - Per-step model overrides are used when present.
  * - If chat default model is API-eligible, it becomes the default fallback.
- * - If chat default model is missing/ineligible (e.g., WebGPU), then every
+ * - If chat default model is missing, then every
  *   non-skipped phase must have its own model.
  */
 export async function resolveAnalysisModels(opts: {
@@ -61,8 +59,6 @@ export async function resolveAnalysisModels(opts: {
 
   const stepModels = { chapters, aggregation, characters };
 
-  const chatIsWebGpu = isWebGpuInferenceProviderId(chatSettings?.providerId);
-
   const chatDefaultModel =
     chatSettings?.providerId && chatSettings?.modelId
       ? await resolveStep({
@@ -76,7 +72,6 @@ export async function resolveAnalysisModels(opts: {
     return {
       models: { defaultModel: chatDefaultModel, stepModels },
       missingPhases: [],
-      chatIsWebGpu,
     };
   }
 
@@ -87,17 +82,16 @@ export async function resolveAnalysisModels(opts: {
   if (wantCharacters && !characters) missingPhases.push("characters");
 
   if (missingPhases.length > 0) {
-    return { models: null, missingPhases, chatIsWebGpu };
+    return { models: null, missingPhases };
   }
 
   const fallback = chapters ?? aggregation ?? characters;
   if (!fallback) {
-    return { models: null, missingPhases: [], chatIsWebGpu };
+    return { models: null, missingPhases: [] };
   }
 
   return {
     models: { defaultModel: fallback, stepModels },
     missingPhases: [],
-    chatIsWebGpu,
   };
 }

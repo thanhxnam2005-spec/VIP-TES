@@ -1,7 +1,3 @@
-import {
-  WEBGPU_BLOCKED_FOR_API_INFERENCE_VI,
-  isWebGpuInferenceProviderId,
-} from "@/lib/ai/api-inference";
 import { resolveStep } from "@/lib/ai/resolve-step";
 import type { WritingAgentRole } from "@/lib/db";
 import { db } from "@/lib/db";
@@ -87,9 +83,7 @@ async function getAgentConfig(
   }
   if (!model) {
     throw new Error(
-      isWebGpuInferenceProviderId(chatSettings?.providerId)
-        ? WEBGPU_BLOCKED_FOR_API_INFERENCE_VI
-        : "Không tìm thấy mô hình AI. Vui lòng cấu hình nhà cung cấp AI trong Cài đặt.",
+      "Không tìm thấy mô hình AI. Vui lòng cấu hình nhà cung cấp AI trong Cài đặt.",
     );
   }
 

@@ -13,7 +13,6 @@ import {
   useAIModels,
   useAnalysisSettings,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
 } from "@/lib/hooks";
 import { useDebouncedCallback } from "@/lib/hooks/use-debounce";
 import { ChevronDownIcon, ChevronRightIcon, RotateCcwIcon } from "lucide-react";
@@ -68,10 +67,7 @@ export function ToolConfig({
     [modelKey],
   );
 
-  const clearWebGpu = useCallback(async () => {
-    await saveModel(undefined);
-  }, [saveModel]);
-  useClearWebGpuStepModel(currentModel?.providerId, clearWebGpu);
+
 
   const savePrompt = useCallback(
     async (text: string) => {

@@ -143,8 +143,8 @@ export function ChatPanel() {
 
   const providers = useAIProviders();
   const chatSettings = useChatSettings();
-  const selectedProviderId = useAdminModel ? "admin-provider" : chatSettings.providerId;
-  const selectedModelId = useAdminModel ? "admin-model" : chatSettings.modelId;
+  const selectedProviderId = chatSettings.providerId;
+  const selectedModelId = chatSettings.modelId;
   const systemPrompt =
     withGlobalInstruction(
       chatSettings.systemPrompt,
@@ -152,8 +152,8 @@ export function ChatPanel() {
     ) ?? "";
   const temperature = chatSettings.temperature;
   const maxToolSteps = chatSettings.maxToolSteps ?? 10;
-  const selectedProvider = useAdminModel ? (adminProvider as any) : providers?.find((p) => p.id === selectedProviderId);
-  const models = useAIModels(useAdminModel ? undefined : (selectedProviderId || undefined));
+  const selectedProvider = providers?.find((p) => p.id === selectedProviderId);
+  const models = useAIModels(selectedProviderId || undefined);
 
   const conversations = useConversations();
   const dbMessages = useConversationMessages(activeConversationId ?? undefined);

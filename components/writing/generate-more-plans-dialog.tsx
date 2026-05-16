@@ -26,7 +26,6 @@ import {
   updateWritingSettings,
   useAIModels,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
   useWritingSettings,
 } from "@/lib/hooks";
 import { useDebouncedCallback } from "@/lib/hooks/use-debounce";
@@ -58,13 +57,7 @@ function ModelRow({
     await updateWritingSettings(novelId, data);
   };
 
-  const clearWebGpu = useCallback(() => {
-    void (async () => {
-      await getOrCreateWritingSettings(novelId);
-      await updateWritingSettings(novelId, { [modelKey]: undefined });
-    })();
-  }, [novelId, modelKey]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   return (
     <div className="space-y-1.5">

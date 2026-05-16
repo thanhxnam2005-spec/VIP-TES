@@ -25,7 +25,6 @@ import {
   updateWritingSettings,
   useAIModels,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
   useWritingSettings,
 } from "@/lib/hooks";
 import { useDebouncedCallback } from "@/lib/hooks/use-debounce";
@@ -111,10 +110,7 @@ function StepModelPicker({
   const selectedProviderId = value?.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
-  const clearWebGpu = useCallback(() => {
-    updateWritingSettings(novelId, { [modelKey]: undefined });
-  }, [novelId, modelKey]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   const handleProviderChange = (providerId: string) => {
     if (!providerId) {

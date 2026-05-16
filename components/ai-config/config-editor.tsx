@@ -29,7 +29,6 @@ import {
   useAnalysisSettings,
   useApiInferenceProviders,
   useChatSettings,
-  useClearWebGpuStepModel,
   useWritingSettings,
 } from "@/lib/hooks";
 import { useDebouncedCallback } from "@/lib/hooks/use-debounce";
@@ -104,10 +103,7 @@ function ChatModelPicker() {
   const selectedProviderId = settings.providerId ?? "";
   const models = useAIModels(selectedProviderId || undefined);
 
-  const clearWebGpu = useCallback(() => {
-    void updateChatSettings({ providerId: "", modelId: "" });
-  }, []);
-  useClearWebGpuStepModel(settings.providerId, clearWebGpu);
+
 
   return (
     <div className="grid grid-cols-2 gap-3">

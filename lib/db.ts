@@ -142,8 +142,7 @@ export type ProviderType =
   | "mistral"
   | "xai"
   | "openrouter"
-  | "openai-compatible"
-  | "webgpu";
+  | "openai-compatible";
 
 export interface AIProvider {
   id: string;

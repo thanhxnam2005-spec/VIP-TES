@@ -37,6 +37,9 @@ interface QueueJob {
   error_message: string | null;
   worker_name: string | null;
   assigned_worker: string | null;
+  prompt_type: string;
+  custom_prompt: string | null;
+  extract_dict: boolean;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -48,9 +51,8 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Rea
 };
 
 const MODE_LABELS: Record<string, string> = {
-  hybrid: "Gốc + Thô + AI",
-  "stv-hybrid": "Converter AI",
-  "pure-ai": "Dịch thuần AI",
+  "stv-hybrid": "Dịch Converter AI",
+  "pure-ai": "Dịch Converter Prompt",
 };
 
 export function BotQueueSubmit({
@@ -63,7 +65,7 @@ export function BotQueueSubmit({
   const [myJobs, setMyJobs] = useState<QueueJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [importingJobId, setImportingJobId] = useState<string | null>(null);
-  const [selectedMode, setSelectedMode] = useState<string>("hybrid");
+  const [selectedMode, setSelectedMode] = useState<string>("stv-hybrid");
   const [selectedWorker, setSelectedWorker] = useState<string>("any");
 
   useEffect(() => {
@@ -166,14 +168,14 @@ export function BotQueueSubmit({
       // 1. Upload JSON to Google Drive
       const jobId = crypto.randomUUID();
       const fileName = `job_${jobId}_input.json`;
-      
+
       const uploadRes = await fetch("/api/bot-translate/queue/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: fileName, content: JSON.stringify(payload) }),
       });
       const uploadData = await uploadRes.json();
-      
+
       if (!uploadRes.ok) throw new Error(`Lỗi tải file lên Drive: ${uploadData.error}`);
       const fileId = uploadData.fileId;
 
@@ -237,7 +239,7 @@ export function BotQueueSubmit({
         const dataJob = await resJob.json();
         const job = dataJob.jobs?.find((j: any) => j.id === jobId);
         if (job?.error_message?.includes("output_drive_id:")) {
-           finalOutputFileUrl = job.error_message.split("output_drive_id:")[1];
+          finalOutputFileUrl = job.error_message.split("output_drive_id:")[1];
         }
       }
 
@@ -245,7 +247,7 @@ export function BotQueueSubmit({
 
       const res = await fetch(`/api/bot-translate/queue/download?fileId=${finalOutputFileUrl}`);
       const data = await res.json();
-      
+
       if (!res.ok || !data.chapters) throw new Error("Lỗi tải file kết quả từ Drive");
 
       const currentNovel = await db.novels.get(novelId);
@@ -265,11 +267,11 @@ export function BotQueueSubmit({
         // 2. Thử khớp chính xác theo order
         // 3. Thử khớp theo kiểu lệch 1 đơn vị
         let localChapter = queueChapter.id ? localChapters.find(c => c.id === queueChapter.id) : undefined;
-        
+
         if (!localChapter) {
           localChapter = localChapters.find(c => c.order === queueChapter.order);
         }
-        
+
         if (!localChapter) {
           // Thử khớp theo kiểu lệch 1 đơn vị (0-indexed vs 1-indexed)
           localChapter = localChapters.find(c => c.order === (queueChapter.order - 1));
@@ -294,10 +296,10 @@ export function BotQueueSubmit({
 
           // 1. Lưu bản gốc vào lịch sử nếu chưa có (để có Tab Gốc/Dịch)
           await ensureInitialVersion(localScene.id, novelId, localScene.content);
-          
+
           // 2. Lưu bản dịch AI vào lịch sử phiên bản
           await createSceneVersion(localScene.id, novelId, "ai", translatedScene.content);
-          
+
           // 3. Ghi đè trực tiếp nội dung hiển thị chính bằng bản dịch AI mới
           await db.scenes.update(localScene.id, {
             content: translatedScene.content || "",
@@ -363,9 +365,8 @@ export function BotQueueSubmit({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="hybrid">Gốc + Thô + AI (Khuyến nghị)</SelectItem>
-              <SelectItem value="stv-hybrid">Converter AI (Dùng STV)</SelectItem>
-              <SelectItem value="pure-ai">Dịch thuần AI (Cần quét Prompt)</SelectItem>
+              <SelectItem value="stv-hybrid">Dịch Converter AI (Khuyến nghị)</SelectItem>
+              <SelectItem value="pure-ai">Dịch Converter Prompt (Cần quét Prompt)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -446,15 +447,15 @@ export function BotQueueSubmit({
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold">Các yêu cầu dịch của bạn</p>
           <div className="flex items-center gap-2">
-             {myJobs.filter(j => j.status === 'translating').length > 0 && (
-               <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 text-[10px] text-blue-500 font-medium border border-blue-500/20">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
-                  </span>
-                  Đang chạy: {Array.from(new Set(myJobs.filter(j => j.status === 'translating').map(j => j.worker_name).filter(Boolean))).length} AI
-               </div>
-             )}
+            {myJobs.filter(j => j.status === 'translating').length > 0 && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 text-[10px] text-blue-500 font-medium border border-blue-500/20">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-500"></span>
+                </span>
+                Đang chạy: {Array.from(new Set(myJobs.filter(j => j.status === 'translating').map(j => j.worker_name).filter(Boolean))).length} AI
+              </div>
+            )}
             <Button variant="ghost" size="icon-sm" onClick={loadJobs} title="Làm mới">
               <RefreshCwIcon className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
             </Button>
@@ -477,7 +478,7 @@ export function BotQueueSubmit({
                 const activeJobs = myJobs.filter(j => j.assigned_worker === name && (j.status === 'pending' || j.status === 'translating'));
                 const isRunning = activeJobs.some(j => j.status === 'translating');
                 const count = activeJobs.length;
-                
+
                 return (
                   <TabsTrigger key={name} value={name} className="text-[9px] py-1 px-0 flex flex-col gap-0.5 relative">
                     <span className="flex items-center gap-1">
@@ -493,7 +494,7 @@ export function BotQueueSubmit({
                 );
               })}
             </TabsList>
-            
+
             {["AI-1", "AI-2", "AI-3", "AI-4", "AI-5"].map(name => (
               <TabsContent key={name} value={name} className="space-y-2 mt-2 max-h-[250px] overflow-y-auto pr-1">
                 {myJobs.filter(j => j.assigned_worker === name || (!j.assigned_worker && name === "AI-1")).length === 0 ? (
@@ -519,7 +520,7 @@ export function BotQueueSubmit({
                             {job.status === "translating" && (
                               <div className="mt-1 flex items-center gap-1.5">
                                 <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-600 bg-blue-50/50">
-                                   AI: {job.worker_name || "Chưa xác định"}
+                                  AI: {job.worker_name || "Chưa xác định"}
                                 </Badge>
                               </div>
                             )}
@@ -551,7 +552,7 @@ export function BotQueueSubmit({
                               onClick={() => {
                                 let url = "";
                                 if (job.error_message?.includes("output_drive_id:")) {
-                                   url = job.error_message.split("output_drive_id:")[1];
+                                  url = job.error_message.split("output_drive_id:")[1];
                                 }
                                 handleImportResult(job.id, url);
                               }}

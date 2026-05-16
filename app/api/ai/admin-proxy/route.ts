@@ -60,14 +60,14 @@ export async function POST(req: NextRequest) {
       return acc;
     }, {});
 
-    let proxyUrl = settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1/chat/completions";
-    
+    let proxyUrl = (settingsMap["admin_proxy_url"] || "https://catiecli.sukaka.top/v1").trim().replace(/[^\x20-\x7E]/g, '');
+
     // Auto append /chat/completions if missing
     if (!proxyUrl.includes("/chat/completions")) {
       proxyUrl = proxyUrl.replace(/\/+$/, "") + "/chat/completions";
     }
 
-    const proxyKey = settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a";
+    const proxyKey = (settingsMap["admin_proxy_key"] || "cat-a1991b0901187c4cad48859725a67ad185c78184a4fe5e6a").trim().replace(/[^\x20-\x7E]/g, '');
 
     const response = await fetch(proxyUrl, {
       method: "POST",
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
     // Note: We don't decrement quota here yet because this might be a stream
     // or the request might fail later. We'll decrement it from the client
     // after a successful chapter translation.
-    
+
     return response;
   } catch (error) {
     console.error("Admin Proxy Exception:", error);

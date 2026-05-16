@@ -18,7 +18,6 @@ import {
   updateWritingSettings,
   useAIModels,
   useApiInferenceProviders,
-  useClearWebGpuStepModel,
   useWritingSettings,
 } from "@/lib/hooks";
 
@@ -54,13 +53,7 @@ function PipelineStepModelPicker({
     await updateWritingSettings(novelId, data);
   };
 
-  const clearWebGpu = useCallback(() => {
-    void (async () => {
-      await getOrCreateWritingSettings(novelId);
-      await updateWritingSettings(novelId, { [modelKey]: undefined });
-    })();
-  }, [novelId, modelKey]);
-  useClearWebGpuStepModel(value?.providerId, clearWebGpu);
+
 
   return (
     <div className="grid gap-2 grid-cols-2">

@@ -43,7 +43,7 @@ export async function getModel(
     return withJsonExtraction(
       createOpenAICompatible({
         name: "Admin Model",
-        baseURL: "/api/ai/admin-proxy",
+        baseURL: "https://dummy.local/api/ai/admin-proxy",
         apiKey: "proxy", // not used by proxy route but required by SDK
         supportsStructuredOutputs: false,
         fetch: async (url, options) => {
@@ -90,10 +90,7 @@ export async function getModel(
         }).chatModel(modelId),
       );
 
-    case "webgpu": {
-      const { createWebGPUModel } = await import("./webgpu-provider");
-      return createWebGPUModel(modelId);
-    }
+
 
     case "openai-compatible":
     default:

@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   try {
     const targetUrl = new URL(url);
     console.log(`[proxy-image] Fetching: ${url}`);
-    
+
     const response = await fetch(url, {
       headers: {
         "Referer": "https://novel543.com/",
@@ -21,6 +21,27 @@ export async function GET(req: NextRequest) {
     });
 
     if (!response.ok) {
+      if (response.status === 403 || response.status === 401) {
+        console.warn(`[proxy-image] 403/401 Forbidden. Attempting fallback via wsrv.nl for: ${url}`);
+        const cleanUrl = url.replace(/^https?:\/\//, ""); // wsrv.nl works well without protocol if problems occur, but protocol is fine too
+        const fallbackUrl = `https://wsrv.nl/?url=${encodeURIComponent(cleanUrl)}`;
+        const fbResponse = await fetch(fallbackUrl, {
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36" },
+          redirect: "follow"
+        });
+
+        if (fbResponse.ok) {
+          const fbContentType = fbResponse.headers.get("content-type") || "image/jpeg";
+          const fbArrayBuffer = await fbResponse.arrayBuffer();
+          return new NextResponse(fbArrayBuffer, {
+            headers: {
+              "Content-Type": fbContentType,
+              "Cache-Control": "public, max-age=86400, s-maxage=86400, stale-while-revalidate=86400",
+            },
+          });
+        }
+      }
+
       console.error(`[proxy-image] Failed: ${url} - Status: ${response.status}`);
       // Trả về một ảnh trống 1x1 để không bị icon lỗi to đùng
       const transparentPixel = Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64");

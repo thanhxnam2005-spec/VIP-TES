@@ -135,7 +135,7 @@ export function TranslateWorkspaceDialog({
         return;
       }
     }
-    
+
     setSelectedModelId(val);
     await db.novels.update(novelId, {
       customTranslateModelId: val,
@@ -153,7 +153,7 @@ export function TranslateWorkspaceDialog({
           setSelectedModelId(undefined);
         }
       }, 60000); // every 1 minute
-      
+
       return () => {
         clearInterval(interval);
         // Optional: auto-release on unmount
@@ -165,7 +165,7 @@ export function TranslateWorkspaceDialog({
   const handleChapterComplete = useCallback(async (res: any) => {
     setProcessedCount((prev) => prev + 1);
     setResults((prev) => [...prev, res]);
-    
+
     // Decrement quota if admin model used (Skip for Admins)
     if (selectedProviderId === "admin-provider" && !isAdmin) {
       try {
@@ -199,16 +199,16 @@ export function TranslateWorkspaceDialog({
   const [tunerOpen, setTunerOpen] = useState(false);
   const [qtDictSources, setQtDictSources] = useState<string[]>(["tienhiep"]);
   const [confirmMode, setConfirmMode] = useState<"khuyen_nghi" | "cuc_ngan" | "custom" | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("hybrid");
-  const [extractDict, setExtractDict] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>("stv-hybrid");
+  const [extractDict, setExtractDict] = useState(true);
   const [skipTranslated, setSkipTranslated] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
   const GENRE_DICTS = [
-    "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong", 
+    "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
     "dothi", "vongdu", "dongnhan", "ngontinh"
   ];
-  
+
   const GENRE_LABELS: Record<string, string> = {
     hiendai: "Hiện đại", tienhiep: "Tiên hiệp", huyenhuyen: "Huyền huyễn",
     dammi: "Đam mỹ", hocduong: "Học đường", dothi: "Đô thị",
@@ -234,7 +234,7 @@ export function TranslateWorkspaceDialog({
   const chatSettings = useChatSettings();
   const defaultProvider = useAIProvider(chatSettings?.providerId);
 
-  
+
   // Auto-detect genre and set as default dictionary
   useEffect(() => {
     if (novel?.genre) {
@@ -250,7 +250,7 @@ export function TranslateWorkspaceDialog({
     }
   }, [novel?.genre]);
 
-  const currentVnDate = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"})).toDateString();
+  const currentVnDate = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" })).toDateString();
   const rawQuota = profile?.admin_model_quota || 0;
   const displayQuota = rawQuota; // Simplified: just use the raw quota from profile
 
@@ -445,10 +445,10 @@ export function TranslateWorkspaceDialog({
         {step === "config" && (
           <div className="space-y-4 py-2">
             <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setConfirmMode(null); }} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="hybrid">Gốc + Thô + AI</TabsTrigger>
-                <TabsTrigger value="stv-hybrid">Converter AI</TabsTrigger>
-                <TabsTrigger value="pure-ai">Thuần AI</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="hybrid" className="hidden">Gốc + Thô + AI</TabsTrigger>
+                <TabsTrigger value="stv-hybrid">Dịch Converter AI</TabsTrigger>
+                <TabsTrigger value="pure-ai">Dịch Converter Prompt</TabsTrigger>
                 <TabsTrigger value="bot-queue" className="gap-1">🤖 Bot Dịch</TabsTrigger>
               </TabsList>
 
@@ -491,8 +491,8 @@ export function TranslateWorkspaceDialog({
                           }}
                           className={cn(
                             "flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors border",
-                            isActive 
-                              ? "bg-primary text-primary-foreground border-primary" 
+                            isActive
+                              ? "bg-primary text-primary-foreground border-primary"
                               : "bg-background text-muted-foreground hover:bg-muted"
                           )}
                         >
@@ -698,21 +698,21 @@ export function TranslateWorkspaceDialog({
 
             {/* Càng dịch càng hay toggle — visible on all tabs */}
             <label className="flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 cursor-pointer transition-colors hover:bg-emerald-500/10">
-                <Checkbox
-                  checked={extractDict}
-                  onCheckedChange={(checked) => setExtractDict(!!checked)}
-                  className="mt-0.5 border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
-                />
-                <div className="space-y-0.5">
-                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                    <TrendingUpIcon className="size-3.5" />
-                    Càng dịch càng hay ✨
-                  </span>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    AI sẽ trích xuất tên nhân vật, địa danh từ mỗi chương → lưu vào từ điển truyện → chương sau dịch chính xác hơn. Tự động gửi lên hệ thống.
-                  </p>
-                </div>
-              </label>
+              <Checkbox
+                checked={extractDict}
+                onCheckedChange={(checked) => setExtractDict(!!checked)}
+                className="mt-0.5 border-emerald-500 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+              />
+              <div className="space-y-0.5">
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <TrendingUpIcon className="size-3.5" />
+                  Càng dịch càng hay ✨
+                </span>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  AI sẽ trích xuất tên nhân vật, địa danh từ mỗi chương → lưu vào từ điển truyện → chương sau dịch chính xác hơn. Tự động gửi lên hệ thống.
+                </p>
+              </div>
+            </label>
 
             <div className="flex items-center gap-2 mt-3">
               <Switch
@@ -731,8 +731,8 @@ export function TranslateWorkspaceDialog({
             {activeTab === "pure-ai" && (
               <div className="space-y-2 mt-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Button 
-                    onClick={() => handleStart("custom", "selected")} 
+                  <Button
+                    onClick={() => handleStart("custom", "selected")}
                     className="w-full gap-2 bg-blue-600 hover:bg-blue-700 text-white"
                     disabled={(!(displayQuota > 0 || (selectedProviderId && currentModel?.modelId))) || !hasCustomPrompt}
                     title={!hasCustomPrompt ? "Cần tạo System Prompt ở phần Cấu hình Prompt Dịch trước" : ""}
@@ -740,9 +740,9 @@ export function TranslateWorkspaceDialog({
                     <SparklesIcon className="size-4" />
                     Dịch {chapterIds.length} chương ĐÃ CHỌN
                   </Button>
-                  <Button 
-                    onClick={() => handleStart("custom", "all_untranslated")} 
-                    variant="outline" 
+                  <Button
+                    onClick={() => handleStart("custom", "all_untranslated")}
+                    variant="outline"
                     className="w-full gap-2 border-blue-500 text-blue-600 hover:bg-blue-500/10"
                     disabled={(!(displayQuota > 0 || (selectedProviderId && currentModel?.modelId))) || !hasCustomPrompt}
                     title={!hasCustomPrompt ? "Cần tạo System Prompt ở phần Cấu hình Prompt Dịch trước" : ""}
