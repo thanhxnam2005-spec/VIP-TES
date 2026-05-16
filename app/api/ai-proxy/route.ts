@@ -72,6 +72,50 @@ export async function POST(req: NextRequest) {
       assignedModel = profile.admin_assigned_model;
     }
 
+    // ── Model Lease Enforcement ──
+    // Check if the assigned model is locked by another user
+    // Clean up expired leases first (older than 2 minutes)
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    await supabase
+      .from("model_leases")
+      .delete()
+      .lt("last_active_at", twoMinutesAgo);
+
+    // Check current lease
+    const { data: existingLease } = await supabase
+      .from("model_leases")
+      .select("user_id, email")
+      .eq("id", assignedModel)
+      .single();
+
+    if (existingLease) {
+      if (existingLease.user_id !== userId) {
+        // Model is locked by another user
+        return new Response(
+          JSON.stringify({ 
+            error: `Model "${assignedModel}" đang được sử dụng bởi ${existingLease.email || "người khác"}. Vui lòng đợi hoặc liên hệ Admin để được cấp model khác.` 
+          }), 
+          { status: 423, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      // User already has the lease — heartbeat update
+      await supabase
+        .from("model_leases")
+        .update({ last_active_at: new Date().toISOString() })
+        .eq("id", assignedModel);
+    } else {
+      // Model is available — auto-acquire lease
+      const userProfile = await supabase.auth.getUser(req.headers.get("x-supabase-auth")?.replace("Bearer ", "") || "");
+      await supabase
+        .from("model_leases")
+        .upsert({
+          id: assignedModel,
+          user_id: userId,
+          email: userProfile.data?.user?.email || "unknown",
+          last_active_at: new Date().toISOString(),
+        });
+    }
+
     // Fetch config from app_settings
     const { data: settingsData } = await supabase
       .from("app_settings")

@@ -63,6 +63,10 @@ function classifyError(err: unknown): { retryable: boolean; message: string } {
   if (lower.includes('failed to') || lower.includes('request failed') || lower.includes('unable to')) {
     return { retryable: true, message: `Request thất bại — đang retry... (${msg})` };
   }
+  // Model locked by another user (423 Locked) — NOT retryable
+  if (lower.includes('423') || lower.includes('đang được sử dụng') || lower.includes('locked')) {
+    return { retryable: false, message: msg };
+  }
   // Auth errors (not retryable)
   if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized') || lower.includes('invalid api key') || lower.includes('authentication')) {
     return { retryable: false, message: `Lỗi xác thực API key — kiểm tra lại cấu hình provider. (${msg})` };
