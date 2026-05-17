@@ -323,13 +323,28 @@ async function processJob(
             id: `${novelId}-ch-${i}`,
             novelId,
             title: ch.title || `Chương ${i + 1}`,
-            content: ch.content,
             order: ch.order ?? i,
             createdAt: new Date(),
             updatedAt: new Date(),
         }));
 
+        const scenePuts = results.map((ch, i) => ({
+            id: `${novelId}-sc-${i}`,
+            chapterId: `${novelId}-ch-${i}`,
+            novelId,
+            title: ch.title || `Chương ${i + 1}`,
+            content: ch.content,
+            order: ch.order ?? i,
+            wordCount: ch.content.split(/\s+/).length,
+            version: 1,
+            versionType: "manual" as any,
+            isActive: 1,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        }));
+
         await db.chapters.bulkPut(chapterPuts);
+        await db.scenes.bulkPut(scenePuts);
 
         update({
             status: "done",
