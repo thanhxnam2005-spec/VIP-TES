@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -43,9 +44,11 @@ export default function BulkScraperPage() {
         (j) => ["done", "error", "cancelled"].includes(j.status)
     );
 
+    const [targetUrl, setTargetUrl] = React.useState(DEFAULT_URL);
+
     const handleStart = () => {
-        store.startAutoScan(DEFAULT_URL);
-        toast.success("Bắt đầu quét tự động truyenfull.today — 5 luồng song song");
+        store.startAutoScan(targetUrl);
+        toast.success(`Bắt đầu quét tự động ${new URL(targetUrl).hostname} — 5 luồng song song`);
     };
 
     if (profileLoading) {
@@ -102,13 +105,21 @@ export default function BulkScraperPage() {
                         </div>
                         <div className="flex gap-2">
                             {store.phase === "idle" && (
-                                <Button
-                                    onClick={handleStart}
-                                    className="bg-gradient-to-r from-violet-600 to-purple-600 text-white"
-                                >
-                                    <ZapIcon className="size-4 mr-1.5" />
-                                    Bắt đầu quét
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        value={targetUrl}
+                                        onChange={(e) => setTargetUrl(e.target.value)}
+                                        placeholder="Nhập URL (hoặc wikicv.net...)"
+                                        className="w-56 h-9"
+                                    />
+                                    <Button
+                                        onClick={handleStart}
+                                        className="bg-gradient-to-r from-violet-600 to-purple-600 text-white"
+                                    >
+                                        <ZapIcon className="size-4 mr-1.5" />
+                                        Bắt đầu quét
+                                    </Button>
+                                </div>
                             )}
                             {store.phase === "running" && (
                                 <>
@@ -217,9 +228,9 @@ function JobRow({ job, onCancel, compact }: { job: any; onCancel?: () => void; c
 
     return (
         <div className={`flex items-center gap-3 p-2.5 rounded-lg border ${job.status === "done" ? "border-green-500/20 bg-green-500/5" :
-                job.status === "error" ? "border-red-500/20 bg-red-500/5" :
-                    job.status === "scraping" ? "border-yellow-500/20 bg-yellow-500/5" :
-                        "border-border"
+            job.status === "error" ? "border-red-500/20 bg-red-500/5" :
+                job.status === "scraping" ? "border-yellow-500/20 bg-yellow-500/5" :
+                    "border-border"
             }`}>
             <Icon className={`size-4 shrink-0 ${config.color} ${["scraping", "fetching-info"].includes(job.status) ? "animate-spin" : ""
                 }`} />
