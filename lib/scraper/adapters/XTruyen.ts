@@ -136,7 +136,11 @@ export const XTruyenAdapter: SiteAdapter = {
       container
         .querySelectorAll(".aam-ad-container, .carousel, script, style, .ads, .quangcao")
         .forEach((el) => el.remove());
-      rawText = (container as HTMLElement).innerText;
+
+      let htmlContent = (container as HTMLElement).innerHTML || "";
+      rawText = htmlContent.replace(/<(br|hr)\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|section|article|li)>/gi, '\n')
+        .replace(/<[^>]+>/g, '');
     }
 
     const title =

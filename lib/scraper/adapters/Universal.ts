@@ -22,15 +22,15 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
 
     getNovelInfo(html, url) {
       const doc = new DOMParser().parseFromString(html, "text/html");
-      
+
       // 1. Extract Title
       let title = "Unknown Novel";
       if (config.titleSelector) {
         title = doc.querySelector(config.titleSelector)?.textContent?.trim() || title;
       } else {
-        title = doc.querySelector("h1, h2, .title, #title")?.textContent?.trim() 
-             || doc.querySelector("title")?.textContent?.split("-")[0]?.trim()
-             || title;
+        title = doc.querySelector("h1, h2, .title, #title")?.textContent?.trim()
+          || doc.querySelector("title")?.textContent?.split("-")[0]?.trim()
+          || title;
       }
 
       // 2. Extract Author
@@ -97,15 +97,15 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
 
     getChapterContent(html, _url, contentText) {
       const doc = new DOMParser().parseFromString(html, "text/html");
-      
+
       // 1. Extract Chapter Title
       let title = "";
       if (config.chapterTitleSelector) {
         title = doc.querySelector(config.chapterTitleSelector)?.textContent?.trim() || "";
       } else {
-        title = doc.querySelector("h1, h2, .chapter-title, .chap-title")?.textContent?.trim() 
-             || doc.querySelector("title")?.textContent?.split("-")[0]?.trim()
-             || "";
+        title = doc.querySelector("h1, h2, .chapter-title, .chap-title")?.textContent?.trim()
+          || doc.querySelector("title")?.textContent?.split("-")[0]?.trim()
+          || "";
       }
 
       // 2. Extract Content
@@ -114,7 +114,7 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
         const container = doc.querySelector(config.contentSelector);
         if (container) {
           container.querySelectorAll("script, style, iframe, .ads, .advertisement").forEach(el => el.remove());
-          content = (container as HTMLElement).innerText || "";
+          content = (container as HTMLElement).innerHTML || "";
         }
       } else {
         let bestContainer: Element | null = null;
@@ -134,7 +134,11 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
 
         if (bestContainer) {
           bestContainer.querySelectorAll("script, style, iframe, .ads, .advertisement").forEach(el => el.remove());
-          content = (bestContainer as HTMLElement).innerText || "";
+          content = (bestContainer as HTMLElement).innerHTML || "";
+          // Manually convert structural HTML to newlines because detached innerText strips them
+          content = content.replace(/<(br|hr)\s*\/?>/gi, '\n')
+            .replace(/<\/(p|div|section|article|li)>/gi, '\n')
+            .replace(/<[^>]+>/g, '');
         } else if (contentText) {
           content = contentText;
         }
@@ -154,11 +158,11 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
       for (const link of nextLinks) {
         const text = link.textContent?.toLowerCase() || "";
         if (text.includes("chương sau") || text.includes("chương kế") || text === "tiếp" || text === "next" || text.includes("sau »") || text.includes("tiếp theo")) {
-           const href = link.getAttribute("href");
-           if (href && !href.startsWith("javascript")) {
-               nextChapterUrl = new URL(href, _url).toString();
-               break;
-           }
+          const href = link.getAttribute("href");
+          if (href && !href.startsWith("javascript")) {
+            nextChapterUrl = new URL(href, _url).toString();
+            break;
+          }
         }
       }
 
