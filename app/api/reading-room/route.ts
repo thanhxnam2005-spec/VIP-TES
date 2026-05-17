@@ -239,7 +239,8 @@ export async function POST(req: Request) {
 
             // Ensure they are the uploader or ADMIN
             let isAllowed = false;
-            if (user.email === 'thanhxnamcoder@gmail.com') { // Admin check (fallback)
+            const admins = ["nthanhnam2005@gmail.com", "thanhxnam2005@gmail.com"];
+            if (admins.includes(user.email || '')) {
                 isAllowed = true;
             } else {
                 const index = await getReadingRoomIndex();

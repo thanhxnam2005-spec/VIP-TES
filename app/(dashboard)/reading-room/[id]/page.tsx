@@ -84,7 +84,8 @@ export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ i
         );
     }
 
-    const isUploader = profile && (novel as any).uploaderId && profile.id === (novel as any).uploaderId;
+    const isAdmin = profile && ["nthanhnam2005@gmail.com", "thanhxnam2005@gmail.com"].includes(profile.email?.toLowerCase());
+    const isUploader = profile && (isAdmin || (novel as any).uploaderId === profile.id);
 
     const handleSaveTitle = async () => {
         if (!newTitle.trim() || newTitle === novel.title) {

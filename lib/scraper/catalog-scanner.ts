@@ -76,6 +76,57 @@ export const CATALOG_ADAPTERS: Record<string, CatalogScanAdapter> = {
             return items.length > 0;
         },
     },
+
+    "wikicv.net": {
+        getCatalogUrl(baseUrl, page) {
+            const start = (page - 1) * 50;
+            const urlObj = new URL(baseUrl);
+            if (urlObj.pathname === "/" || urlObj.pathname === "") {
+                urlObj.pathname = "/chuong-moi";
+            }
+            urlObj.searchParams.set("start", start.toString());
+            return urlObj.toString();
+        },
+        parseCatalogPage(html, baseUrl) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            const origin = new URL(baseUrl).origin;
+            const novels: CatalogNovel[] = [];
+
+            const items = doc.querySelectorAll(".book-list .book-item, .similar-list li");
+            items.forEach((item) => {
+                const titleEl = item.querySelector(".book-title");
+                if (!titleEl) return;
+
+                const title = titleEl.textContent?.trim() || "";
+                let url = titleEl.getAttribute("href") || "";
+                if (url && !url.startsWith("http")) {
+                    url = origin + (url.startsWith("/") ? url : "/" + url);
+                }
+                if (!title || !url) return;
+
+                const author = item.querySelector(".book-author")?.textContent?.trim() || "";
+
+                const img = item.querySelector("img");
+                const coverImage = img?.getAttribute("src") || img?.getAttribute("data-src") || "";
+
+                novels.push({ title, url, author, genre: "", coverImage });
+            });
+            return novels;
+        },
+        hasNextPage(html, currentPage) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+            // Check if "disabled" is NOT on the "Next" button, or if there are items
+            // WikiDich pagination uses .pagination li.active + li
+            const activePage = doc.querySelector(".pagination li.active");
+            if (activePage && activePage.nextElementSibling) {
+                return !activePage.nextElementSibling.classList.contains("disabled");
+            }
+            // fallback: just check if items exist
+            return doc.querySelectorAll(".book-title").length > 0;
+        }
+    }
 };
 
 /** Detect which catalog adapter to use based on URL */

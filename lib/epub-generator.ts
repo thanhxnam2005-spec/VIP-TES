@@ -54,9 +54,9 @@ export async function generateEpub(title: string, author: string, coverImageBase
 <head>
   <title>${cleanTitle}</title>
   <style>
-    body { font-family: sans-serif; line-height: 1.6; padding: 1em; }
-    h2 { text-align: center; margin-bottom: 1em; }
-    p { text-indent: 2em; margin-bottom: 0.5em; }
+    body { font-family: sans-serif; line-height: 1.5; padding: 1em; margin: 0; }
+    h2 { text-align: center; margin-bottom: 1em; font-weight: bold; }
+    p { text-indent: 1.5em; margin-top: 0; margin-bottom: 0.5em; padding: 0; }
   </style>
 </head>
 <body>
@@ -79,7 +79,7 @@ export async function generateEpub(title: string, author: string, coverImageBase
   // content.opf
   const cleanBookTitle = title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const cleanAuthor = author.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  
+
   const contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">

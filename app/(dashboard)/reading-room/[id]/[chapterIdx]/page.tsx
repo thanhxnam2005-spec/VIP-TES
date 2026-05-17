@@ -138,8 +138,8 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
                     style={{ fontSize: `${fontSize}px` }}
                 >
                     {displayScenes.map((text, idx) => (
-                        <div key={idx} className="mb-6">{text.split('\n').map((line, i) => (
-                            <p key={i} className="mb-2">{line}</p>
+                        <div key={idx} className="mb-6">{text.split('\n').map(l => l.trim()).filter(l => l.length > 0).map((line, i) => (
+                            <p key={i} className="mb-4">{line}</p>
                         ))}</div>
                     ))}
                 </div>
