@@ -380,7 +380,7 @@ export default function ScraperLibraryPage() {
                         <a href="https://wikicv.net" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-500" /> WikiDich</a>
                       </Button>
                       <Button variant="outline" size="sm" asChild><a href="https://wordpress.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400" /> WordPress Blogs</a></Button>
-                      <Button variant="outline" size="sm" asChild><a href="https://truyenfull.vision" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400" /> TruyenFull.vision</a></Button>
+                      <Button variant="outline" size="sm" asChild><a href="https://truyenfull.today" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400" /> TruyenFull.today</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://uukanshu.cc/quanben/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-500" /> Uukanshu</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.69shuba.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-700" /> 69Shu</a></Button>
                       <Button variant="outline" size="sm" asChild><a href="https://www.cuoceng.com/" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-indigo-600" /> CuoCeng</a></Button>

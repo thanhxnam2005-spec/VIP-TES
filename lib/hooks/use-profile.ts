@@ -116,3 +116,37 @@ export function useProfile() {
 
   return { profile, loading, isVip: isVip(), isAdmin: isUserAdmin(), freeMode, adminModelEnabled, loadProfile: () => loadProfile(true) };
 }
+
+export async function checkIsVipStandalone(): Promise<boolean> {
+  if (_cachedProfile !== null) {
+    if (_cachedFreeMode) return true;
+    const email = _cachedProfile.email?.toLowerCase() || "";
+    if (email === "nthanhnam2005@gmail.com" || email === "thanhxnam2005@gmail.com") return true;
+    if (!_cachedProfile.vip_until) return false;
+    return new Date(_cachedProfile.vip_until) > new Date();
+  }
+
+  // Fetch directly from supabase
+  const supabase = createClient();
+  const [settingsResult, userResult] = await Promise.all([
+    supabase.from("app_settings").select("key, value").eq("key", "free_mode").maybeSingle(),
+    supabase.auth.getUser(),
+  ]);
+
+  if (settingsResult.data?.value === "true") return true;
+
+  const user = userResult.data?.user;
+  if (!user) return false;
+
+  const email = user.email?.toLowerCase() || "";
+  if (email === "nthanhnam2005@gmail.com" || email === "thanhxnam2005@gmail.com") return true;
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("vip_until")
+    .eq("id", user.id)
+    .single();
+
+  if (!data?.vip_until) return false;
+  return new Date(data.vip_until) > new Date();
+}

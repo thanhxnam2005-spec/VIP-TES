@@ -20,6 +20,8 @@ import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { isSceneTranslated } from "@/lib/novel-io";
+import { checkAndIncrementUsage } from "../usage-limits";
+import { checkIsVipStandalone } from "../hooks/use-profile";
 
 // ── Constants ──
 
@@ -139,11 +141,11 @@ async function triggerBackgroundLookahead(novelId: string, chapterId: string, mo
     console.log(`[Lookahead] Kích hoạt quét ngầm tên cho chương tiếp theo...`);
     const scenes = await db.scenes.where("chapterId").equals(chapterId).toArray();
     if (scenes.length === 0) return;
-    scenes.sort((a,b)=>a.order-b.order);
-    
+    scenes.sort((a, b) => a.order - b.order);
+
     const contents = await Promise.all(scenes.map(s => getOriginalContent(s.id)));
     const combinedText = contents.join("\n\n") + "\n\n";
-    const cleaned = cleanGarbageLines(combinedText); 
+    const cleaned = cleanGarbageLines(combinedText);
 
     if (cleaned.trim()) {
       const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -152,7 +154,7 @@ CẤM DỊCH NỘI DUNG. CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH GÌ THÊM.
 
 [VĂN BẢN]
 ${cleaned}`;
-      
+
       const result = await streamText({
         model,
         system: "Bạn là chuyên gia trích xuất thực thể tiếng Trung. Luôn trả về mảng chuỗi dạng JSON. Trích xuất toàn bộ tên riêng, môn phái, địa danh, công pháp xuất hiện trong đoạn văn. KHÔNG trích xuất đại từ nhân xưng, từ thông dụng.",
@@ -164,7 +166,7 @@ ${cleaned}`;
       for await (const chunk of result.textStream) {
         rawText += chunk;
       }
-      
+
       rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
       const match = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
       if (match) {
@@ -183,7 +185,7 @@ ${cleaned}`;
         }
       }
     }
-  } catch(e) {
+  } catch (e) {
     if (e instanceof Error && e.name === "AbortError") return;
     console.warn(`[Lookahead] Lỗi quét ngầm:`, e);
   }
@@ -197,7 +199,7 @@ ${cleaned}`;
 function classifyError(err: unknown): { retryable: boolean; message: string } {
   const msg = err instanceof Error ? err.message : String(err);
   const lower = msg.toLowerCase();
-  
+
   // Mọi lỗi đều cho phép thử lại để đảm bảo không mất chương
   if (lower.includes('401') || lower.includes('403') || lower.includes('unauthorized')) {
     return { retryable: true, message: `Lỗi xác thực/API Key - Thử lại...` };
@@ -289,15 +291,15 @@ function buildPostEditUserPrompt(
   }
 
   let user = "";
-  
+
   if (chineseTitle && dictTitle) {
     user += `Tiêu đề: ${chineseTitle} → ${dictTitle}\n---\n`;
   }
-  
+
   user += `[GỐC]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN]\n${dictTranslation}\n\nHãy phân tích và trả về <names> (nếu tìm thấy từ mới) và <content> (bản dịch TIẾNG VIỆT đã sửa lỗi) theo đúng format.
 ⚠️ LƯU Ý: Nếu có trích xuất <names>, vế trái BẮT BUỘC phải là CHỮ HÁN BẢN GỐC (Tiếng Trung), KHÔNG ĐƯỢC để tiếng Việt ở vế trái!
 ⚠️ NGHIÊM CẤM sử dụng định dạng Markdown (**, ###) bên trong thẻ <content>.`;
-  
+
   return user;
 }
 
@@ -306,7 +308,7 @@ function parseHybridResult(
   includeTitle: boolean,
   promptType: PromptType = "legacy",
   extractDict: boolean = false
-): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> } {
+): { title: string | null; content: string; extractedNames: Array<{ chinese: string, vietnamese: string, dictType: string }> } {
   // If extractDict is on, always parse with extraction regardless of promptType
   if (promptType !== "legacy" && !extractDict) {
     let contentPart = raw.trim();
@@ -318,7 +320,7 @@ function parseHybridResult(
   }
 
   let contentPart = raw;
-  let extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> = [];
+  let extractedNames: Array<{ chinese: string, vietnamese: string, dictType: string }> = [];
 
   const namesMatch = raw.match(/<names>([\s\S]*?)<\/names>/i);
   if (namesMatch) {
@@ -359,7 +361,7 @@ function parseHybridResult(
   if (sepIndex === -1) return { title: null, content: contentPart, extractedNames };
 
   const title = contentPart.slice(0, sepIndex).trim();
-  
+
   // Bảo vệ: Nếu title chứa xuống dòng (nhiều dòng) hoặc quá dài, đó không phải là title thật
   if (title.includes("\n") || title.length > 200) {
     return { title: null, content: contentPart, extractedNames };
@@ -408,13 +410,13 @@ export async function runQtAiTranslate(opts: QtAiTranslateOptions): Promise<void
         let combinedText = "";
         for (const c of firstChapter) {
           const chapSc = await db.scenes.where("chapterId").equals(c.id).toArray();
-          chapSc.sort((a,b)=>a.order-b.order);
+          chapSc.sort((a, b) => a.order - b.order);
           const contents = await Promise.all(chapSc.map(s => getOriginalContent(s.id)));
           combinedText += contents.join("\n\n") + "\n\n";
         }
-        
+
         // Quét toàn bộ nội dung chương để đảm bảo không lọt từ vựng
-        const cleaned = cleanGarbageLines(combinedText); 
+        const cleaned = cleanGarbageLines(combinedText);
 
         if (cleaned.trim()) {
           const prompt = `Trích xuất toàn bộ tên riêng (nhân vật chính/phụ, địa danh, môn phái) từ văn bản tiếng Trung sau. 
@@ -423,7 +425,7 @@ CẤM DỊCH NỘI DUNG. CHỈ TRẢ VỀ JSON, KHÔNG GIẢI THÍCH GÌ THÊM.
 
 [VĂN BẢN]
 ${cleaned}`;
-          
+
           const result = await streamText({
             model,
             system: "Bạn là chuyên gia trích xuất thực thể tiếng Trung. Luôn trả về mảng chuỗi dạng JSON (ví dụ: [\"Tên 1\", \"Tên 2\"]). Trích xuất toàn bộ tên riêng, môn phái, địa danh, công pháp xuất hiện trong đoạn văn. KHÔNG trích xuất đại từ nhân xưng, từ thông dụng.",
@@ -436,7 +438,7 @@ ${cleaned}`;
           for await (const chunk of result.textStream) {
             rawText += chunk;
           }
-          
+
           rawText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
           try {
             // Find JSON array in the text
@@ -450,7 +452,7 @@ ${cleaned}`;
                   category: entry.dictType === "names" ? "nhân vật" : "khác",
                   dictType: entry.dictType || "names"
                 })).filter(e => e.chinese && e.vietnamese && /[\u4e00-\u9fa5]/.test(e.chinese));
-                
+
                 if (entriesWithCategory.length > 0) {
                   await bulkImportNameEntries(novelId, entriesWithCategory, "khác", "skip");
                   nameDict = await getMergedNameDict(novelId);
@@ -458,12 +460,12 @@ ${cleaned}`;
                 }
               }
             }
-          } catch(e) {
+          } catch (e) {
             console.warn("[Cold Start] Parse JSON thất bại:", rawText);
           }
         }
       }
-    } catch(e) {
+    } catch (e) {
       console.error("[Cold Start] Lỗi quét từ điển tự động:", e);
     }
   }
@@ -488,7 +490,7 @@ ${cleaned}`;
 
     // Fetch chapters dynamically
     const allChapters = await db.chapters.where("novelId").equals(novelId).sortBy("order");
-    
+
     let chapterToProcess = null;
     let chapterScenes: Scene[] = [];
 
@@ -553,21 +555,21 @@ ${cleaned}`;
     if (opts.extractDict) {
       let nextChapterToProcess = null;
       if (continuousMode) {
-         const currentIndex = allChapters.findIndex(c => c.id === chapter.id);
-         if (currentIndex !== -1 && currentIndex + 1 < allChapters.length) {
-           nextChapterToProcess = allChapters[currentIndex + 1];
-         }
+        const currentIndex = allChapters.findIndex(c => c.id === chapter.id);
+        if (currentIndex !== -1 && currentIndex + 1 < allChapters.length) {
+          nextChapterToProcess = allChapters[currentIndex + 1];
+        }
       } else {
-         for (const c of allChapters) {
-           if (chapterIdSet.has(c.id) && !processedIds.has(c.id) && c.id !== chapter.id) {
-             nextChapterToProcess = c;
-             break;
-           }
-         }
+        for (const c of allChapters) {
+          if (chapterIdSet.has(c.id) && !processedIds.has(c.id) && c.id !== chapter.id) {
+            nextChapterToProcess = c;
+            break;
+          }
+        }
       }
       if (nextChapterToProcess) {
-         // Fire and forget
-         triggerBackgroundLookahead(novelId, nextChapterToProcess.id, model, signal);
+        // Fire and forget
+        triggerBackgroundLookahead(novelId, nextChapterToProcess.id, model, signal);
       }
     }
 
@@ -587,6 +589,19 @@ ${cleaned}`;
     onChapterStart(chapter.id, chapter.title);
 
     try {
+      const isVip = await checkIsVipStandalone();
+      if (!checkAndIncrementUsage("translate", 1, isVip)) {
+        useBulkTranslateStore.getState().pause(novelId);
+        onChapterError({
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+          message: "Hôm nay bạn đã dùng hết giới hạn 100 lượt dịch chương miễn phí. Hãy nâng cấp VIP để dùng không giới hạn!",
+        });
+        store.setChapterStatus(novelId, chapter.id, "error");
+        store.incrementCompleted(novelId);
+        break;
+      }
+
       const scenes = chapterScenes;
       if (scenes.length === 0) {
         onChapterError({
@@ -752,7 +767,7 @@ ${cleaned}`;
       if (accumulated.trim()) {
         const parsed = parseHybridResult(accumulated, true, opts.promptType, effectiveExtractDict);
         parsedTitle = parsed.title || dictTranslatedTitle;
-        
+
         // Save extracted names to novel dictionary dynamically
         if (parsed.extractedNames.length > 0) {
           try {
@@ -763,7 +778,7 @@ ${cleaned}`;
               else if (entry.dictType === "ngucanh") category = "context mapping";
               return { ...entry, category };
             });
-            
+
             const importResult = await bulkImportNameEntries(
               novelId,
               entriesWithCategory,
@@ -783,7 +798,7 @@ ${cleaned}`;
                 const genreKey = normalizeGenre(rawGenre);
 
                 // Group extracted names by dictType (names, tuvung, ngucanh)
-                const grouped: Record<string, Array<{chinese: string, vietnamese: string}>> = {};
+                const grouped: Record<string, Array<{ chinese: string, vietnamese: string }>> = {};
                 for (const entry of parsed.extractedNames) {
                   const dt = entry.dictType || "names";
                   // Only allow known dict types
@@ -795,7 +810,7 @@ ${cleaned}`;
                   const dictSource = `${genreKey}_${dictType}` as DictSource;
                   await appendToDictSource(dictSource, entries);
                 }
-                
+
                 // Upload to community dictionary table (Google Drive) - chạy ngầm không chờ
 
               } catch (uploadErr) {

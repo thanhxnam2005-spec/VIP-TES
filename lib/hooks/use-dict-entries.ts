@@ -27,11 +27,11 @@ for (const genre of DICT_GENRES) {
     ALL_SOURCES.push(src);
     // Determine the URL for the default files
     if (genre === "core") {
-       if (type === "tuvung") DICT_FILES[src] = `/dict/khac.txt`;
-       else DICT_FILES[src] = `/dict/${type}.txt`;
+      if (type === "tuvung") DICT_FILES[src] = `/dict/khac.txt`;
+      else DICT_FILES[src] = `/dict/${type}.txt`;
     } else {
-       if (type === "tuvung") DICT_FILES[src] = `/dict/${genre}.txt`;
-       else DICT_FILES[src] = `/dict/${genre}_${type}.txt`; 
+      if (type === "tuvung") DICT_FILES[src] = `/dict/${genre}.txt`;
+      else DICT_FILES[src] = `/dict/${genre}_${type}.txt`;
     }
   }
 }
@@ -60,6 +60,105 @@ function parseDictText(
 }
 
 // ─── Fast Loading (parallel fetch, direct to worker) ─────────
+
+/**
+ * Load raw dictionary text strings for direct-to-worker initialization.
+ * Returns Record<source, rawText> — NO parsing happens on main thread.
+ * This is much faster than loadDictDataForWorker which parses on main thread.
+ */
+export async function loadRawDictTexts(
+  onProgress?: (source: string, percent: number) => void,
+): Promise<Record<string, string>> {
+  const t0 = performance.now();
+  const result: Record<string, string> = {};
+
+  // ── Fast path: read from IndexedDB cache ──
+  const cached = await db.dictCache.toArray();
+  if (cached.length > 0) {
+    for (let i = 0; i < cached.length; i++) {
+      result[cached[i].source] = cached[i].rawText;
+      onProgress?.(cached[i].source, Math.round(((i + 1) / cached.length) * 100));
+    }
+
+    // Also load override file
+    try {
+      const resp = await fetch(VIETPHRASE_OVERRIDE_URL, { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) {
+        const overrideText = await resp.text();
+        if (overrideText && result.core_vietphrase) {
+          result.core_vietphrase = result.core_vietphrase + "\n" + overrideText;
+        }
+      }
+    } catch { /* optional */ }
+
+    if (cached.length >= ALL_SOURCES.length) {
+      onProgress?.("all", 100);
+      console.log(`[DictLoader] Raw texts loaded from cache in ${Math.round(performance.now() - t0)}ms`);
+      return result;
+    }
+  }
+
+  // ── Slow path: fetch missing files ──
+  const missingSources = ALL_SOURCES.filter(s => !result[s]);
+  onProgress?.("all", 0);
+
+  const BATCH_SIZE = 20;
+  for (let i = 0; i < missingSources.length; i += BATCH_SIZE) {
+    const batch = missingSources.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (source) => {
+        const url = DICT_FILES[source];
+        try {
+          let resp = await fetch(url, { signal: AbortSignal.timeout(3000) });
+          if (!resp.ok && source === "core_vietphrase") {
+            const [r1, r2] = await Promise.all([
+              fetch("/dict/vietphrase_1.txt", { signal: AbortSignal.timeout(3000) }),
+              fetch("/dict/vietphrase_2.txt", { signal: AbortSignal.timeout(3000) })
+            ]);
+            if (r1.ok && r2.ok) return { source, text: (await r1.text()) + "\n" + (await r2.text()), ok: true };
+            return { source, text: "", ok: false };
+          }
+          if (!resp.ok) return { source, text: "", ok: false };
+          return { source, text: await resp.text(), ok: true };
+        } catch {
+          return { source, text: "", ok: false };
+        }
+      })
+    );
+
+    for (const res of batchResults) {
+      if (res.status === "fulfilled" && res.value.ok) {
+        result[res.value.source] = res.value.text;
+      }
+    }
+
+    onProgress?.("all", Math.round(Math.min(i + batch.length, missingSources.length) / missingSources.length * 100));
+  }
+
+  // Cache raw texts in background
+  void (async () => {
+    try {
+      const toCache = missingSources
+        .filter(s => result[s])
+        .map(s => ({ source: s, rawText: result[s] }));
+      if (toCache.length > 0) await db.dictCache.bulkPut(toCache);
+    } catch { /* non-critical */ }
+  })();
+
+  // Load overrides
+  try {
+    const resp = await fetch(VIETPHRASE_OVERRIDE_URL, { signal: AbortSignal.timeout(3000) });
+    if (resp.ok) {
+      const overrideText = await resp.text();
+      if (overrideText) {
+        result.core_vietphrase = (result.core_vietphrase || "") + "\n" + overrideText;
+      }
+    }
+  } catch { /* optional */ }
+
+  console.log(`[DictLoader] Raw texts loaded in ${Math.round(performance.now() - t0)}ms`);
+  return result;
+}
 
 /** Fetch override file and append entries to vietphrase (overrides take priority via Map.set) */
 async function appendOverrides(
@@ -110,7 +209,7 @@ export async function loadDictDataForWorker(
       onProgress?.(entry.source, pct);
       // Yield SAU MỖI file để UI không bị treo (parseDictText có thể mất trăm ms cho file lớn)
       await new Promise(r => setTimeout(r, 0));
-      
+
       result[entry.source] = parseDictText(entry.rawText);
       counts[entry.source] = result[entry.source].length;
       sourceCounts[entry.source] = counts[entry.source];
@@ -315,7 +414,7 @@ export async function saveDictSource(source: DictSource, text: string): Promise<
 export function normalizeGenre(genre: string): string {
   if (!genre) return "tienhiep";
   const gLower = genre.toLowerCase();
-  
+
   // 1. Check if it's already a valid key
   for (const key of DICT_GENRES) {
     if (gLower === key) return key;
@@ -347,9 +446,9 @@ async function yieldToMain(): Promise<void> {
 export async function appendToDictSource(source: DictSource, entries: { chinese: string; vietnamese: string }[]): Promise<{ added: number, skipped: number }> {
   const cached = await db.dictCache.get(source);
   let currentText = cached?.rawText || "";
-  
+
   const map = new Map<string, Set<string>>();
-  
+
   // 1. Load existing entries into map — chunked to avoid blocking main thread
   const lines = currentText.split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -372,7 +471,7 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
     const entry = entries[i];
     const key = entry.chinese;
     const newMeanings = entry.vietnamese.split("/").map(m => m.trim()).filter(Boolean);
-    
+
     if (!map.has(key)) {
       map.set(key, new Set(newMeanings));
       addedEntriesCount++;
@@ -401,7 +500,7 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
   const updatedText = Array.from(map.entries())
     .map(([k, vs]) => `${k}=${Array.from(vs).join("/")}`)
     .join("\n") + "\n";
-  
+
   // 4. Update dictCache with new text (single fast put)
   await db.dictCache.put({ source, rawText: updatedText });
 
@@ -535,7 +634,7 @@ export async function getDictEntriesForWorker(): Promise<
           result[source] = parseDictText(await resp.text());
           continue;
         }
-      } catch {}
+      } catch { }
     }
     result[source] = [];
   }

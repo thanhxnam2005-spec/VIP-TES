@@ -122,15 +122,13 @@ function combineAudioBuffers(buffers: AudioBuffer[], audioCtx: AudioContext): Au
 export async function concatenateAndExportAudio(
     blobs: Blob[],
     onProgress?: (step: string, progress: number) => void
-): Promise<Blob> {
+): Promise<{ blob: Blob; extension: string }> {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     const audioCtx = new AudioContextClass();
 
     try {
         const buffers: AudioBuffer[] = [];
 
-        // Decode sequentially or in parallel? Parallel might consume too much memory if large chapter.
-        // Let's do sequential to avoid out of memory.
         for (let i = 0; i < blobs.length; i++) {
             if (onProgress) {
                 onProgress("Đang giải mã", Math.round(((i + 1) / blobs.length) * 100));
@@ -144,13 +142,101 @@ export async function concatenateAndExportAudio(
             throw new Error("No audio data to export.");
         }
 
-        if (onProgress) onProgress("Đang lưu...", 100);
+        if (onProgress) onProgress("Đang nén âm thanh...", 90);
 
         const combinedBuffer = combineAudioBuffers(buffers, audioCtx);
-        const finalWavBlob = audioBufferToWav(combinedBuffer);
 
-        return finalWavBlob;
+        // Try compressed OGG/WebM export first (much smaller file size)
+        const compressed = await tryCompressedExport(combinedBuffer, audioCtx, onProgress);
+        if (compressed) {
+            return compressed;
+        }
+
+        // Fallback to WAV if browser doesn't support MediaRecorder with audio codecs
+        if (onProgress) onProgress("Đang lưu WAV...", 100);
+        const finalWavBlob = audioBufferToWav(combinedBuffer);
+        return { blob: finalWavBlob, extension: "wav" };
     } finally {
         audioCtx.close().catch(() => { });
     }
 }
+
+/**
+ * Attempt to export audio as compressed OGG/WebM using MediaRecorder API.
+ * This can reduce file size by ~85-90% compared to WAV.
+ */
+async function tryCompressedExport(
+    audioBuffer: AudioBuffer,
+    audioCtx: AudioContext,
+    onProgress?: (step: string, progress: number) => void
+): Promise<{ blob: Blob; extension: string } | null> {
+    // Check if MediaRecorder supports audio encoding
+    const mimeTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/ogg",
+    ];
+
+    let supportedMime: string | null = null;
+    for (const mime of mimeTypes) {
+        if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) {
+            supportedMime = mime;
+            break;
+        }
+    }
+
+    if (!supportedMime) return null;
+
+    try {
+        // Create an offline rendering context to play the buffer through MediaRecorder
+        const dest = audioCtx.createMediaStreamDestination();
+        const source = audioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(dest);
+
+        const recorder = new MediaRecorder(dest.stream, {
+            mimeType: supportedMime,
+            audioBitsPerSecond: 64000, // 64kbps — good quality, small size
+        });
+
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        return new Promise((resolve) => {
+            recorder.onstop = () => {
+                const ext = supportedMime!.includes("ogg") ? "ogg" : "webm";
+                const blob = new Blob(chunks, { type: supportedMime! });
+                if (onProgress) onProgress("Hoàn tất!", 100);
+                resolve({ blob, extension: ext });
+            };
+
+            recorder.onerror = () => {
+                resolve(null); // Fall back to WAV
+            };
+
+            recorder.start();
+            source.start(0);
+
+            // Stop recording when audio finishes
+            source.onended = () => {
+                setTimeout(() => {
+                    try { recorder.stop(); } catch { }
+                }, 200); // small buffer to capture trailing audio
+            };
+
+            // Safety timeout
+            const maxDuration = (audioBuffer.duration + 1) * 1000;
+            setTimeout(() => {
+                try {
+                    if (recorder.state === "recording") recorder.stop();
+                } catch { }
+            }, maxDuration);
+        });
+    } catch {
+        return null;
+    }
+}
+

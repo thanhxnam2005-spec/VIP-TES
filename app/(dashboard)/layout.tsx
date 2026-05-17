@@ -35,6 +35,7 @@ import Link from "next/link";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useProfile } from "@/lib/hooks/use-profile";
 import { CrownIcon } from "lucide-react";
+import { NavigationProgress } from "@/components/navigation-progress";
 
 
 
@@ -108,7 +109,7 @@ export default function DashboardLayout({
           // Use alert instead of toast since we're leaving
           alert("Tài khoản đã đăng nhập ở thiết bị khác. Bạn đã bị đăng xuất.");
         }
-      } catch {}
+      } catch { }
     }, 30000); // Check every 30 seconds
 
     return () => clearInterval(interval);
@@ -147,6 +148,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider defaultOpen={true}>
+      <NavigationProgress />
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">

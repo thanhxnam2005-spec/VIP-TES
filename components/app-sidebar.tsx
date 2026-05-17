@@ -42,6 +42,7 @@ import {
   LockIcon,
   SparklesIcon,
   BotMessageSquareIcon,
+  UsersIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -58,6 +59,7 @@ import { useTrainingStore } from "@/lib/stores/training-store";
 export const navConfig = [
   { title: "Trang chủ", href: "/dashboard", icon: HomeIcon },
   { title: "Thư viện", href: "/library", icon: LibraryIcon },
+  { title: "Phòng Đọc", href: "/reading-room", icon: GlobeIcon },
   { title: "Nhập sách", href: "/import", icon: UploadIcon },
   { title: "Convert nhanh", href: "/convert", icon: Wand2Icon },
   { title: "Import Truyện", href: "/scraper", icon: GlobeIcon },
@@ -71,9 +73,14 @@ export const navConfig = [
 ] as const;
 
 export const miscNav = [
-  { 
-    title: "Lấy API Key Free", 
-    href: "/settings/api-guide", 
+  {
+    title: "Nhóm Zalo (Báo Lỗi / Support)",
+    href: "https://zalo.me/g/53swywolqkq95enm6t7d",
+    icon: UsersIcon
+  },
+  {
+    title: "Lấy API Key Free",
+    href: "/settings/api-guide",
     icon: ServerIcon
   },
 ] as const;
@@ -157,17 +164,16 @@ export function AppSidebar() {
 
         {profile && (
           <>
-            <div 
+            <div
               className="flex items-center gap-3 px-2 mb-2 pb-2 cursor-pointer hover:bg-accent rounded-md p-1 transition-colors"
               onClick={() => setProfileDialogOpen(true)}
               title="Nhấn để đổi ảnh đại diện"
             >
               <div className="relative">
-                <div className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm shadow-sm overflow-hidden ${
-                  (profile.vip_until && new Date(profile.vip_until) > new Date()) 
-                    ? "ring-2 ring-yellow-400 ring-offset-2 ring-offset-background" 
-                    : ""
-                }`}>
+                <div className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-sm shadow-sm overflow-hidden ${(profile.vip_until && new Date(profile.vip_until) > new Date())
+                  ? "ring-2 ring-yellow-400 ring-offset-2 ring-offset-background"
+                  : ""
+                  }`}>
                   {profile.avatar_url ? (
                     <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
@@ -176,14 +182,13 @@ export function AppSidebar() {
                 </div>
                 {profile.vip_until && new Date(profile.vip_until) > new Date() && (
                   <div className="absolute -top-2 -right-2 bg-yellow-400 text-yellow-900 rounded-full p-0.5 shadow-md border border-yellow-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14" /></svg>
                   </div>
                 )}
               </div>
               <div className="flex flex-col overflow-hidden">
-                <span className={`text-sm font-semibold truncate ${
-                  (profile.vip_until && new Date(profile.vip_until) > new Date()) ? "text-yellow-600 dark:text-yellow-500" : "text-foreground"
-                }`}>
+                <span className={`text-sm font-semibold truncate ${(profile.vip_until && new Date(profile.vip_until) > new Date()) ? "text-yellow-600 dark:text-yellow-500" : "text-foreground"
+                  }`}>
                   {profile.display_name || (isAdmin ? "Admin" : "Người dùng")}
                 </span>
                 <span className="text-[10px] text-muted-foreground truncate">
@@ -192,7 +197,7 @@ export function AppSidebar() {
                     : profile.email}
                 </span>
               </div>
-              <div 
+              <div
                 className="ml-auto flex size-8 items-center justify-center rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-colors shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -203,11 +208,11 @@ export function AppSidebar() {
                 <LogOutIcon className="size-4" />
               </div>
             </div>
-            <UserProfileDialog 
-              profile={profile} 
-              open={profileDialogOpen} 
-              onOpenChange={setProfileDialogOpen} 
-              onProfileUpdated={loadProfile} 
+            <UserProfileDialog
+              profile={profile}
+              open={profileDialogOpen}
+              onOpenChange={setProfileDialogOpen}
+              onProfileUpdated={loadProfile}
             />
           </>
         )}
@@ -221,13 +226,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {sidebarNav.map((item) => {
-                const isRestricted = 
-                  item.href.startsWith("/import") || 
-                  item.href.startsWith("/convert") || 
-                  item.href.startsWith("/scraper") || 
-                  item.href.startsWith("/settings") ||
-                  item.href === "/admin";
-                
+                const isRestricted = item.href === "/admin";
+
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
@@ -384,9 +384,9 @@ function DictLoadingFooter() {
               {phase === "loading" ? `${loadingPercent}%` : null}
             </span>
           </div>
-          <Button 
-            variant="ghost" 
-            size="xs" 
+          <Button
+            variant="ghost"
+            size="xs"
             className="w-full h-6 text-[9px] uppercase font-bold text-muted-foreground hover:text-primary"
             onClick={() => {
               // Force ready state
@@ -402,11 +402,11 @@ function DictLoadingFooter() {
           >
             Tải lại hoặc Đợi thêm...
           </Button>
-          <button 
+          <button
             className="w-full text-[8px] text-muted-foreground hover:underline uppercase tracking-tighter"
             onClick={() => {
-               // The most reliable way to skip is to just tell the engine it's ready
-               window.dispatchEvent(new CustomEvent('force-dict-ready'));
+              // The most reliable way to skip is to just tell the engine it's ready
+              window.dispatchEvent(new CustomEvent('force-dict-ready'));
             }}
           >
             Nhấn vào đây để vào luôn (Bỏ qua tải)

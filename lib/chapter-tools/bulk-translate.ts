@@ -16,6 +16,8 @@ import { cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore, type TranslateChapterResult, type TranslateError } from "@/lib/stores/bulk-translate";
 import { scanNewNames, autoAddNames } from "./name-scanner";
 import { isSceneTranslated } from "@/lib/novel-io";
+import { checkAndIncrementUsage } from "../usage-limits";
+import { checkIsVipStandalone } from "../hooks/use-profile";
 
 // ── Retry & Error Handling ──
 
@@ -232,8 +234,8 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
 
   // Use novel's scanned custom prompt (genre-aware) > manual override > settings default
   const novel = await db.novels.get(novelId);
-  const basePrompt = novel?.customTranslatePrompt?.trim() 
-    || customPrompt?.trim() 
+  const basePrompt = novel?.customTranslatePrompt?.trim()
+    || customPrompt?.trim()
     || resolveChapterToolPrompts(settings).translate;
 
   // Fetch name dictionary once — use a mutable Map so new names discovered
@@ -248,6 +250,17 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
     onChapterStart(chapter.id, chapter.title);
 
     try {
+      const isVip = await checkIsVipStandalone();
+      if (!checkAndIncrementUsage("translate", 1, isVip)) {
+        useBulkTranslateStore.getState().pause(novelId);
+        onChapterError({
+          chapterId: chapter.id,
+          chapterTitle: chapter.title,
+          message: "Hôm nay bạn đã dùng hết giới hạn 100 lượt dịch chương miễn phí. Hãy nâng cấp VIP để dùng không giới hạn!",
+        });
+        return;
+      }
+
       const scenes = scenesByChapter.get(chapter.id) ?? [];
 
       if (scenes.length === 0) {

@@ -18,9 +18,9 @@ async function getAccessToken(): Promise<string> {
     const ctx = getCloudflareContext();
     if (ctx && ctx.env) {
       envKeys = Object.keys(ctx.env).join(", ");
-      clientId = clientId || (ctx.env.GOOGLE_CLIENT_ID as string) || '';
-      clientSecret = clientSecret || (ctx.env.GOOGLE_CLIENT_SECRET as string) || '';
-      refreshToken = refreshToken || (ctx.env.GOOGLE_REFRESH_TOKEN as string) || '';
+      clientId = clientId || ((ctx.env as any).GOOGLE_CLIENT_ID as string) || '';
+      clientSecret = clientSecret || ((ctx.env as any).GOOGLE_CLIENT_SECRET as string) || '';
+      refreshToken = refreshToken || ((ctx.env as any).GOOGLE_REFRESH_TOKEN as string) || '';
     }
   } catch (err) {
     console.warn("getCloudflareContext failed or not available:", err);
@@ -61,6 +61,7 @@ const NOVEL_ROOT_FOLDER_NAME = 'Truyen_nguoi_dung';
 const TXT_ROOT_FOLDER_NAME = 'Kho_van_ban_TXT';
 const COMMUNITY_DICT_FOLDER_NAME = 'Tu_dien_cong_dong';
 const BOT_QUEUE_FOLDER_NAME = 'Bot_Queue';
+const READING_ROOM_FOLDER_NAME = 'Phong_doc_cong_dong';
 
 const folderCache: Record<string, Promise<string>> = {};
 
@@ -70,7 +71,7 @@ async function fetchDriveAPI(url: string, options: RequestInit = {}) {
   if (!headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  
+
   const res = await fetch(url, { cache: 'no-store', ...options, headers });
   if (!res.ok) {
     const text = await res.text();
@@ -88,7 +89,7 @@ async function fetchDriveAPI(url: string, options: RequestInit = {}) {
 /** Find or create a folder by name under a parent (Race-condition safe) */
 async function findOrCreateFolder(name: string, parentId?: string): Promise<string> {
   const cacheKey = `${parentId || 'root'}_${name}`;
-  
+
   if (cacheKey in folderCache) {
     return folderCache[cacheKey];
   }
@@ -97,7 +98,7 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
     const safeName = name.replace(/'/g, "\\'");
     const q = encodeURIComponent(`name = '${safeName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false${parentId ? ` and '${parentId}' in parents` : ''}`);
     const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&spaces=drive`;
-    
+
     // 1. Thử tìm xem đã có chưa
     const searchRes = await fetchDriveAPI(searchUrl);
     if (searchRes.files && searchRes.files.length > 0) {
@@ -128,7 +129,7 @@ async function findOrCreateFolder(name: string, parentId?: string): Promise<stri
 
   folderCache[cacheKey] = createPromise;
   setTimeout(() => { delete folderCache[cacheKey]; }, 60000);
-  
+
   return createPromise;
 }
 
@@ -183,7 +184,7 @@ export async function uploadToAdminDrive(userIdentifier: string, novelName: stri
   const userFolderId = await getUserNovelFolder(userIdentifier);
   const filename = `${novelName}.json`;
   const safeName = filename.replace(/'/g, "\\'");
-  
+
   const q = encodeURIComponent(`name = '${safeName}' and '${userFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
@@ -206,10 +207,10 @@ export async function uploadTxtToAdminDrive(type: 'text_trung' | 'text_dich', no
   const folderId = await getTxtFolder(type);
   const filename = `${novelName}.txt`;
   const safeName = filename.replace(/'/g, "\\'");
-  
+
   const q = encodeURIComponent(`name = '${safeName}' and '${folderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,size)`);
-  
+
   // Tính size (tương đối cho UTF-8 bằng encoder)
   const newSize = new TextEncoder().encode(content).length;
 
@@ -232,7 +233,7 @@ export async function listTxtFromAdminDrive(type: 'text_trung' | 'text_dich') {
   const folderId = await getTxtFolder(type);
   const q = encodeURIComponent(`'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`);
   const res = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)`);
-  
+
   const files = res.files || [];
   return files.map((f: any) => ({
     id: f.id,
@@ -246,7 +247,7 @@ export async function downloadFromAdminDrive(userIdentifier: string, novelName: 
   const userFolderId = await getUserNovelFolder(userIdentifier);
   const filename = `${novelName}.json`;
   const safeName = filename.replace(/'/g, "\\'");
-  
+
   const q = encodeURIComponent(`name = '${safeName}' and '${userFolderId}' in parents and trashed = false`);
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
 
@@ -265,7 +266,7 @@ export async function downloadAllUserNovelsFromAdminDrive(userIdentifier: string
   if (!listRes.files || listRes.files.length === 0) return [];
 
   const results: { name: string, content: string }[] = [];
-  
+
   const CONCURRENCY = 5;
   for (let i = 0; i < listRes.files.length; i += CONCURRENCY) {
     const batch = listRes.files.slice(i, i + CONCURRENCY);
@@ -274,7 +275,7 @@ export async function downloadAllUserNovelsFromAdminDrive(userIdentifier: string
         const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`);
         let name = file.name;
         if (name.endsWith('.json')) name = name.slice(0, -5);
-        
+
         const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
         results.push({ name, content: contentStr });
       } catch (err) {
@@ -354,7 +355,7 @@ export async function downloadAllDictsFromAdminDrive(): Promise<Record<string, s
   if (files.length === 0) return {};
 
   const results: Record<string, string> = {};
-  
+
   // Concurrency limit to prevent rate limits
   const CONCURRENCY = 5;
   for (let i = 0; i < files.length; i += CONCURRENCY) {
@@ -401,7 +402,7 @@ export async function listCommunityDictsFromAdminDrive() {
   for (const genreFolder of genres) {
     const q2 = encodeURIComponent(`'${genreFolder.id}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`);
     const fileRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q2}&fields=files(id,name,createdTime)&orderBy=createdTime desc`);
-    
+
     const files = fileRes.files || [];
     for (const file of files) {
       results.push({
@@ -450,3 +451,243 @@ export async function downloadBotQueueFile(fileId: string) {
   const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   return typeof content === 'string' ? content : JSON.stringify(content);
 }
+
+// ─── Reading Room (Phòng Đọc) Functions ────────────────────────
+
+export interface ReadingRoomMetadata {
+  id: string; // novel ID or unique string
+  title: string;
+  author: string;
+  description: string;
+  coverImage: string;
+  chapterCount: number;
+  uploaderName: string;
+  uploaderId?: string;
+  genres?: string[]; // Bổ sung thể loại
+  updatedAt: number;
+}
+
+export async function getReadingRoomIndex(): Promise<ReadingRoomMetadata[]> {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  const safeName = 'index.json';
+  const q = encodeURIComponent(`name = '${safeName}' and '${readingRoomId}' in parents and trashed = false`);
+  const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
+
+  if (!listRes.files || listRes.files.length === 0) return [];
+  const fileId = listRes.files[0].id;
+
+  try {
+    const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    const str = typeof content === 'string' ? content : JSON.stringify(content);
+    return JSON.parse(str) as ReadingRoomMetadata[];
+  } catch (err) {
+    console.error("Lỗi khi parse file index.json của Phòng Đọc:", err);
+    return [];
+  }
+}
+
+export async function uploadToReadingRoom(
+  novelId: string,
+  metadata: ReadingRoomMetadata,
+  fullData: string
+) {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  // 1. Upload Data File
+  const dataFilename = `${novelId}_data.json`;
+  const safeDataName = dataFilename.replace(/'/g, "\\'");
+  const qData = encodeURIComponent(`name = '${safeDataName}' and '${readingRoomId}' in parents and trashed = false`);
+  const listDataRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qData}&fields=files(id)`);
+
+  if (listDataRes.files && listDataRes.files.length > 0) {
+    await uploadMultipart(dataFilename, fullData, 'application/json', undefined, listDataRes.files[0].id);
+  } else {
+    await uploadMultipart(dataFilename, fullData, 'application/json', readingRoomId);
+  }
+
+  // 2. Update Index File
+  const indexFilename = 'index.json';
+  const qIndex = encodeURIComponent(`name = '${indexFilename}' and '${readingRoomId}' in parents and trashed = false`);
+  const listIndexRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qIndex}&fields=files(id)`);
+
+  let currentList: ReadingRoomMetadata[] = [];
+  let indexFileId = undefined;
+
+  if (listIndexRes.files && listIndexRes.files.length > 0) {
+    indexFileId = listIndexRes.files[0].id;
+    try {
+      const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`);
+      const str = typeof content === 'string' ? content : JSON.stringify(content);
+      currentList = JSON.parse(str);
+    } catch {
+      currentList = [];
+    }
+  }
+
+  const existingIndex = currentList.findIndex(x => x.id === novelId);
+  if (existingIndex >= 0) {
+    currentList[existingIndex] = metadata;
+  } else {
+    currentList.push(metadata);
+  }
+
+  // Sort by update time desc
+  currentList.sort((a, b) => b.updatedAt - a.updatedAt);
+  const indexStr = JSON.stringify(currentList, null, 2);
+
+  if (indexFileId) {
+    await uploadMultipart(indexFilename, indexStr, 'application/json', undefined, indexFileId);
+  } else {
+    await uploadMultipart(indexFilename, indexStr, 'application/json', readingRoomId);
+  }
+}
+
+export async function editMetadataInReadingRoom(novelId: string, newTitle: string, newDescription: string | undefined, userId: string) {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  // 1. Check and Update Index File
+  const indexFilename = 'index.json';
+  const qIndex = encodeURIComponent(`name = '${indexFilename}' and '${readingRoomId}' in parents and trashed = false`);
+  const listIndexRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qIndex}&fields=files(id)`);
+
+  if (!listIndexRes.files || listIndexRes.files.length === 0) {
+    throw new Error("Index file not found");
+  }
+
+  const indexFileId = listIndexRes.files[0].id;
+  const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${indexFileId}?alt=media`);
+  const str = typeof content === 'string' ? content : JSON.stringify(content);
+  const currentList: ReadingRoomMetadata[] = JSON.parse(str);
+
+  const novelIndex = currentList.findIndex(x => x.id === novelId);
+  if (novelIndex < 0) throw new Error("Novel not found in Room");
+
+  const novel = currentList[novelIndex];
+  if (novel.uploaderId !== userId && novel.uploaderId) {
+    // If it has uploaderId and doesn't match, block it.
+    throw new Error("Unauthorized: Bạn không phải người đăng gốc của bộ truyện này.");
+  }
+
+  if (newTitle) novel.title = newTitle;
+  if (newDescription !== undefined) novel.description = newDescription;
+  novel.updatedAt = Date.now();
+
+  const indexStr = JSON.stringify(currentList, null, 2);
+  await uploadMultipart(indexFilename, indexStr, 'application/json', undefined, indexFileId);
+
+  // 2. Update Data File
+  const dataFilename = `${novelId}_data.json`;
+  const safeDataName = dataFilename.replace(/'/g, "\\'");
+  const qData = encodeURIComponent(`name = '${safeDataName}' and '${readingRoomId}' in parents and trashed = false`);
+  const listDataRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qData}&fields=files(id)`);
+
+  if (listDataRes.files && listDataRes.files.length > 0) {
+    const dataId = listDataRes.files[0].id;
+    const dataContent = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${dataId}?alt=media`);
+    const dataStr = typeof dataContent === 'string' ? dataContent : JSON.stringify(dataContent);
+    const parsedData = JSON.parse(dataStr);
+
+    if (newTitle) {
+      if (parsedData.title !== undefined) parsedData.title = newTitle;
+      if (parsedData.novel?.title !== undefined) parsedData.novel.title = newTitle;
+    }
+    if (newDescription !== undefined) {
+      if (parsedData.description !== undefined) parsedData.description = newDescription;
+      if (parsedData.novel?.description !== undefined) parsedData.novel.description = newDescription;
+    }
+
+    await uploadMultipart(dataFilename, JSON.stringify(parsedData), 'application/json', undefined, dataId);
+  }
+}
+
+export async function toggleChapterLockInReadingRoom(novelId: string, chapterIdx: number, userId: string) {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  // Check Uploader ID via Index
+  const indexFilename = 'index.json';
+  const qIndex = encodeURIComponent(`name = '${indexFilename}' and '${readingRoomId}' in parents and trashed = false`);
+  const listIndexRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qIndex}&fields=files(id)`);
+  if (!listIndexRes.files || listIndexRes.files.length === 0) throw new Error("Index file not found");
+
+  const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${listIndexRes.files[0].id}?alt=media`);
+  const str = typeof content === 'string' ? content : JSON.stringify(content);
+  const currentList: ReadingRoomMetadata[] = JSON.parse(str);
+
+  const novelIndex = currentList.findIndex(x => x.id === novelId);
+  if (novelIndex < 0) throw new Error("Novel not found in Room");
+  const novel = currentList[novelIndex];
+  if (novel.uploaderId !== userId && novel.uploaderId) {
+    throw new Error("Unauthorized: Bạn không phải tác giả của bộ truyện này.");
+  }
+
+  // Update Data File
+  const dataFilename = `${novelId}_data.json`;
+  const safeDataName = dataFilename.replace(/'/g, "\\'");
+  const qData = encodeURIComponent(`name = '${safeDataName}' and '${readingRoomId}' in parents and trashed = false`);
+  const listDataRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qData}&fields=files(id)`);
+  if (!listDataRes.files || listDataRes.files.length === 0) throw new Error("Data file not found");
+
+  const dataId = listDataRes.files[0].id;
+  const dataContent = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${dataId}?alt=media`);
+  const dataStr = typeof dataContent === 'string' ? dataContent : JSON.stringify(dataContent);
+  const parsedData = JSON.parse(dataStr);
+
+  const sortedChapters = parsedData.chapters?.sort((a: any, b: any) => a.order - b.order) || [];
+  if (chapterIdx < 0 || chapterIdx >= sortedChapters.length) throw new Error("Chapter index OOB");
+
+  const ch = sortedChapters[chapterIdx];
+  ch.isLocked = !ch.isLocked;
+
+  await uploadMultipart(dataFilename, JSON.stringify(parsedData), 'application/json', undefined, dataId);
+  return ch.isLocked;
+}
+
+export async function downloadNovelFromReadingRoom(novelId: string): Promise<string | null> {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  const dataFilename = `${novelId}_data.json`;
+  const safeDataName = dataFilename.replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name = '${safeDataName}' and '${readingRoomId}' in parents and trashed = false`);
+  const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
+
+  if (!listRes.files || listRes.files.length === 0) return null;
+
+  const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${listRes.files[0].id}?alt=media`);
+  return typeof content === 'string' ? content : JSON.stringify(content);
+}
+
+export async function deleteFromReadingRoom(novelId: string) {
+  const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
+  const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
+
+  // 1. Delete data file
+  const dataFilename = `${novelId}_data.json`;
+  const safeDataName = dataFilename.replace(/'/g, "\\'");
+  const qData = encodeURIComponent(`name = '${safeDataName}' and '${readingRoomId}' in parents and trashed = false`);
+  const dataRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qData}&fields=files(id)`);
+  if (dataRes.files && dataRes.files.length > 0) {
+    await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${dataRes.files[0].id}`, { method: 'DELETE' }).catch(e => console.error(e));
+  }
+
+  // 2. Remove from index
+  const safeName = 'index.json';
+  const qIndex = encodeURIComponent(`name = '${safeName}' and '${readingRoomId}' in parents and trashed = false`);
+  const indexRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${qIndex}&fields=files(id)`);
+
+  if (indexRes.files && indexRes.files.length > 0) {
+    const fileId = indexRes.files[0].id;
+    const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+    const str = typeof content === 'string' ? content : JSON.stringify(content);
+    let indexData = JSON.parse(str) as ReadingRoomMetadata[];
+
+    indexData = indexData.filter(n => n.id !== novelId);
+    await uploadMultipart('index.json', JSON.stringify(indexData), 'application/json', undefined, fileId);
+  }
+}
+

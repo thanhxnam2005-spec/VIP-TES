@@ -12,9 +12,9 @@ import { extensionFetch } from "../extension-bridge";
  * - Each page has ~50 chapters (2 columns × 25)
  */
 export const TruyenFullVisionAdapter: SiteAdapter = {
-    name: "TruyenFull.vision",
+    name: "TruyenFull.today",
     group: "vn",
-    urlPattern: /truyenfull\.vision/,
+    urlPattern: /truyenfull\.(vision|today)/,
 
     async getNovelInfo(html: string, url: string, onProgress?: (count: number) => void): Promise<NovelInfo> {
         const parser = new DOMParser();

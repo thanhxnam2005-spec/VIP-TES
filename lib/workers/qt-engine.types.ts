@@ -98,43 +98,47 @@ export const DEFAULT_CONVERT_OPTIONS: ConvertOptions = {
 // Main → Worker
 export type QTWorkerRequest =
   | {
-      type: "init";
-      dictData: Record<string, DictPair[]>;
-    }
+    type: "init";
+    dictData: Record<string, DictPair[]>;
+  }
   | {
-      type: "convert";
-      id: string;
-      text: string;
-      novelNames?: DictPair[];
-      globalNames?: DictPair[];
-      options?: ConvertOptions;
-    }
+    type: "init-raw";
+    rawTexts: Record<string, string>;
+  }
   | {
-      type: "convert-batch";
-      id: string;
-      items: Array<{ itemId: string; text: string }>;
-      novelNames?: DictPair[];
-      globalNames?: DictPair[];
-      options?: ConvertOptions;
-    };
+    type: "convert";
+    id: string;
+    text: string;
+    novelNames?: DictPair[];
+    globalNames?: DictPair[];
+    options?: ConvertOptions;
+  }
+  | {
+    type: "convert-batch";
+    id: string;
+    items: Array<{ itemId: string; text: string }>;
+    novelNames?: DictPair[];
+    globalNames?: DictPair[];
+    options?: ConvertOptions;
+  };
 
 // Worker → Main
 export type QTWorkerResponse =
   | { type: "ready" }
   | {
-      type: "result";
-      id: string;
-      segments: ConvertSegment[];
-      plainText: string;
-      detectedNames?: DictPair[];
-    }
+    type: "result";
+    id: string;
+    segments: ConvertSegment[];
+    plainText: string;
+    detectedNames?: DictPair[];
+  }
   | {
-      type: "batch-progress";
-      id: string;
-      itemId: string;
-      segments: ConvertSegment[];
-      plainText: string;
-      detectedNames?: DictPair[];
-    }
+    type: "batch-progress";
+    id: string;
+    itemId: string;
+    segments: ConvertSegment[];
+    plainText: string;
+    detectedNames?: DictPair[];
+  }
   | { type: "batch-complete"; id: string }
   | { type: "error"; id: string; message: string };

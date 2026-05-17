@@ -148,6 +148,8 @@ export default function LibraryPage() {
   const [deleteTarget, setDeleteTarget] = useState<Novel | null>(null);
   const [editTarget, setEditTarget] = useState<Novel | null>(null);
   const [translateTarget, setTranslateTarget] = useState<Novel | null>(null);
+  const [uploadReadingRoomTarget, setUploadReadingRoomTarget] = useState<Novel | null>(null);
+  const [readingRoomGenres, setReadingRoomGenres] = useState<string>("");
 
   const providers = useApiInferenceProviders();
   const [selectedProvider, setSelectedProvider] = useState<string>("");
@@ -229,6 +231,47 @@ export default function LibraryPage() {
       await importNovel(file);
       toast.success(`Đã nhập "${novel.title}" thành công!`, { id: toastId });
       setTimeout(() => window.location.reload(), 1000);
+    } catch (err: any) {
+      toast.error(`Lỗi: ${err.message}`, { id: toastId });
+    }
+  };
+
+  const handleOpenReadingRoomUpload = (novel: Novel) => {
+    setUploadReadingRoomTarget(novel);
+    setReadingRoomGenres(novel.genres?.join(", ") || "");
+  };
+
+  const handleConfirmReadingRoomUpload = async () => {
+    if (!uploadReadingRoomTarget) return;
+    const novel = uploadReadingRoomTarget;
+
+    // Save genres first if changed
+    const newGenres = readingRoomGenres.split(",").map(s => s.trim()).filter(Boolean);
+    const existingGenresStr = novel.genres?.join(",") || "";
+    const newGenresStr = newGenres.join(",");
+
+    if (newGenresStr !== existingGenresStr) {
+      try {
+        await db.novels.update(novel.id, { genres: newGenres });
+        novel.genres = newGenres;
+      } catch (e) {
+        console.error("Failed to update genres locally", e);
+      }
+    }
+
+    setUploadReadingRoomTarget(null);
+
+    const toastId = toast.loading(`Đang đăng "${novel.title}" lên Phòng Đọc...`);
+    try {
+      const data = await exportNovel(novel.id, { includeVersions: false });
+      const json = JSON.stringify(data);
+
+      const res = await fetch(`/api/reading-room?action=upload&novelId=${novel.id}`, {
+        method: 'POST',
+        body: json
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success(`Đã đăng "${novel.title}" lên Phòng Đọc thành công! Mọi người đã có thể vào đọc.`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }
@@ -901,6 +944,7 @@ export default function LibraryPage() {
                         onTranslate={setTranslateTarget}
                         onCloudUpload={handleUploadNovelToCloud}
                         onCloudDownload={handleDownloadNovelFromCloud}
+                        onReadingRoomUpload={handleOpenReadingRoomUpload}
                       />
                     </div>
                   </div>
@@ -998,6 +1042,7 @@ export default function LibraryPage() {
                         onTranslate={setTranslateTarget}
                         onCloudUpload={handleUploadNovelToCloud}
                         onCloudDownload={handleDownloadNovelFromCloud}
+                        onReadingRoomUpload={handleOpenReadingRoomUpload}
                       />
                     </div>
                   </CardContent>
@@ -1099,6 +1144,34 @@ export default function LibraryPage() {
         />
       )}
 
+      {uploadReadingRoomTarget && (
+        <Dialog open={!!uploadReadingRoomTarget} onOpenChange={(open) => !open && setUploadReadingRoomTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Đăng truyện lên Phòng Đọc</DialogTitle>
+              <DialogDescription>
+                Bạn sắp chia sẻ <strong>{uploadReadingRoomTarget.title}</strong> lên phòng đọc công khai. Hãy thêm các Thể loại (Genre) để mọi người dễ dàng tìm kiếm bộ truyện này nhé!
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Thể loại (ngăn cách bằng dấu phẩy)</label>
+                <Input
+                  placeholder="Tiên Hiệp, Huyền Huyễn, Xuyên Không..."
+                  value={readingRoomGenres}
+                  onChange={e => setReadingRoomGenres(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUploadReadingRoomTarget(null)}>Hủy</Button>
+              <Button onClick={handleConfirmReadingRoomUpload}>Xác nhận & Đăng tải</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Translate Title Dialog */}
       <Dialog open={!!translateTarget} onOpenChange={(open) => !open && setTranslateTarget(null)}>
         <DialogContent>
@@ -1175,6 +1248,7 @@ function NovelActions({
   onTranslate,
   onCloudUpload,
   onCloudDownload,
+  onReadingRoomUpload,
 }: {
   novel: Novel;
   onEdit: (novel: Novel) => void;
@@ -1184,6 +1258,7 @@ function NovelActions({
   onTranslate: (novel: Novel) => void;
   onCloudUpload: (novel: Novel) => void;
   onCloudDownload: (novel: Novel) => void;
+  onReadingRoomUpload: (novel: Novel) => void;
 }) {
   return (
     <div
@@ -1228,6 +1303,19 @@ function NovelActions({
           </Button>
         </TooltipTrigger>
         <TooltipContent>Lưu lên Tổng kho</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-purple-500 hover:text-purple-600 hover:bg-purple-500/10"
+            onClick={() => onReadingRoomUpload(novel)}
+          >
+            <BookOpenIcon className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Đăng lên Phòng Đọc</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>

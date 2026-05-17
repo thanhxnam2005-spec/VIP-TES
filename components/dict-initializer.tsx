@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { loadDictDataForWorker } from "@/lib/hooks/use-dict-entries";
+import { loadRawDictTexts } from "@/lib/hooks/use-dict-entries";
 import {
-  initQTEngineWithData,
+  initQTEngineWithRawData,
   setDictLoadProgress,
   setDictLoadPhase,
   setDictLoadError,
@@ -17,16 +17,16 @@ export function DictInitializer() {
       try {
         setDictLoadPhase("loading");
 
-        // Load dict data (from cache or parallel fetch — no IDB roundtrip)
-        const dictData = await loadDictDataForWorker((source, percent) => {
+        // Load raw text from IDB cache (no parsing on main thread!)
+        const rawTexts = await loadRawDictTexts((source, percent) => {
           if (!cancelled) setDictLoadProgress(source, percent);
         });
 
         if (cancelled) return;
 
-        // Init worker directly with the data we already have
+        // Send raw text to worker — parsing happens off main thread
         setDictLoadPhase("initializing");
-        await initQTEngineWithData(dictData);
+        await initQTEngineWithRawData(rawTexts);
       } catch (err) {
         console.error("Dict initialization failed:", err);
         if (!cancelled) {
@@ -44,3 +44,4 @@ export function DictInitializer() {
 
   return null;
 }
+

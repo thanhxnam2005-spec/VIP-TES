@@ -197,6 +197,40 @@ export async function initQTEngine(): Promise<void> {
   return initPromise;
 }
 
+/** Internal: create worker and send raw text for in-worker parsing */
+async function startWorkerRaw(
+  rawTexts: Record<string, string>,
+): Promise<void> {
+  worker = new Worker(
+    new URL("@/lib/workers/qt-engine.worker.ts", import.meta.url),
+    { type: "module" },
+  );
+  worker.onmessage = handleMessage;
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error("Worker init timeout")),
+      30_000,
+    );
+
+    const origHandler = worker!.onmessage;
+    worker!.onmessage = (event: MessageEvent<QTWorkerResponse>) => {
+      if (event.data.type === "ready") {
+        clearTimeout(timeout);
+        isReady = true;
+        useQTEngineStore.getState().setReady(true);
+        worker!.onmessage = origHandler;
+        resolve();
+      } else if (event.data.type === "error") {
+        clearTimeout(timeout);
+        reject(new Error(event.data.message));
+      }
+    };
+
+    send({ type: "init-raw", rawTexts });
+  });
+}
+
 /** Init engine with pre-loaded dict data (fast path — skips IDB read) */
 export async function initQTEngineWithData(
   dictData: Record<string, Array<{ chinese: string; vietnamese: string }>>,
@@ -205,6 +239,17 @@ export async function initQTEngineWithData(
   if (initPromise) return initPromise;
 
   initPromise = startWorker(dictData);
+  return initPromise;
+}
+
+/** Init engine with raw text strings (fastest path — parsing happens inside the Worker) */
+export async function initQTEngineWithRawData(
+  rawTexts: Record<string, string>,
+): Promise<void> {
+  if (isReady) return;
+  if (initPromise) return initPromise;
+
+  initPromise = startWorkerRaw(rawTexts);
   return initPromise;
 }
 

@@ -127,7 +127,7 @@ function ensureActiveDicts(activeSources: string[] = []) {
 
   // Rebuild the maps combining "core" and "activeSources"
   const genresToLoad = ["core", ...activeSources];
-  
+
   namesMap = new Map<string, string>();
   vietPhraseMap = new Map<string, string>();
   coreVietPhraseMap = new Map<string, string>();
@@ -136,7 +136,7 @@ function ensureActiveDicts(activeSources: string[] = []) {
   genreDictMaps = new Map();
   luatNhanPatternsMap = new Map();
   luatNhanPrefixIndexMap = new Map();
-  
+
   for (const genre of genresToLoad) {
     for (const e of rawDictData[`${genre}_names`] ?? [])
       namesMap.set(e.chinese, capitalizeWords(pickPrimary(e.vietnamese)));
@@ -285,7 +285,7 @@ function detectNames(
       if (existingNames.has(candidate)) continue;
       // Skip if user has rejected this name
       if (rejected.has(candidate)) continue;
-      
+
       // Validation with Jieba: if Jieba says this candidate is a common word (not a name),
       // we only accept it if it's also flagged as nr/ns by Jieba or has high frequency.
       if (tokens.length > 0) {
@@ -578,19 +578,19 @@ function convert(
 
   const novelNamesMap = novelNames?.length
     ? new Map(
-        novelNames.map((e) => [
-          sify(e.chinese) || e.chinese,
-          capitalizeWords(pickPrimary(e.vietnamese)),
-        ]),
-      )
+      novelNames.map((e) => [
+        sify(e.chinese) || e.chinese,
+        capitalizeWords(pickPrimary(e.vietnamese)),
+      ]),
+    )
     : null;
   const globalNamesMap = globalNames?.length
     ? new Map(
-        globalNames.map((e) => [
-          sify(e.chinese) || e.chinese,
-          capitalizeWords(pickPrimary(e.vietnamese)),
-        ]),
-      )
+      globalNames.map((e) => [
+        sify(e.chinese) || e.chinese,
+        capitalizeWords(pickPrimary(e.vietnamese)),
+      ]),
+    )
     : null;
 
   let filteredVP = vietPhraseMap;
@@ -600,7 +600,7 @@ function convert(
   if (o.vpLengthPriority !== "none") {
     const minLen =
       o.vpLengthPriority === "vp-gt-3" ? 4 : o.vpLengthPriority === "vp-gt-4" ? 5 : 0;
-    
+
     if (minLen > 0) {
       const filterMap = (map: Map<string, string>) => {
         const filtered = new Map<string, string>();
@@ -736,7 +736,7 @@ function convert(
   // Build merged active luatnhan rules
   const activePatterns: Array<{ prefix: string; suffix: string; template: string }> = [];
   const activePrefixIndex = new Map<string, number[]>();
-  
+
   const sourcesToMerge = ["core", ...(o.activeDictSources || [])].map(g => `${g}_luatnhan`);
 
   for (const src of sourcesToMerge) {
@@ -962,21 +962,21 @@ function fixOrdinals(segments: ConvertSegment[]): void {
   for (let i = 0; i < segments.length - 1; i++) {
     const s1 = segments[i];
     const s2 = segments[i + 1];
-    
+
     // Pattern: "thứ" + "một" -> "1"
     if (s1.translated.toLowerCase().trim() === "thứ" && ORDINAL_MAP[s2.translated.toLowerCase().trim()]) {
       const num = ORDINAL_MAP[s2.translated.toLowerCase().trim()];
       // If it's part of a chapter/volume title, just use the number
-      const prev = i > 0 ? segments[i-1].translated.toLowerCase().trim() : "";
+      const prev = i > 0 ? segments[i - 1].translated.toLowerCase().trim() : "";
       if (prev === "chương" || prev === "quyển" || prev === "tập") {
         segments[i] = { ...s1, translated: "" }; // Remove "thứ"
-        segments[i+1] = { ...s2, translated: num };
+        segments[i + 1] = { ...s2, translated: num };
       } else {
         // Otherwise "thứ nhất" sounds better than "thứ 1" usually, 
         // but user asked for "đạt chuẩn".
         // In QT, "thứ một" is definitely wrong.
         if (s2.translated.toLowerCase().trim() === "một") {
-           segments[i+1] = { ...s2, translated: "nhất" };
+          segments[i + 1] = { ...s2, translated: "nhất" };
         }
       }
     }
@@ -1052,6 +1052,39 @@ self.onmessage = (event: MessageEvent<QTWorkerRequest>) => {
           type: "error",
           id: "",
           message: `Init failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      break;
+    }
+
+    case "init-raw": {
+      try {
+        // Parse raw text strings inside the worker (off main thread)
+        const dictData: Record<string, DictPair[]> = {};
+        for (const [source, rawText] of Object.entries(msg.rawTexts)) {
+          if (!rawText) { dictData[source] = []; continue; }
+          const clean = rawText.startsWith("\uFEFF") ? rawText.slice(1) : rawText;
+          const lines = clean.split(/\r?\n/);
+          const entries: DictPair[] = [];
+          for (const line of lines) {
+            const idx = line.indexOf("=");
+            if (idx < 1) continue;
+            const chinese = line.slice(0, idx).trim();
+            const vietnamese = line.slice(idx + 1).trim();
+            if (chinese && vietnamese) entries.push({ chinese, vietnamese });
+          }
+          dictData[source] = entries;
+        }
+        initDicts(dictData);
+        post({ type: "ready" });
+        initPOSTagger().catch((err) =>
+          console.warn("POS tagger init failed:", err),
+        );
+      } catch (err) {
+        post({
+          type: "error",
+          id: "",
+          message: `Init-raw failed: ${err instanceof Error ? err.message : String(err)}`,
         });
       }
       break;

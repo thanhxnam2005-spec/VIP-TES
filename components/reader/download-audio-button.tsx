@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { DownloadIcon, Loader2Icon } from "lucide-react";
+import { DownloadIcon, Loader2Icon, LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useReaderPanel } from "@/lib/stores/reader-panel";
 import { getProvider } from "@/lib/tts";
 import { concatenateAndExportAudio } from "@/lib/tts/audio-exporter";
 import { toast } from "sonner";
+import { useProfile } from "@/lib/hooks/use-profile";
 
 export function DownloadAudioButton() {
     const [isDownloading, setIsDownloading] = useState(false);
@@ -15,8 +16,16 @@ export function DownloadAudioButton() {
 
     const ttsSettings = useReaderPanel((s) => s.ttsSettings);
     const sentences = useReaderPanel((s) => s.sentences);
+    const { isVip, isAdmin } = useProfile();
+
+    const canDownload = isVip || isAdmin;
 
     async function handleDownload() {
+        if (!canDownload) {
+            toast.error("Tính năng Tải Audio chỉ dành cho VIP. Hãy nâng cấp để sử dụng!");
+            return;
+        }
+
         if (sentences.length === 0) {
             toast.error("Không có nội dung để tải");
             return;
@@ -70,18 +79,18 @@ export function DownloadAudioButton() {
                 blobs.push(blob);
             }
 
-            setProgressMsg("Đang xử lý âm thanh...");
-            const finalBlob = await concatenateAndExportAudio(blobs, (msg, pct) => {
+            setProgressMsg("Đang nén âm thanh...");
+            const result = await concatenateAndExportAudio(blobs, (msg, pct) => {
                 setProgressMsg(msg);
                 setProgressPct(pct);
             });
 
             // Trigger download
-            const url = URL.createObjectURL(finalBlob);
+            const url = URL.createObjectURL(result.blob);
             const a = document.createElement("a");
             a.href = url;
             const chapterName = document.title || "chapter";
-            a.download = `${chapterName}-audio.wav`;
+            a.download = `${chapterName}-audio.${result.extension}`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -103,10 +112,10 @@ export function DownloadAudioButton() {
         <Button
             variant="outline"
             size="sm"
-            className="flex gap-1.5 min-w-[110px]"
+            className={`flex gap-1.5 min-w-[110px] ${!canDownload ? "opacity-60" : ""}`}
             onClick={handleDownload}
             disabled={isDownloading || sentences.length === 0}
-            title="Ghép toàn bộ chương thành 1 file MP3/WAV để tải về"
+            title={canDownload ? "Ghép toàn bộ chương thành 1 file nén để tải về" : "Chỉ VIP mới được tải Audio"}
         >
             {isDownloading ? (
                 <>
@@ -115,10 +124,11 @@ export function DownloadAudioButton() {
                 </>
             ) : (
                 <>
-                    <DownloadIcon className="size-3.5" />
-                    <span className="text-xs">Tải Audio</span>
+                    {canDownload ? <DownloadIcon className="size-3.5" /> : <LockIcon className="size-3.5 text-yellow-500" />}
+                    <span className="text-xs">{canDownload ? "Tải Audio" : "VIP"}</span>
                 </>
             )}
         </Button>
     );
 }
+
