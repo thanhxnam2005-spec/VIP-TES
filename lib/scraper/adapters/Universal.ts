@@ -136,8 +136,8 @@ export function createCustomAdapter(config: CustomScraperConfig): SiteAdapter {
           bestContainer.querySelectorAll("script, style, iframe, .ads, .advertisement").forEach(el => el.remove());
           content = (bestContainer as HTMLElement).innerHTML || "";
           // Manually convert structural HTML to newlines because detached innerText strips them
-          content = content.replace(/<(br|hr)\s*\/?>/gi, '\n')
-            .replace(/<\/(p|div|section|article|li)>/gi, '\n')
+          content = content.replace(/<(br|hr)[^>]*>/gi, '\n')
+            .replace(/<\/(p|div|section|article|li)>/gi, '\n\n')
             .replace(/<[^>]+>/g, '');
         } else if (contentText) {
           content = contentText;

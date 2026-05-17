@@ -128,20 +128,23 @@ export const TruyenFullVisionAdapter: SiteAdapter = {
         return { title, author, coverImage, description, chapters };
     },
 
-    getChapterContent(html: string): ChapterContent {
+    getChapterContent(html: string, _url?: string, contentText?: string): ChapterContent {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
 
         const contentEl = doc.querySelector(".chapter-c") || doc.querySelector("#chapter-c");
-        if (!contentEl) return { title: "", content: "" };
+        if (!contentEl && !contentText) return { title: "", content: "" };
 
-        contentEl.querySelectorAll("script, style, .ads, .quangcao, div[id^='ads'], .text-center").forEach(el => el.remove());
+        let text = contentText || "";
 
-        const contentHtml = contentEl.innerHTML;
-        let text = contentHtml
-            .replace(/<(br|hr)\s*\/?>/gi, "\n")
-            .replace(/<\/(p|div|section|article|li)>/gi, "\n\n")
-            .replace(/<[^>]+>/g, "");
+        if (!text && contentEl) {
+            contentEl.querySelectorAll("script, style, .ads, .quangcao, div[id^='ads'], .text-center").forEach(el => el.remove());
+            const contentHtml = contentEl.innerHTML;
+            text = contentHtml
+                .replace(/<(br|hr)[^>]*>/gi, "\n")
+                .replace(/<\/(p|div|section|article|li)>/gi, "\n\n")
+                .replace(/<[^>]+>/g, "");
+        }
 
         const textarea = doc.createElement("textarea");
         textarea.innerHTML = text;

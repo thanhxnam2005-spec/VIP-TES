@@ -4,6 +4,7 @@
  */
 
 import type { CatalogNovel } from "./types";
+import { extensionFetch } from "./extension-bridge";
 
 export interface CatalogScanAdapter {
     /** Base URL pattern for the catalog/browse pages */
@@ -117,21 +118,40 @@ export async function scanSiteCatalog(
 
         try {
             // Use server-side fetch to avoid extension tab conflicts
-            const res = await fetch("/api/scrape", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "fetch", url: catalogUrl }),
-                signal: options?.signal,
-            });
             let html = "";
-            if (res.ok) {
-                const data = await res.json();
-                html = data.html || "";
-            } else {
-                // Fallback: direct fetch (may fail with CORS on some sites)
-                const directRes = await fetch(catalogUrl, { signal: options?.signal });
-                html = await directRes.text();
+            let fetchFailed = false;
+            try {
+                const res = await fetch("/api/scrape", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "fetch", url: catalogUrl }),
+                    signal: options?.signal,
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    html = data.html || "";
+                    if (!html || html.includes("Cloudflare") || html.includes("Just a moment") || html.includes("DDoS")) {
+                        fetchFailed = true;
+                    }
+                } else {
+                    fetchFailed = true;
+                }
+            } catch {
+                fetchFailed = true;
             }
+
+            if (fetchFailed) {
+                // Fallback: Extension Fetch (Bypass Cloudflare natively)
+                try {
+                    const extRes = await extensionFetch(catalogUrl, { reuseTab: false });
+                    html = extRes.html;
+                } catch {
+                    // Final fallback: client fetch
+                    const directRes = await fetch(catalogUrl, { signal: options?.signal });
+                    html = await directRes.text();
+                }
+            }
+
             const novels = adapter.parseCatalogPage(html, siteUrl);
 
             for (const novel of novels) {

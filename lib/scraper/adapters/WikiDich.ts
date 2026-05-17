@@ -14,7 +14,7 @@ export const WikiDichAdapter: SiteAdapter = {
 
     // ── Title ──
     const title = doc.querySelector("h1")?.textContent?.trim() ||
-                  doc.title?.split("-")[0]?.trim() || "Unknown";
+      doc.title?.split("-")[0]?.trim() || "Unknown";
 
     // ── Author ──
     // Look for "Tác giả:" label followed by a link
@@ -80,7 +80,7 @@ export const WikiDichAdapter: SiteAdapter = {
           offset = parseInt(offsetMatch[1], 10);
         }
         const fuzzySign = (text: string) => text.substring(offset) + text.substring(0, offset);
-        
+
         // SHA-256 hashing using Web Crypto API
         const sha256 = async (message: string) => {
           const msgBuffer = new TextEncoder().encode(message);
@@ -101,15 +101,15 @@ export const WikiDichAdapter: SiteAdapter = {
               const rawSign = fuzzySign(signKey + currentStart + pageSize);
               const sign = await sha256(rawSign);
               const ajaxUrl = new URL(`/book/index?bookId=${bookId}&start=${currentStart}&size=${pageSize}&signKey=${signKey}&sign=${sign}`, base).toString();
-              
+
               console.log(`[WikiDich] Fetching chapters ${currentStart} to ${currentStart + pageSize}... (Retries left: ${retries})`);
               const res = await extensionFetch(ajaxUrl, { timeout: 15000 });
-              
+
               if (res.html && res.html.trim().length > 0) {
                 const pDoc = new DOMParser().parseFromString(res.html, "text/html");
                 const oldLength = chapters.length;
                 extractChapters(pDoc);
-                
+
                 if (chapters.length - oldLength === 0) {
                   hasMore = false; // No new chapters found
                 } else {
@@ -174,20 +174,22 @@ export const WikiDichAdapter: SiteAdapter = {
     // Extract text from <p> tags
     const paragraphs = Array.from(contentEl.querySelectorAll("p"));
     let text = "";
-    if (paragraphs.length > 0) {
+    if (paragraphs.length > 5) {
       text = paragraphs
         .map(p => p.textContent?.trim() || "")
         .filter(t => t.length > 0)
         .join("\n\n");
     } else {
-      // Fallback: innerHTML → text
+      // Fallback: innerHTML → text (handle divs properly)
       let htmlContent = contentEl.innerHTML;
-      htmlContent = htmlContent.replace(/<br\s*\/?>/gi, '\n');
-      htmlContent = htmlContent.replace(/<p[^>]*>/gi, '\n');
-      htmlContent = htmlContent.replace(/<\/p>/gi, '\n');
-      const tempDiv = doc.createElement("div");
-      tempDiv.innerHTML = htmlContent;
-      text = tempDiv.textContent?.trim() || "";
+      text = htmlContent
+        .replace(/<(br|hr)[^>]*>/gi, "\n")
+        .replace(/<\/(p|div|section|article|li)>/gi, "\n\n")
+        .replace(/<[^>]+>/g, "");
+
+      const tempDiv = doc.createElement("textarea");
+      tempDiv.innerHTML = text;
+      text = tempDiv.value.trim();
     }
 
     text = cleanWikiDichContent(text);
@@ -199,9 +201,9 @@ export const WikiDichAdapter: SiteAdapter = {
       const allLinks = Array.from(doc.querySelectorAll("a[href]"));
       for (const link of allLinks) {
         const t = link.textContent?.trim()?.toLowerCase() || "";
-        if (t.includes("chương sau") || t.includes("chương tiếp") || 
-            t.includes("tiếp theo") || t === "next" ||
-            t.includes("navigate_next") || t.includes("chevron_right")) {
+        if (t.includes("chương sau") || t.includes("chương tiếp") ||
+          t.includes("tiếp theo") || t === "next" ||
+          t.includes("navigate_next") || t.includes("chevron_right")) {
           const href = link.getAttribute("href");
           if (href && !href.startsWith("javascript") && !href.startsWith("#")) {
             nextChapterUrl = new URL(href, _url).toString();
@@ -209,7 +211,7 @@ export const WikiDichAdapter: SiteAdapter = {
           }
         }
       }
-    } catch {}
+    } catch { }
 
     return { title: chapterTitle, content: text, nextChapterUrl };
   },
@@ -229,7 +231,7 @@ function cleanWikiDichContent(text: string): string {
     /window\.unibotshb.*?;/g,
     /innity_adZoneAsync.*?;/g,
   ];
-  
+
   for (const pattern of watermarks) {
     text = text.replace(pattern, "");
   }
@@ -243,15 +245,15 @@ function cleanWikiDichContent(text: string): string {
     .filter(line => {
       const lower = line.toLowerCase();
       return !lower.includes("adsbygoogle") &&
-             !lower.includes("_avlvar") &&
-             !lower.includes("unibotshb") &&
-             !lower.includes("innity_adzone") &&
-             !lower.includes("lemont-banner") &&
-             !lower.includes("powered by gliastudios") &&
-             !lower.includes("advertisements") &&
-             line.length > 2;
+        !lower.includes("_avlvar") &&
+        !lower.includes("unibotshb") &&
+        !lower.includes("innity_adzone") &&
+        !lower.includes("lemont-banner") &&
+        !lower.includes("powered by gliastudios") &&
+        !lower.includes("advertisements") &&
+        line.length > 2;
     });
-  
+
   text = cleanedLines.join("\n\n");
   text = text.replace(/ +/g, " ");
   text = cleanGarbageLines(text);
