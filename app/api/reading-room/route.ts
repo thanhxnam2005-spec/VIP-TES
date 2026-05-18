@@ -123,6 +123,27 @@ export async function GET(req: Request) {
             });
         }
 
+        if (action === 'download_full') {
+            const novelId = searchParams.get('id');
+            if (!novelId) return NextResponse.json({ error: 'Missing novel ID' }, { status: 400 });
+
+            ensureCacheDir();
+            const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+
+            if (!fs.existsSync(cacheFile)) {
+                const fullDataStr = await downloadNovelFromReadingRoom(novelId);
+                if (!fullDataStr) {
+                    return NextResponse.json({ error: 'Novel not found in Reading Room' }, { status: 404 });
+                }
+                fs.writeFileSync(cacheFile, fullDataStr, 'utf-8');
+            }
+
+            const dataStr = fs.readFileSync(cacheFile, 'utf-8');
+            return new NextResponse(dataStr, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     } catch (error: any) {
         console.error('Reading Room GET Error:', error);

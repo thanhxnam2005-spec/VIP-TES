@@ -11,11 +11,9 @@ export function VipGuard({ children, pathname }: { children: React.ReactNode, pa
   // Allow api-guide page for everyone (informational only)
   const isExempt = pathname === "/settings/api-guide";
 
-  const isRestrictedPath = 
+  const isRestrictedPath =
     !isExempt && (
-      pathname.startsWith("/import") || 
-      pathname.startsWith("/convert") || 
-      pathname.startsWith("/scraper") || 
+      pathname.startsWith("/import") ||
       pathname.startsWith("/settings") ||
       pathname === "/admin"
     );

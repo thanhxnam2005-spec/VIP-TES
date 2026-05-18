@@ -377,6 +377,12 @@ export default function ScraperLibraryPage() {
                         <a href="https://xtruyen.vn" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-orange-500" /> XTruyen</a>
                       </Button>
                       <Button variant="outline" size="sm" asChild>
+                        <a href="https://truyenmo.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-teal-600" /> TruyenMo</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href="https://www.haitangsoshu.org" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-red-600" /> HaiTangSoShu</a>
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
                         <a href="https://wikicv.net" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-green-500" /> WikiDich</a>
                       </Button>
                       <Button variant="outline" size="sm" asChild><a href="https://wordpress.com" target="_blank" rel="noreferrer"><GlobeIcon className="mr-1.5 w-3 h-3 text-blue-400" /> WordPress Blogs</a></Button>

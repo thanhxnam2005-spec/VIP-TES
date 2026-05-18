@@ -9,10 +9,11 @@ import { ArrowLeftIcon, BookOpenIcon, ChevronRightIcon, ListIcon, LockIcon, Unlo
 import Link from "next/link";
 import { type Novel } from "@/lib/db";
 import { useProfile } from "@/lib/hooks/use-profile";
-import { PencilIcon, CheckIcon, Loader2Icon, XIcon, ThumbsUpIcon, ThumbsDownIcon, MessageCircleIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, CheckIcon, Loader2Icon, XIcon, ThumbsUpIcon, ThumbsDownIcon, MessageCircleIcon, Trash2Icon, FileTextIcon, BookDownIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { ReadingRoomInteractions } from "@/components/reading-room/interactions";
+import { checkAndIncrementVipUsage, getRemainingVipUsage } from "@/lib/usage-limits";
 
 export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ id: string }> }) {
     const params = use(props.params);
@@ -23,7 +24,7 @@ export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ i
     const [chapters, setChapters] = useState<{ id: string, title: string, order: number, isLocked?: boolean }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const { profile } = useProfile();
+    const { profile, isVip } = useProfile();
 
     const [isEditingTitle, setIsEditingTitle] = useState(false);
     const [newTitle, setNewTitle] = useState("");
@@ -32,6 +33,8 @@ export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ i
     const [isEditingDesc, setIsEditingDesc] = useState(false);
     const [newDesc, setNewDesc] = useState("");
     const [isSavingDesc, setIsSavingDesc] = useState(false);
+
+    const [isDownloading, setIsDownloading] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -167,6 +170,106 @@ export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ i
         }
     };
 
+    const runDownloadCheck = () => {
+        if (!isVip) {
+            toast.error("Chức năng tải truyện cục bộ tại Phòng Đọc chỉ dành cho thành viên VIP.");
+            return false;
+        }
+        if (!checkAndIncrementVipUsage('rr_download', 1)) {
+            toast.error("Bạn đã hết 10 lượt tải truyện Reading Room trong ngày hôm nay.");
+            return false;
+        }
+        return true;
+    };
+
+    const handleDownloadEpub = async () => {
+        if (!runDownloadCheck()) return;
+
+        setIsDownloading(true);
+        const toastId = toast.loading("Đang thu thập dữ liệu và nén EPUB, vui lòng đợi...");
+        try {
+            const res = await fetch(`/api/reading-room?action=download_full&id=${novelId}`);
+            if (!res.ok) throw new Error("Không thể lấy dữ liệu truyện.");
+            const data = await res.json();
+
+            const chaptersWithContent = data.chapters?.sort((a: any, b: any) => a.order - b.order).map((ch: any) => {
+                const chScenes = data.scenes?.filter((s: any) => s.chapterId === ch.id && (s.isActive === 1 || s.isActive === undefined)).sort((a: any, b: any) => a.order - b.order) || [];
+                const content = chScenes.map((s: any) => s.content).join("\n\n");
+                return {
+                    title: ch.title,
+                    content: content || "Nội dung chương trống."
+                };
+            }) || [];
+
+            let coverBase64 = null;
+            if (novel.coverImage) {
+                try {
+                    const imgRes = await fetch(novel.coverImage);
+                    const blob = await imgRes.blob();
+                    coverBase64 = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    });
+                } catch { }
+            }
+
+            const { generateEpub } = await import("@/lib/epub-generator");
+            const blob = await generateEpub(novel.title, novel.author || "Unknown", coverBase64 as string | null, chaptersWithContent);
+
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${novel.title}.epub`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            toast.success("Xuất EPUB thành công! Lượt tải còn lại trong ngày: " + getRemainingVipUsage('rr_download'), { id: toastId });
+        } catch (err: any) {
+            toast.error(err.message, { id: toastId });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const handleDownloadTxt = async () => {
+        if (!runDownloadCheck()) return;
+
+        setIsDownloading(true);
+        const toastId = toast.loading("Đang tạo file TXT, vui lòng đợi...");
+        try {
+            const res = await fetch(`/api/reading-room?action=download_full&id=${novelId}`);
+            if (!res.ok) throw new Error("Không thể lấy dữ liệu truyện.");
+            const data = await res.json();
+
+            let fullContent = `${novel.title}\nTác giả: ${novel.author || "Unknown"}\n\n`;
+
+            data.chapters?.sort((a: any, b: any) => a.order - b.order).forEach((ch: any) => {
+                const chScenes = data.scenes?.filter((s: any) => s.chapterId === ch.id && (s.isActive === 1 || s.isActive === undefined)).sort((a: any, b: any) => a.order - b.order) || [];
+                const content = chScenes.map((s: any) => s.content).join("\n\n");
+                fullContent += `\n\n=== ${ch.title} ===\n\n${content || "Nội dung chương trống."}\n`;
+            });
+
+            const blob = new Blob([fullContent], { type: "text/plain;charset=utf-8" });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${novel.title}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            toast.success("Xuất TXT thành công! Lượt tải còn lại trong ngày: " + getRemainingVipUsage('rr_download'), { id: toastId });
+        } catch (err: any) {
+            toast.error(err.message, { id: toastId });
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     return (
         <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
             <Link href="/reading-room" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6 mt-2 transition-colors">
@@ -250,6 +353,24 @@ export default function ReadingRoomNovelDetailsPage(props: { params: Promise<{ i
                             onClick={() => router.push(`/reading-room/${novel.id}/0`)}
                         >
                             <BookOpenIcon className="w-5 h-5 mr-2" /> Đọc Ngay
+                        </Button>
+                        <Button
+                            size="lg"
+                            variant="outline"
+                            className="rounded-full px-6 shadow-sm border-primary/20 text-primary hover:bg-primary/5"
+                            disabled={chapters.length === 0 || isDownloading}
+                            onClick={handleDownloadEpub}
+                        >
+                            {isDownloading ? <Loader2Icon className="w-4 h-4 mr-2 animate-spin" /> : <BookDownIcon className="w-4 h-4 mr-2" />} EPUB (VIP)
+                        </Button>
+                        <Button
+                            size="lg"
+                            variant="outline"
+                            className="rounded-full px-6 shadow-sm border-primary/20 text-primary hover:bg-primary/5"
+                            disabled={chapters.length === 0 || isDownloading}
+                            onClick={handleDownloadTxt}
+                        >
+                            {isDownloading ? <Loader2Icon className="w-4 h-4 mr-2 animate-spin" /> : <FileTextIcon className="w-4 h-4 mr-2" />} TXT (VIP)
                         </Button>
                         {isUploader && (
                             <Button

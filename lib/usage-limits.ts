@@ -38,3 +38,26 @@ export function getRemainingUsage(type: "download" | "translate", isVip: boolean
 
     return Math.max(0, limit - currentUsage);
 }
+
+export const DAILY_VIP_RR_DOWNLOAD_LIMIT = 10;
+
+export function checkAndIncrementVipUsage(type: "rr_download", amount: number = 1): boolean {
+    const key = `novel_studio_usage_vip_${type}_${getTodayString()}`;
+    const currentStr = localStorage.getItem(key) || "0";
+    let currentUsage = parseInt(currentStr, 10);
+
+    if (currentUsage + amount > DAILY_VIP_RR_DOWNLOAD_LIMIT) {
+        return false;
+    }
+
+    currentUsage += amount;
+    localStorage.setItem(key, currentUsage.toString());
+    return true;
+}
+
+export function getRemainingVipUsage(type: "rr_download"): number {
+    const key = `novel_studio_usage_vip_${type}_${getTodayString()}`;
+    const currentStr = localStorage.getItem(key) || "0";
+    const currentUsage = parseInt(currentStr, 10);
+    return Math.max(0, DAILY_VIP_RR_DOWNLOAD_LIMIT - currentUsage);
+}

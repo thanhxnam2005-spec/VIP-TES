@@ -49,10 +49,13 @@ import {
   LanguagesIcon,
   LoaderIcon,
   Minimize2Icon,
+  PlusIcon,
   RotateCcwIcon,
   SaveIcon,
   ScanSearchIcon,
   SparklesIcon,
+  StopCircleIcon,
+  Trash2Icon,
   XIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -123,7 +126,7 @@ export function BulkTranslateDialog({
 }) {
   // Store — use selectors to avoid unnecessary re-renders
   const job = useBulkTranslateStore((s) => s.jobs[novelId]);
-  
+
   const step = job?.step ?? "config";
   const isRunning = job?.isRunning ?? false;
   const statuses = job?.statuses ?? new Map();
@@ -207,8 +210,8 @@ export function BulkTranslateDialog({
   }, [hasNovelPrompt, useNovelPrompt, novelPrompt, effectivePrompt]);
 
   const resolveModel = useCallback(async () => {
-    const activeModel = novel?.customTranslateProviderId 
-      ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" } 
+    const activeModel = novel?.customTranslateProviderId
+      ? { providerId: novel.customTranslateProviderId, modelId: novel.customTranslateModelId || "" }
       : settings.translateModel;
     const model = await resolveChapterToolModel(
       activeModel,
@@ -270,6 +273,9 @@ export function BulkTranslateDialog({
 
   const isCustomPrompt = promptText.trim() !== DEFAULT_TRANSLATE_SYSTEM.trim();
 
+  // Extra models for multi-model translation
+  const [extraModelIds, setExtraModelIds] = useState<string[]>([]);
+
   // Other config
   const [translateTitle, setTranslateTitle] = useState(true);
   const [autoSave, setAutoSave] = useState(true); // <== Changed default to true
@@ -303,15 +309,52 @@ export function BulkTranslateDialog({
 
   const runTranslate = useCallback(
     async (chapterIds: string[]) => {
-      const model = await resolveModel();
-      if (!model) return;
+      let resolvedModel = null;
+      let resolvedModels = undefined;
+
+      if (currentModel?.modelId === "all" && models && models.length > 0) {
+        // "All Models" option: resolve every model from the provider
+        const promises = models.map(m => resolveChapterToolModel(
+          { providerId: currentModel.providerId, modelId: m.id },
+          defaultProvider,
+          chatSettings
+        ));
+        const allResolved = await Promise.all(promises);
+        resolvedModels = allResolved.filter(Boolean);
+        if (resolvedModels && resolvedModels.length > 0) {
+          resolvedModel = resolvedModels[0];
+        } else {
+          toast.error(getChapterToolModelMissingMessage(defaultProvider));
+          return;
+        }
+      } else if (extraModelIds.length > 0 && selectedProviderId) {
+        // Manual multi-model: resolve primary + extra models
+        const allIds = [currentModel?.modelId, ...extraModelIds].filter(Boolean) as string[];
+        const promises = allIds.map(mid => resolveChapterToolModel(
+          { providerId: selectedProviderId, modelId: mid },
+          defaultProvider,
+          chatSettings
+        ));
+        const allResolved = await Promise.all(promises);
+        resolvedModels = allResolved.filter(Boolean);
+        if (resolvedModels && resolvedModels.length > 0) {
+          resolvedModel = resolvedModels[0];
+        } else {
+          toast.error(getChapterToolModelMissingMessage(defaultProvider));
+          return;
+        }
+      } else {
+        resolvedModel = await resolveModel();
+        if (!resolvedModel) return;
+      }
 
       const signal = useBulkTranslateStore.getState().jobs[novelId]?.abortController?.signal;
 
       await runBulkTranslate({
         novelId,
         chapterIds,
-        model,
+        model: resolvedModel as any,
+        models: resolvedModels as any,
         depth: "standard",
         translateTitle,
         autoSave,
@@ -331,19 +374,25 @@ export function BulkTranslateDialog({
       promptText,
       delaySeconds,
       resolveModel,
+      currentModel,
+      extraModelIds,
+      selectedProviderId,
+      models,
+      defaultProvider,
+      chatSettings
     ],
   );
 
   const handleStart = useCallback(async () => {
     const activeModel = currentModel;
-    if (activeModel?.providerId && activeModel?.modelId) {
-       const jobs = useBulkTranslateStore.getState().jobs;
-       for (const [id, job] of Object.entries(jobs)) {
-          if (id !== novelId && job.isRunning && job.providerId === activeModel.providerId && job.modelId === activeModel.modelId) {
-             toast.error(`Khóa AI: Mô hình AI này đang bận dịch truyện khác. Vui lòng chọn mô hình AI khác để dịch song song!`);
-             return;
-          }
-       }
+    if (activeModel?.providerId && activeModel?.modelId && activeModel.modelId !== "all") {
+      const jobs = useBulkTranslateStore.getState().jobs;
+      for (const [id, job] of Object.entries(jobs)) {
+        if (id !== novelId && job.isRunning && job.providerId === activeModel.providerId && job.modelId === activeModel.modelId) {
+          toast.error(`Khóa AI: Mô hình AI này đang bận dịch truyện khác. Vui lòng chọn mô hình AI khác để dịch song song!`);
+          return;
+        }
+      }
     }
 
     useBulkTranslateStore.getState().start(novelId, selectedChapterIds, activeModel?.providerId, activeModel?.modelId);
@@ -511,19 +560,80 @@ export function BulkTranslateDialog({
                     <NativeSelect
                       className="w-full"
                       value={currentModel?.modelId ?? ""}
-                      onChange={(e) => handleModelChange(e.target.value)}
+                      onChange={(e) => {
+                        handleModelChange(e.target.value);
+                        if (e.target.value === "all") setExtraModelIds([]);
+                      }}
                       disabled={!selectedProviderId}
                     >
                       <NativeSelectOption value="">
                         {selectedProviderId ? "Chọn mô hình" : "Mặc định"}
                       </NativeSelectOption>
+                      <NativeSelectOption value="all">
+                        ⚡ Tất cả Models (Tăng tốc)
+                      </NativeSelectOption>
                       {models?.map((m) => (
-                        <NativeSelectOption key={m.id} value={m.modelId}>
+                        <NativeSelectOption key={m.id} value={m.id}>
                           {m.name}
                         </NativeSelectOption>
                       ))}
                     </NativeSelect>
                   </div>
+
+                  {/* Extra model rows */}
+                  {currentModel?.modelId && currentModel.modelId !== "all" && selectedProviderId && (
+                    <div className="space-y-1.5 pl-1">
+                      {extraModelIds.map((mid, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-[10px] text-muted-foreground w-16 shrink-0">Model {idx + 2}</span>
+                          <NativeSelect
+                            className="flex-1 h-8 text-xs"
+                            value={mid}
+                            onChange={(e) => {
+                              const newIds = [...extraModelIds];
+                              newIds[idx] = e.target.value;
+                              setExtraModelIds(newIds);
+                            }}
+                          >
+                            <NativeSelectOption value="">Chọn model...</NativeSelectOption>
+                            {models?.filter(m => m.id !== currentModel?.modelId && !extraModelIds.includes(m.id) || m.id === mid).map((m) => (
+                              <NativeSelectOption key={m.id} value={m.id}>
+                                {m.name}
+                              </NativeSelectOption>
+                            ))}
+                          </NativeSelect>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 shrink-0 text-destructive hover:text-destructive"
+                            onClick={() => setExtraModelIds(prev => prev.filter((_, i) => i !== idx))}
+                          >
+                            <Trash2Icon className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                      {models && models.length > 1 && extraModelIds.length < models.length - 1 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] gap-1.5 mt-1"
+                          onClick={() => {
+                            const usedIds = new Set([currentModel?.modelId, ...extraModelIds]);
+                            const nextModel = models?.find(m => !usedIds.has(m.id));
+                            setExtraModelIds(prev => [...prev, nextModel?.id || ""]);
+                          }}
+                        >
+                          <PlusIcon className="size-3" />
+                          Thêm Model {extraModelIds.length + 2}
+                        </Button>
+                      )}
+                      {extraModelIds.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground">
+                          💡 {extraModelIds.length + 1} models sẽ dịch song song, mỗi model xử lý 1 chương riêng biệt
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Toggles */}
@@ -567,7 +677,7 @@ export function BulkTranslateDialog({
                       Bỏ qua các chương đã dịch (Tránh dịch lại)
                     </Label>
                   </div>
-                  
+
                   <div className="flex items-center gap-4">
                     <Label htmlFor="translate-delay" className="text-xs">
                       Độ trễ giữa các chương (giây)
@@ -667,15 +777,15 @@ export function BulkTranslateDialog({
                     </span>
                     {isRunning && (
                       <Button
-                        variant="ghost"
+                        variant="destructive"
                         size="sm"
-                        className="h-6 text-xs"
+                        className="h-7 text-xs gap-1.5"
                         onClick={() =>
                           useBulkTranslateStore.getState().cancel(novelId)
                         }
                       >
-                        <XIcon className="mr-1 size-3" />
-                        Hủy
+                        <StopCircleIcon className="size-3.5" />
+                        Dừng dịch
                       </Button>
                     )}
                   </div>
@@ -760,25 +870,25 @@ export function BulkTranslateDialog({
                               {result.translatedLineCount} dòng
                               {result.translatedLineCount !==
                                 result.originalLineCount && (
-                                <span
-                                  className={
-                                    result.translatedLineCount >
-                                    result.originalLineCount
-                                      ? "text-emerald-600 dark:text-emerald-400"
-                                      : "text-amber-600 dark:text-amber-400"
-                                  }
-                                >
-                                  {" "}
-                                  (
-                                  {result.translatedLineCount >
-                                  result.originalLineCount
-                                    ? "+"
-                                    : ""}
-                                  {result.translatedLineCount -
-                                    result.originalLineCount}
-                                  )
-                                </span>
-                              )}
+                                  <span
+                                    className={
+                                      result.translatedLineCount >
+                                        result.originalLineCount
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : "text-amber-600 dark:text-amber-400"
+                                    }
+                                  >
+                                    {" "}
+                                    (
+                                    {result.translatedLineCount >
+                                      result.originalLineCount
+                                      ? "+"
+                                      : ""}
+                                    {result.translatedLineCount -
+                                      result.originalLineCount}
+                                    )
+                                  </span>
+                                )}
                             </div>
                           </div>
                         )}

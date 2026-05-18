@@ -44,6 +44,9 @@ import {
   TagIcon,
   TrendingUpIcon,
   CrownIcon,
+  PlusIcon,
+  Trash2Icon,
+  StopCircleIcon,
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -85,6 +88,7 @@ export function TranslateWorkspaceDialog({
   // Selected state
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>();
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
+  const [extraModelIds, setExtraModelIds] = useState<string[]>([]);
 
   // Fetch models for selected provider
   const models = useAIModels(selectedProviderId);
@@ -311,8 +315,24 @@ export function TranslateWorkspaceDialog({
   };
 
   const handleStart = useCallback(async (promptType: PromptType = "legacy", target: "selected" | "all_untranslated" = "selected") => {
-    const model = await resolveModel();
+    let model = await resolveModel();
     if (!model) return;
+
+    // Resolve extra models for multi-model translation
+    let resolvedModels: any[] | undefined;
+    if (extraModelIds.length > 0 && selectedProviderId) {
+      const allIds = [selectedModelId, ...extraModelIds].filter(Boolean) as string[];
+      const promises = allIds.map(mid => resolveChapterToolModel(
+        { providerId: selectedProviderId!, modelId: mid },
+        defaultProvider,
+        chatSettings
+      ));
+      const allResolved = await Promise.all(promises);
+      resolvedModels = allResolved.filter(Boolean);
+      if (resolvedModels.length > 0) {
+        model = resolvedModels[0];
+      }
+    }
 
     const targetChapterIds = target === "selected" ? chapterIds : chapters.map(c => c.id);
 
@@ -329,7 +349,8 @@ export function TranslateWorkspaceDialog({
         await runHybridTranslate({
           novelId,
           chapterIds: targetChapterIds,
-          model,
+          model: model!,
+          models: resolvedModels,
           extractDict,
           skipTranslated,
           continuousMode: target === "all_untranslated",
@@ -359,7 +380,8 @@ export function TranslateWorkspaceDialog({
         await runQtAiTranslate({
           novelId,
           chapterIds: targetChapterIds,
-          model,
+          model: model!,
+          models: resolvedModels,
           qtDictSources,
           promptType,
           extractDict,
@@ -395,7 +417,7 @@ export function TranslateWorkspaceDialog({
         setStep("config");
       }
     }
-  }, [novelId, chapterIds, chapters, settings, resolveModel, activeTab, extractDict, skipTranslated, qtDictSources]);
+  }, [novelId, chapterIds, chapters, settings, resolveModel, activeTab, extractDict, skipTranslated, qtDictSources, extraModelIds, selectedProviderId, selectedModelId, defaultProvider, chatSettings]);
 
   const handleClose = () => {
     if (step === "processing") {
@@ -627,7 +649,7 @@ export function TranslateWorkspaceDialog({
             <div className="space-y-2 border-t pt-4">
               <Label className="text-xs">AI Model (Dùng chung cho cả 2 chế độ)</Label>
               <div className="flex gap-2">
-                <Select value={selectedProviderId} onValueChange={handleProviderChange}>
+                <Select value={selectedProviderId} onValueChange={(val) => { handleProviderChange(val); setExtraModelIds([]); }}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Chọn Provider..." />
                   </SelectTrigger>
@@ -657,6 +679,64 @@ export function TranslateWorkspaceDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Extra model rows for multi-model */}
+              {selectedProviderId && selectedModelId && (
+                <div className="space-y-1.5 pl-1">
+                  {extraModelIds.map((mid, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground w-16 shrink-0">Model {idx + 2}</span>
+                      <Select
+                        value={mid}
+                        onValueChange={(val) => {
+                          const newIds = [...extraModelIds];
+                          newIds[idx] = val;
+                          setExtraModelIds(newIds);
+                        }}
+                      >
+                        <SelectTrigger className="flex-1 h-8 text-xs">
+                          <SelectValue placeholder="Chọn model..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {models?.filter(m => m.modelId !== selectedModelId && !extraModelIds.includes(m.modelId) || m.modelId === mid).map((m) => (
+                            <SelectItem key={m.id} value={m.modelId}>
+                              {m.name || m.modelId}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0 text-destructive hover:text-destructive"
+                        onClick={() => setExtraModelIds(prev => prev.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2Icon className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  {models && models.length > 1 && extraModelIds.length < models.length - 1 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] gap-1.5 mt-1"
+                      onClick={() => {
+                        const usedIds = new Set([selectedModelId, ...extraModelIds]);
+                        const nextModel = models?.find(m => !usedIds.has(m.modelId));
+                        setExtraModelIds(prev => [...prev, nextModel?.modelId || ""]);
+                      }}
+                    >
+                      <PlusIcon className="size-3" />
+                      Thêm Model {extraModelIds.length + 2}
+                    </Button>
+                  )}
+                  {extraModelIds.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground">
+                      💡 {extraModelIds.length + 1} models sẽ dịch song song, mỗi model xử lý 1 chương riêng biệt
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="rounded-md bg-muted/50 p-2.5 space-y-1">
@@ -820,8 +900,9 @@ export function TranslateWorkspaceDialog({
               <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full">
                 Ẩn xuống nền
               </Button>
-              <Button variant="destructive" onClick={handleClose} className="w-full">
-                Hủy bỏ
+              <Button variant="destructive" onClick={handleClose} className="w-full gap-1.5">
+                <StopCircleIcon className="size-4" />
+                Dừng dịch
               </Button>
             </div>
           </div>

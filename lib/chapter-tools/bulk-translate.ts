@@ -173,6 +173,7 @@ export interface BulkTranslateOptions {
   novelId: string;
   chapterIds: string[];
   model: LanguageModel;
+  models?: LanguageModel[];
   depth: ContextDepth;
   translateTitle: boolean;
   autoSave: boolean;
@@ -195,6 +196,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
     novelId,
     chapterIds,
     model,
+    models,
     depth,
     translateTitle,
     autoSave,
@@ -246,7 +248,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
   const concurrency = settings.translateConcurrency && settings.translateConcurrency > 0 ? settings.translateConcurrency : 1;
   let currentIndex = 0;
 
-  async function processChapter(chapter: typeof chapters[0]) {
+  async function processChapter(chapter: typeof chapters[0], model: LanguageModel) {
     onChapterStart(chapter.id, chapter.title);
 
     try {
@@ -367,6 +369,11 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
             }
           }
 
+          // Check for empty response — treat as retryable error
+          if (!accumulated.trim()) {
+            throw new Error("AI trả về nội dung trống — thử lại...");
+          }
+
           const finishReason = await result.finishReason;
           if (finishReason === "length") {
             console.warn(`Chapter ${chapter.title} may have been truncated.`);
@@ -394,13 +401,9 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
         throw lastError;
       }
 
+      // After all inner retries, if still empty — throw to worker-level retry
       if (!accumulated.trim()) {
-        onChapterError({
-          chapterId: chapter.id,
-          chapterTitle: chapter.title,
-          message: "AI trả về nội dung trống — có thể bị chặn bởi bộ lọc an toàn.",
-        });
-        return;
+        throw new Error("AI trả về nội dung trống sau nhiều lần thử — đang retry toàn bộ chương...");
       }
 
       // Parse result
@@ -475,6 +478,11 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
       if (!chapter) return;
       currentIndex++;
 
+      // Pick a model if multi-model is provided
+      const currentModel = models && models.length > 0
+        ? models[chapterIdx % models.length]
+        : model;
+
       // Retry loop for entire chapter processing
       let chapterRetries = 0;
       let chapterSuccess = false;
@@ -483,7 +491,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
         if (signal?.aborted) return;
 
         try {
-          await processChapter(chapter);
+          await processChapter(chapter, currentModel);
           chapterSuccess = true; // processChapter didn't throw = success (or non-retryable error already reported)
         } catch (err) {
           if (err instanceof Error && err.name === "AbortError") return;

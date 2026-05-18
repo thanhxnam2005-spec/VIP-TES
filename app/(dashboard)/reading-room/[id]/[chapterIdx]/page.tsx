@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useReaderPanel } from "@/lib/stores/reader-panel";
 import { SentenceRenderer } from "@/components/reader/sentence-renderer";
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 export default function ReadingRoomChapterPage(props: { params: Promise<{ id: string, chapterIdx: string }> }) {
     const params = use(props.params);
     const novelId = params.id;
@@ -28,6 +30,7 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
     const [error, setError] = useState("");
 
     const [fontSize, setFontSize] = useState(20);
+    const [fontFamily, setFontFamily] = useState("font-serif");
 
     useEffect(() => {
         setLoading(true);
@@ -111,6 +114,12 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
         .map(s => s.content.replace(UNWANTED_TEXT, "").trim())
         .filter(text => text.length > 0);
 
+    const rawTitle = chapter.title || "Không Tên";
+    const rawTitleLower = rawTitle.toLowerCase();
+    const hasExistingPrefix = rawTitleLower.startsWith("chương ") || rawTitleLower.startsWith("chương") || rawTitleLower.startsWith("đệ ") || rawTitleLower.startsWith("第") || rawTitleLower.match(/^[0-9]+:/);
+
+    const displayTitle = hasExistingPrefix ? rawTitle : `Chương ${currentOrder + 1}: ${rawTitle}`;
+
     return (
         <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 bg-background min-h-screen pb-24">
             {/* Navbar đọc truyện */}
@@ -118,24 +127,42 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
                 <Link href={`/reading-room/${novelId}`} className="text-muted-foreground hover:text-primary transition-colors flex items-center text-sm font-medium">
                     <ListIcon className="w-4 h-4 mr-2" /> Mục lục
                 </Link>
-                <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.max(14, f - 2))}>A-</Button>
-                    <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.min(32, f + 2))}>A+</Button>
+                <div className="flex gap-4 items-center">
+                    <div className="flex items-center gap-2">
+                        <Select value={fontFamily} onValueChange={setFontFamily}>
+                            <SelectTrigger className="w-[140px] h-8 bg-transparent">
+                                <SelectValue placeholder="Chọn font" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="font-serif">Serif (Mặc định)</SelectItem>
+                                <SelectItem value="font-sans">Sans-serif</SelectItem>
+                                <SelectItem value="font-mono">Monospace</SelectItem>
+                                <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
+                                <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
+                                <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
+                                <SelectItem value="!font-[Verdana,_Geneva,_sans-serif]">Verdana</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.max(14, f - 2))}>A-</Button>
+                        <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.min(32, f + 2))}>A+</Button>
+                    </div>
                 </div>
             </div>
 
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold font-heading text-center text-foreground mb-12 leading-snug px-4">
-                Chương {currentOrder + 1}: {chapter.title || "Không Tên"}
+                {displayTitle}
             </h1>
 
             {isReaderOpen ? (
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                    <SentenceRenderer content={`Chương ${currentOrder + 1}: ${chapter.title || "Không Tên"}\n\n` + displayScenes.join('\n\n')} />
+                <div className={`prose prose-sm max-w-none dark:prose-invert ${fontFamily.startsWith('!') ? '' : fontFamily}`} style={fontFamily.startsWith('!') ? { fontFamily: fontFamily.replace('!font-[', '').replace(']', '').replace(/_/g, ' ') } : {}}>
+                    <SentenceRenderer content={`${displayTitle}\n\n` + displayScenes.join('\n\n')} />
                 </div>
             ) : (
                 <div
-                    className="prose prose-p:leading-relaxed prose-p:mb-6 max-w-none text-foreground/90 font-serif whitespace-pre-wrap"
-                    style={{ fontSize: `${fontSize}px` }}
+                    className={`prose prose-p:leading-relaxed prose-p:mb-6 max-w-none text-foreground/90 whitespace-pre-wrap ${fontFamily.startsWith('!') ? '' : fontFamily}`}
+                    style={{ fontSize: `${fontSize}px`, ...(fontFamily.startsWith('!') ? { fontFamily: fontFamily.replace('!font-[', '').replace(']', '').replace(/_/g, ' ').replace(/'/g, '') } : {}) }}
                 >
                     {displayScenes.map((text, idx) => (
                         <div key={idx} className="mb-6">{text.split('\n').map(l => l.trim()).filter(l => l.length > 0).map((line, i) => (

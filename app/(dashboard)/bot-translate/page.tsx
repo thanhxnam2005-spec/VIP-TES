@@ -139,7 +139,24 @@ export default function BotTranslatePage() {
       const dbProvider = await db.aiProviders.get(slot.providerId);
       if (!dbProvider) throw new Error("Provider không tồn tại trong máy");
 
-      const model = await getModel(dbProvider, slot.modelId);
+      let slotModels = [];
+      if (slot.modelId === "all") {
+        if (slot.providerId === "admin-provider") {
+          const res = await fetch("/api/admin/models");
+          const data = await res.json();
+          const pModels = (data.data || []).map((m: any) => m.id);
+          slotModels = await Promise.all(pModels.map((id: string) => getModel(dbProvider, id)));
+        } else {
+          const dbModels = await db.aiModels.where("providerId").equals(slot.providerId).toArray();
+          if (dbModels.length === 0) throw new Error("Provider này chưa đồng bộ model nào.");
+          slotModels = await Promise.all(dbModels.map(m => getModel(dbProvider, m.modelId)));
+        }
+      } else {
+        slotModels = [await getModel(dbProvider, slot.modelId)];
+      }
+
+      if (slotModels.length === 0) throw new Error("Không thể tải model AI");
+      const model = slotModels[0];
 
       // Create temp novel in IndexedDB
       const tempNovelId = `bot_temp_${job.id}`;
@@ -187,7 +204,7 @@ export default function BotTranslatePage() {
 
       // 2. Run Bulk Translation Engine
       const translateOpts = {
-        novelId: tempNovelId, chapterIds: allTempChapterIds, model,
+        novelId: tempNovelId, chapterIds: allTempChapterIds, model, models: slotModels,
         qtDictSources: job.dict_sources || ["tienhiep"],
         promptType: (job.prompt_type || "khuyen_nghi") as any,
         extractDict: job.extract_dict || false,
@@ -616,9 +633,12 @@ export default function BotTranslatePage() {
               const ns = [...slots]; ns[slotIdx] = { ...ns[slotIdx], modelId: v }; saveSlots(ns);
             }}>
               <SelectTrigger><SelectValue placeholder="Model..." /></SelectTrigger>
-              <SelectContent>{models?.map(m => (
-                <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>
-              ))}</SelectContent>
+              <SelectContent>
+                <SelectItem value="all">Tất cả Models (Tăng tốc gốc)</SelectItem>
+                {models?.map(m => (
+                  <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <Button
