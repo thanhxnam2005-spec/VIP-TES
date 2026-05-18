@@ -339,6 +339,7 @@ function MottruyenScannerCard() {
             setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: chapCount } }));
 
             while (currentChapId && runningRef.current) {
+                await new Promise(r => setTimeout(r, 200)); // Delay nhẹ 200ms để tránh bị chặn IP
                 const proxyUrl = encodeURIComponent(`http://api.mottruyen.com/chapter/?chapter_id=${currentChapId}`);
                 const chapRes = await fetch(`/api/mottruyen-proxy?url=${proxyUrl}`);
                 if (!chapRes.ok) break;
