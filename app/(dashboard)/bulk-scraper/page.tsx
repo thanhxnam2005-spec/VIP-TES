@@ -285,6 +285,31 @@ function MottruyenScannerCard() {
     
     // Use a ref to keep track of running state to break the loop instantly
     const runningRef = React.useRef(false);
+    
+    // Hàng đợi tải truyện độc lập với quá trình quét
+    const downloadQueueRef = React.useRef<any[]>([]);
+    const activeDownloadsCountRef = React.useRef(0);
+
+    const processDownloadQueue = async () => {
+        if (!runningRef.current || downloadQueueRef.current.length === 0 || activeDownloadsCountRef.current >= batchSize) {
+            return;
+        }
+
+        const novelInfo = downloadQueueRef.current.shift();
+        if (!novelInfo) return;
+
+        activeDownloadsCountRef.current++;
+        try {
+            await downloadNovelInFrontend(novelInfo);
+            setSuccessCount(prev => prev + 1);
+        } catch (e) {
+            console.error("Lỗi tải truyện:", e);
+        } finally {
+            activeDownloadsCountRef.current--;
+            // Tải xong bộ này, tự động gọi tải bộ tiếp theo trong hàng đợi
+            processDownloadQueue();
+        }
+    };
 
     const downloadNovelInFrontend = async (novelInfo: any) => {
         try {
@@ -306,6 +331,14 @@ function MottruyenScannerCard() {
             
             // Lưu ngay metadata để tránh mất mát nếu bị ngắt giữa chừng
             await db.novels.put(novelObj);
+
+            // Tải lên kho truyện ngay lập tức (chỉ metadata) để mọi người thấy bộ truyện mới
+            const initialExportData = { novel: novelObj, chapters: [], scenes: [] };
+            fetch(`/api/reading-room?action=upload&novelId=${novelObj.id}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(initialExportData),
+            }).catch(e => console.error("Lỗi đăng metadata ban đầu:", e));
 
             let currentChapId = novelData.CHAPTER[0]?.id;
             let chapCount = 0;
@@ -420,6 +453,12 @@ function MottruyenScannerCard() {
         let cid = currentId;
         while (runningRef.current && cid <= endId) {
             try {
+                // Nếu hàng đợi tải quá dài (giữ > 500 bộ chưa tải), tạm dừng quét để chờ tải bớt
+                if (downloadQueueRef.current.length > 500) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    continue;
+                }
+
                 const res = await fetch("/api/mottruyen-scanner", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -429,11 +468,14 @@ function MottruyenScannerCard() {
                 if (res.ok) {
                     const data = await res.json();
                     
-                    // Tải song song theo số Batch (20/50/100 bộ cùng lúc)
+                    // Thêm truyện hợp lệ vào hàng đợi
                     if (data.validNovels && data.validNovels.length > 0) {
-                        await Promise.all(data.validNovels.map((novel: any) => 
-                            downloadNovelInFrontend(novel).then(() => setSuccessCount(prev => prev + 1))
-                        ));
+                        downloadQueueRef.current.push(...data.validNovels);
+                        
+                        // Kích hoạt các luồng tải song song (tối đa bằng batchSize)
+                        for (let i = activeDownloadsCountRef.current; i < batchSize; i++) {
+                            processDownloadQueue();
+                        }
                     }
                     
                     setTotalProcessed(prev => prev + data.totalScanned);
@@ -448,8 +490,14 @@ function MottruyenScannerCard() {
         }
 
         if (cid > endId) {
-            setStatus("finished");
-            runningRef.current = false;
+            // Chờ cho tất cả các tiến trình tải còn lại hoàn tất
+            const waitFinish = setInterval(() => {
+                if (activeDownloadsCountRef.current === 0 && downloadQueueRef.current.length === 0) {
+                    clearInterval(waitFinish);
+                    setStatus("finished");
+                    runningRef.current = false;
+                }
+            }, 1000);
         }
     };
 
