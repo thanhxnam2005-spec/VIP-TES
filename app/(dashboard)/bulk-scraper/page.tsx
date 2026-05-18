@@ -428,16 +428,11 @@ function MottruyenScannerCard() {
                 if (res.ok) {
                     const data = await res.json();
                     
-                    // Tải song song 5 bộ truyện cùng lúc
+                    // Tải song song theo số Batch (20/50/100 bộ cùng lúc)
                     if (data.validNovels && data.validNovels.length > 0) {
-                        const PARALLEL = 5;
-                        for (let i = 0; i < data.validNovels.length; i += PARALLEL) {
-                            if (!runningRef.current) break;
-                            const batch = data.validNovels.slice(i, i + PARALLEL);
-                            await Promise.all(batch.map((novel: any) => 
-                                downloadNovelInFrontend(novel).then(() => setSuccessCount(prev => prev + 1))
-                            ));
-                        }
+                        await Promise.all(data.validNovels.map((novel: any) => 
+                            downloadNovelInFrontend(novel).then(() => setSuccessCount(prev => prev + 1))
+                        ));
                     }
                     
                     setTotalProcessed(prev => prev + data.totalScanned);
