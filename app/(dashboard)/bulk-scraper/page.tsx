@@ -298,7 +298,7 @@ function MottruyenScannerCard() {
                 title: novelData.NAME,
                 author: novelData.AUTHOR || "Unknown",
                 coverImage: novelData.IMG || "",
-                description: novelData.DESC || "",
+                description: "",
                 sourceUrl: `http://api.mottruyen.com/story/?story_id=${id}`,
                 createdAt: new Date(),
                 updatedAt: new Date(),
