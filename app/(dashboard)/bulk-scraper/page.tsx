@@ -306,33 +306,37 @@ function MottruyenScannerCard() {
                                 try {
                                     const dlRes = await fetch(`/api/mottruyen-scanner/download?id=${id}`);
                                     if (dlRes.ok) {
-                                        const novelData = await dlRes.json();
+                                        const parsedData = await dlRes.json();
+                                        // Hỗ trợ cả định dạng cũ (phẳng) và mới (nested)
+                                        const novelObj = parsedData.novel || parsedData;
+                                        const chaptersArr = parsedData.chapters || [];
+                                        
                                         const now = new Date();
 
                                         // 1. Lưu vào Thư viện cá nhân (IndexedDB)
                                         await db.novels.put({
-                                            id: novelData.id,
-                                            title: novelData.title,
-                                            author: novelData.author,
-                                            coverImage: novelData.coverUrl,
-                                            description: novelData.description,
-                                            sourceUrl: novelData.sourceUrl,
+                                            id: novelObj.id,
+                                            title: novelObj.title,
+                                            author: novelObj.author,
+                                            coverImage: novelObj.coverUrl || novelObj.coverImage,
+                                            description: novelObj.description,
+                                            sourceUrl: novelObj.sourceUrl,
                                             createdAt: now,
                                             updatedAt: now,
                                         });
 
-                                        const chapterPuts = novelData.chapters.map((ch: any) => ({
+                                        const chapterPuts = chaptersArr.map((ch: any) => ({
                                             id: ch.id,
-                                            novelId: novelData.id,
+                                            novelId: novelObj.id,
                                             title: ch.title,
-                                            order: ch.orderIndex,
+                                            order: ch.orderIndex || ch.order,
                                             createdAt: now,
                                             updatedAt: now,
                                         }));
 
-                                        const scenePuts = novelData.chapters.map((ch: any) => ({
+                                        const scenePuts = chaptersArr.map((ch: any) => ({
                                             id: `scene-${ch.id}`,
-                                            novelId: novelData.id,
+                                            novelId: novelObj.id,
                                             chapterId: ch.id,
                                             content: ch.content,
                                             order: 0,
@@ -348,12 +352,12 @@ function MottruyenScannerCard() {
 
                                         // 2. Tự động tải lên Reading Room
                                         const exportData = {
-                                            novel: await db.novels.get(novelData.id),
-                                            chapters: await db.chapters.where("novelId").equals(novelData.id).toArray(),
-                                            scenes: await db.scenes.where("novelId").equals(novelData.id).toArray()
+                                            novel: await db.novels.get(novelObj.id),
+                                            chapters: await db.chapters.where("novelId").equals(novelObj.id).toArray(),
+                                            scenes: await db.scenes.where("novelId").equals(novelObj.id).toArray()
                                         };
 
-                                        const uploadRes = await fetch(`/api/reading-room?action=upload&novelId=${novelData.id}`, {
+                                        const uploadRes = await fetch(`/api/reading-room?action=upload&novelId=${novelObj.id}`, {
                                             method: "POST",
                                             headers: { "Content-Type": "application/json" },
                                             body: JSON.stringify(exportData),
