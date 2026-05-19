@@ -1,9 +1,32 @@
 import { NextResponse } from 'next/server';
 import { getReadingRoomIndex, uploadToReadingRoom, downloadNovelFromReadingRoom, type ReadingRoomMetadata } from '@/lib/google-drive-admin-v2';
 import { createClient } from '@/lib/supabase/server';
-import fs from 'fs';
+import _fs from 'fs';
 import path from 'path';
 import os from 'os';
+
+let HAS_FS = false;
+try {
+    HAS_FS = typeof _fs.existsSync === 'function';
+    if (HAS_FS) _fs.existsSync(os.tmpdir());
+} catch (e) {
+    HAS_FS = false;
+}
+
+const RAM_CACHE = new Map<string, any>();
+
+// Shim cho Môi trường Cloudflare Edge (không có truy cập File System)
+const fs = {
+    existsSync: (p: string) => HAS_FS ? _fs.existsSync(p) : RAM_CACHE.has(p),
+    mkdirSync: (p: string, opts?: any) => HAS_FS ? _fs.mkdirSync(p, opts) : undefined,
+    writeFileSync: (p: string, data: any, enc?: any) => HAS_FS ? _fs.writeFileSync(p, data, enc) : RAM_CACHE.set(p, data),
+    appendFileSync: (p: string, data: any) => {
+        if (HAS_FS) _fs.appendFileSync(p, data);
+        else RAM_CACHE.set(p, (RAM_CACHE.get(p) || '') + data);
+    },
+    readFileSync: (p: string, enc?: any) => HAS_FS ? _fs.readFileSync(p, enc) : RAM_CACHE.get(p),
+    unlinkSync: (p: string) => HAS_FS ? _fs.unlinkSync(p) : RAM_CACHE.delete(p),
+};
 
 const CACHE_DIR = path.join(os.tmpdir(), 'novel-studio-reading-room');
 
