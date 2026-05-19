@@ -243,11 +243,13 @@ export async function POST(req: Request) {
 
             await uploadToReadingRoom(novelId, metadata, content);
 
-            // Cache and Split
-            ensureCacheDir();
-            const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
-            fs.writeFileSync(cacheFile, content);
-            splitNovelToChunks(novelId, parseData);
+            // Cache and Split (chỉ chạy ở môi trường localhost có File System thực tế để tránh tràn bộ nhớ V8/timeout trên Cloudflare Pages)
+            if (HAS_FS) {
+                ensureCacheDir();
+                const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+                fs.writeFileSync(cacheFile, content);
+                splitNovelToChunks(novelId, parseData);
+            }
 
             return NextResponse.json({ success: true });
         }
@@ -302,10 +304,12 @@ export async function POST(req: Request) {
 
                 await uploadToReadingRoom(novelId, metadata, content);
 
-                // Cache final version and Split
-                const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
-                fs.writeFileSync(cacheFile, content);
-                splitNovelToChunks(novelId, parseData);
+                // Cache final version and Split (chỉ chạy ở môi trường localhost có File System thực tế để tránh tràn bộ nhớ V8/timeout trên Cloudflare Pages)
+                if (HAS_FS) {
+                    const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+                    fs.writeFileSync(cacheFile, content);
+                    splitNovelToChunks(novelId, parseData);
+                }
 
                 return NextResponse.json({ success: true, finalized: true });
             }

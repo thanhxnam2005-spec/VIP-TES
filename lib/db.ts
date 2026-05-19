@@ -48,6 +48,9 @@ export interface Novel {
   activeDictSources?: string[];
   /** Timestamp of last style scan. */
   styleScannedAt?: Date;
+  stylePreset?: string;
+  pronounMatrix?: string;
+  pronounMatrixEnabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

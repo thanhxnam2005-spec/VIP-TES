@@ -467,7 +467,14 @@ export interface ReadingRoomMetadata {
   updatedAt: number;
 }
 
+let _readingRoomIndexCache: { timestamp: number, data: ReadingRoomMetadata[] } | null = null;
+const INDEX_CACHE_TTL = 2 * 60 * 1000; // 2 minutes cache TTL
+
 export async function getReadingRoomIndex(): Promise<ReadingRoomMetadata[]> {
+  if (_readingRoomIndexCache && Date.now() - _readingRoomIndexCache.timestamp < INDEX_CACHE_TTL) {
+    return _readingRoomIndexCache.data;
+  }
+
   const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
   const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
 
@@ -481,7 +488,9 @@ export async function getReadingRoomIndex(): Promise<ReadingRoomMetadata[]> {
   try {
     const content = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
     const str = typeof content === 'string' ? content : JSON.stringify(content);
-    return JSON.parse(str) as ReadingRoomMetadata[];
+    const data = JSON.parse(str) as ReadingRoomMetadata[];
+    _readingRoomIndexCache = { timestamp: Date.now(), data };
+    return data;
   } catch (err) {
     console.error("Lỗi khi parse file index.json của Phòng Đọc:", err);
     return [];
@@ -543,6 +552,7 @@ export async function uploadToReadingRoom(
   } else {
     await uploadMultipart(indexFilename, indexStr, 'application/json', readingRoomId);
   }
+  _readingRoomIndexCache = null; // Invalidate cache
 }
 
 export async function editMetadataInReadingRoom(novelId: string, newTitle: string, newDescription: string | undefined, userId: string) {
@@ -578,6 +588,7 @@ export async function editMetadataInReadingRoom(novelId: string, newTitle: strin
 
   const indexStr = JSON.stringify(currentList, null, 2);
   await uploadMultipart(indexFilename, indexStr, 'application/json', undefined, indexFileId);
+  _readingRoomIndexCache = null; // Invalidate cache
 
   // 2. Update Data File
   const dataFilename = `${novelId}_data.json`;
@@ -644,6 +655,7 @@ export async function toggleChapterLockInReadingRoom(novelId: string, chapterIdx
   ch.isLocked = !ch.isLocked;
 
   await uploadMultipart(dataFilename, JSON.stringify(parsedData), 'application/json', undefined, dataId);
+  _readingRoomIndexCache = null; // Invalidate cache
   return ch.isLocked;
 }
 
@@ -688,6 +700,7 @@ export async function deleteFromReadingRoom(novelId: string) {
 
     indexData = indexData.filter(n => n.id !== novelId);
     await uploadMultipart('index.json', JSON.stringify(indexData), 'application/json', undefined, fileId);
+    _readingRoomIndexCache = null; // Invalidate cache
   }
 }
 

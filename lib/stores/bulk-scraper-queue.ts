@@ -361,11 +361,15 @@ async function processJob(
                 body: JSON.stringify(exportData),
             });
             if (!uploadRes.ok) {
-                const errorInfo = await uploadRes.json();
+                const errorInfo = await uploadRes.json().catch(() => ({}));
                 throw new Error(errorInfo.error || "Lỗi tải lên Reading Room");
             }
 
-            update({ progress: { completed: results.length, total: results.length, current: "Hoàn tất & Đã tải lên!" } });
+            // Xóa cục bộ sau khi upload thành công
+            const { deleteNovel } = await import("../hooks/use-novels");
+            await deleteNovel(novelId);
+
+            update({ progress: { completed: results.length, total: results.length, current: "Hoàn tất & Đã tải lên (Đã dọn dẹp bộ nhớ)!" } });
         } catch (uploadErr: any) {
             console.error("Upload error:", uploadErr);
             update({ progress: { completed: results.length, total: results.length, current: `Hoàn tất (Lỗi tải lên: ${uploadErr.message})` } });

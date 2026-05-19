@@ -278,7 +278,7 @@ export const ChomeredAdapter: SiteAdapter = {
     const base = new URL(url);
 
     const title = doc.querySelector(".bookbox .title .name")?.textContent?.trim() || doc.querySelector("h1")?.textContent?.trim() || "";
-    
+
     // Author is often near title or in meta
     let author = doc.querySelector(".bookbox .author span, .bookinfo .bookdetail dd a")?.textContent?.trim() || undefined;
     if (author && author.includes("作者 :")) {
@@ -286,9 +286,9 @@ export const ChomeredAdapter: SiteAdapter = {
     }
 
     const description = doc.querySelector(".bookbox .desc .overdesc, .bookinfo .intro")?.textContent?.trim() || undefined;
-    
+
     const coverImg = doc.querySelector(".bookbox .cover img, .bookinfo .bookcover img");
-    let coverImage = coverImg ? coverImg.getAttribute("src") : undefined;
+    let coverImage = (coverImg ? coverImg.getAttribute("src") : undefined) || undefined;
     if (coverImage) {
       if (coverImage.startsWith("//")) {
         coverImage = "https:" + coverImage;
@@ -324,9 +324,9 @@ export const ChomeredAdapter: SiteAdapter = {
 
   getChapterContent(html, _url, contentText) {
     const doc = new DOMParser().parseFromString(html, "text/html");
-    
+
     let chapterTitle = "";
-    
+
     // First try <title> tag as it's the most reliable on welove-gourmet
     const titleTag = doc.querySelector("title");
     if (titleTag && titleTag.textContent) {
@@ -344,7 +344,7 @@ export const ChomeredAdapter: SiteAdapter = {
         chapterTitle = h2.textContent.replace(/《.*?》/g, "").trim();
       }
     }
-    
+
     // Fallback to h1 and try to extract just the chapter part (e.g. "第1章")
     if (!chapterTitle) {
       const h1 = doc.querySelector("h1");
@@ -389,7 +389,7 @@ export const ChomeredAdapter: SiteAdapter = {
       tempDiv.innerHTML = htmlContent;
       text = tempDiv.textContent?.trim() || "";
     }
-    
+
     // Final cleanup
     text = text
       .replace(/糯米書棧/g, "")

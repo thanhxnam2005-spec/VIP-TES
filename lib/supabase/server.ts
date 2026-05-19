@@ -11,10 +11,11 @@ export async function createClient() {
   try {
     const ctx = getCloudflareContext();
     if (ctx && ctx.env) {
-      supabaseUrl = supabaseUrl || (ctx.env.NEXT_PUBLIC_SUPABASE_URL as string) || "";
-      supabaseKey = supabaseKey || (ctx.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) || "";
+      const env = ctx.env as any;
+      supabaseUrl = supabaseUrl || (env.NEXT_PUBLIC_SUPABASE_URL as string) || "";
+      supabaseKey = supabaseKey || (env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) || "";
     }
-  } catch (err) {}
+  } catch (err) { }
 
   return createServerClient(
     supabaseUrl || "https://dummy.supabase.co",

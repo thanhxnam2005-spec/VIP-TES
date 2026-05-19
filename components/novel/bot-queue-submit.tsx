@@ -298,12 +298,12 @@ export function BotQueueSubmit({
           await ensureInitialVersion(localScene.id, novelId, localScene.content);
 
           // 2. Lưu bản dịch AI vào lịch sử phiên bản
-          await createSceneVersion(localScene.id, novelId, "ai", translatedScene.content);
+          await createSceneVersion(localScene.id, novelId, "ai-translate", translatedScene.content);
 
           // 3. Ghi đè trực tiếp nội dung hiển thị chính bằng bản dịch AI mới
           await db.scenes.update(localScene.id, {
             content: translatedScene.content || "",
-            versionType: "ai",
+            versionType: "ai-translate",
             updatedAt: new Date(),
             wordCount: (translatedScene.content || "").split(/\s+/).filter(Boolean).length
           });

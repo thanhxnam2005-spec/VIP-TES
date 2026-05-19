@@ -192,7 +192,7 @@ function ProviderFormDialog({
                 <Field>
                   <FieldLabel>Nền tảng</FieldLabel>
                   <div className="flex flex-wrap gap-1.5">
-                    {PROVIDER_PRESETS.filter((p) => p.type !== "webgpu").map(
+                    {PROVIDER_PRESETS.filter((p) => (p.type as string) !== "webgpu").map(
                       (p) => (
                         <Tooltip key={p.type}>
                           <TooltipTrigger asChild>
@@ -200,8 +200,8 @@ function ProviderFormDialog({
                               type="button"
                               onClick={() => handlePresetChange(p.type)}
                               className={`relative flex size-10 items-center justify-center rounded-lg border transition-colors cursor-pointer ${providerType === p.type
-                                  ? "border-primary bg-primary/10"
-                                  : "hover:bg-muted/50"
+                                ? "border-primary bg-primary/10"
+                                : "hover:bg-muted/50"
                                 }`}
                             >
                               <ProviderIcon

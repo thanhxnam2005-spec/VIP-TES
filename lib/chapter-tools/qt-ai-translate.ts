@@ -248,11 +248,11 @@ function buildPostEditPrompt(
   if (nameDict && nameDict.length > 0) {
     const relevantNames = nameDict.filter((n) =>
       chineseText.includes(n.chinese) &&
-      ["nhân vật", "địa danh", "môn phái", "bang hội", "tên riêng"].includes(n.category)
-    );
+      ["nhân vật", "địa danh", "môn phái", "bang hội", "tên riêng", "thuật ngữ", "context mapping", "khác", "tuvung", "ngucanh"].includes(n.category)
+    ).sort((a, b) => b.chinese.length - a.chinese.length);
     if (relevantNames.length > 0) {
       prompt += `\n\n# Bảng tên riêng (BẮT BUỘC dùng đúng)\n`;
-      for (const n of relevantNames.slice(0, 100)) { // limit to 100 to avoid token bloat
+      for (const n of relevantNames.slice(0, 150)) { // limit to 150 to avoid token bloat
         prompt += `${n.chinese} → ${n.vietnamese}\n`;
       }
     }
@@ -267,19 +267,26 @@ function buildPostEditUserPrompt(
   chineseTitle?: string,
   dictTitle?: string,
   promptType: PromptType = "legacy",
-  extractDict: boolean = false
+  extractDict: boolean = false,
+  novelCustomPrompt?: string
 ): string {
+  // Trọng số ưu tiên cao cho xưng hô/thể loại
+  let customInstructions = "";
+  if (novelCustomPrompt && novelCustomPrompt.trim()) {
+    customInstructions = `\n\n⚠️ LƯU Ý BẮT BUỘC VỀ XƯNG HÔ/PHONG CÁCH:\n${novelCustomPrompt.trim()}\n\n`;
+  }
+
   // When extractDict is on, force legacy user prompt format
   if (!extractDict) {
     if (promptType === "khuyen_nghi") {
-      return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa bản dịch thô cho mượt mà, xưng hô đúng, văn phong chuẩn thể loại. Trả về bản dịch TIẾNG VIỆT cuối cùng thôi. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM chèn ký tự ** hay ###. ⚠️ TUYỆT ĐỐI TUÂN THỦ QUY TẮC XƯNG HÔ BÊN TRÊN!`;
+      return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa bản dịch thô cho mượt mà, xưng hô đúng, văn phong chuẩn thể loại. Trả về bản dịch TIẾNG VIỆT cuối cùng thôi. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM chèn ký tự ** hay ###. ⚠️ TUYỆT ĐỐI TUÂN THỦ QUY TẮC XƯNG HÔ BÊN TRÊN!${customInstructions}`;
     }
     if (promptType === "cuc_ngan") {
-      return `Sửa bản dịch Trung→Việt sau cho mượt, xưng hô đúng, sát gốc:\n\nGốc: ${chineseText.trim()}\n\nThô: ${dictTranslation.trim()}\n\nChỉ trả về bản dịch TIẾNG VIỆT đã sửa. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM dùng ký tự **. ⚠️ TUYỆT ĐỐI TUÂN THỦ QUY TẮC XƯNG HÔ!`;
+      return `Sửa bản dịch Trung→Việt sau cho mượt, xưng hô đúng, sát gốc:\n\nGốc: ${chineseText.trim()}\n\nThô: ${dictTranslation.trim()}\n\nChỉ trả về bản dịch TIẾNG VIỆT đã sửa. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM dùng ký tự **. ⚠️ TUYỆT ĐỐI TUÂN THỦ QUY TẮC XƯNG HÔ!${customInstructions}`;
     }
   }
   if (promptType === "custom" && !extractDict) {
-    return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa cho mượt mà, xưng hô chuẩn, văn phong đúng thể loại. Chỉ trả về bản dịch TIẾNG VIỆT cuối. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM sử dụng **. ⚠️ BẮT BUỘC SỬ DỤNG ĐÚNG XƯNG HÔ BÊN TRÊN!`;
+    return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa cho mượt mà, xưng hô chuẩn, văn phong đúng thể loại. Chỉ trả về bản dịch TIẾNG VIỆT cuối. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM sử dụng **. ⚠️ BẮT BUỘC SỬ DỤNG ĐÚNG XƯNG HÔ BÊN TRÊN!${customInstructions}`;
   }
 
   let user = "";
@@ -291,7 +298,7 @@ function buildPostEditUserPrompt(
   user += `[GỐC]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN]\n${dictTranslation}\n\nHãy phân tích và trả về <names> (nếu tìm thấy từ mới) và <content> (bản dịch TIẾNG VIỆT đã sửa lỗi) theo đúng format.
 ⚠️ LƯU Ý 1: Dù có trích xuất <names> hay không, vế trái BẮT BUỘC phải là CHỮ HÁN BẢN GỐC, KHÔNG ĐƯỢC để tiếng Việt ở vế trái!
 ⚠️ LƯU Ý 2: NGHIÊM CẤM dùng định dạng Markdown (**, ###) bên trong thẻ <content>.
-⚠️ LƯU Ý 3: TUYỆT ĐỐI TUÂN THỦ CÁCH XƯNG HÔ ĐÃ QUY ĐỊNH BÊN TRÊN! Không được dịch bừa!`;
+⚠️ LƯU Ý 3: TUYỆT ĐỐI TUÂN THỦ CÁCH XƯNG HÔ ĐÃ QUY ĐỊNH BÊN TRÊN! Không được dịch bừa!${customInstructions}`;
 
   return user;
 }
@@ -633,216 +640,250 @@ ${cleaned}`;
 
         // The chapter logic already skips translated chapters during discovery now.
 
-        // Join scene contents — ALWAYS use ORIGINAL content (pre-translation)
-        const SCENE_BREAK = "===SCENE_BREAK===";
-        const isMultiScene = scenes.length > 1;
-        const originalContents = await Promise.all(
-          scenes.map((s) => getOriginalContent(s.id))
-        );
-        const joinedContent = isMultiScene
-          ? originalContents.join(`\n\n${SCENE_BREAK}\n\n`)
-          : originalContents[0];
-
-        const cleanedContent = cleanGarbageLines(joinedContent);
-
-        // Fetch the latest dictionary (to include words extracted by Lookahead)
-        nameDict = await getMergedNameDict(novelId);
-
-        const chunks = chunkText(cleanedContent, 2500);
-        let finalAccumulatedContent = "";
         let finalParsedTitle: string | null = null;
-        let totalExtractedNamesCount = 0;
         let finalParsedScenes: { sceneId: string; content: string }[] = [];
+        let totalExtractedNamesCount = 0;
 
-        onPhase(chapter.id, "dict"); // Indicate STV Phase started
+        let success = false;
+        let finalError: unknown = null;
 
-        for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
-          const chunk = chunks[chunkIdx];
-
-          if (signal?.aborted) {
-            const err = new Error("Aborted");
-            err.name = "AbortError";
-            throw err;
-          }
-
-          // ═══════════════════════════════════════════
-          // PHASE 1: Dictionary/STV Translation (fast)
-          // ═══════════════════════════════════════════
-          let dictTranslatedTitle: string = chapter.title;
-          let dictTranslatedContent: string = "";
-
+        for (let chapterAttempt = 1; chapterAttempt <= 3; chapterAttempt++) {
+          if (signal?.aborted) break;
           try {
-            const titlePromise = chunkIdx === 0
-              ? convertText(chapter.title, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }).then(r => r.plainText)
-              : Promise.resolve(chapter.title);
+            if (chapterAttempt > 1) {
+              onChapterError({
+                chapterId: chapter.id,
+                chapterTitle: chapter.title,
+                message: `Dịch lỗi. Thử lại dịch chương lần ${chapterAttempt}/3...`,
+              });
+              await delay(3000 * (chapterAttempt - 1));
+            }
 
-            const contentPromise = convertText(chunk, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }).then(r => r.plainText);
+            // Join scene contents — ALWAYS use ORIGINAL content (pre-translation)
+            const SCENE_BREAK = "===SCENE_BREAK===";
+            const isMultiScene = scenes.length > 1;
+            const originalContents = await Promise.all(
+              scenes.map((s) => getOriginalContent(s.id))
+            );
+            const joinedContent = isMultiScene
+              ? originalContents.join(`\n\n${SCENE_BREAK}\n\n`)
+              : originalContents[0];
 
-            const [titleRes, contentRes] = await Promise.all([titlePromise, contentPromise]);
-            dictTranslatedTitle = titleRes;
-            dictTranslatedContent = contentRes;
+            const cleanedContent = cleanGarbageLines(joinedContent);
+
+            // Fetch the latest dictionary (to include words extracted by Lookahead)
+            nameDict = await getMergedNameDict(novelId);
+
+            const chunks = chunkText(cleanedContent, 1600);
+            let finalAccumulatedContent = "";
+            let finalParsedTitle: string | null = null;
+            let totalExtractedNamesCount = 0;
+            let finalParsedScenes: { sceneId: string; content: string }[] = [];
+
+            onPhase(chapter.id, "dict"); // Indicate STV Phase started
+
+            for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+              const chunk = chunks[chunkIdx];
+
+              if (signal?.aborted) {
+                const err = new Error("Aborted");
+                err.name = "AbortError";
+                throw err;
+              }
+
+              // ═══════════════════════════════════════════
+              // PHASE 1: Dictionary/STV Translation (fast)
+              // ═══════════════════════════════════════════
+              let dictTranslatedTitle: string = chapter.title;
+              let dictTranslatedContent: string = "";
+
+              try {
+                const titlePromise = chunkIdx === 0
+                  ? convertText(chapter.title, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }).then(r => r.plainText)
+                  : Promise.resolve(chapter.title);
+
+                const contentPromise = convertText(chunk, { novelNames: nameDict, options: { activeDictSources: qtDictSources } }).then(r => r.plainText);
+
+                const [titleRes, contentRes] = await Promise.all([titlePromise, contentPromise]);
+                dictTranslatedTitle = titleRes;
+                dictTranslatedContent = contentRes;
+              } catch (err) {
+                if (err instanceof Error && err.name === "AbortError") throw err;
+                throw new Error(`STV Chunk ${chunkIdx + 1}/${chunks.length} thất bại: ${err instanceof Error ? err.message : "Lỗi"}`);
+              }
+
+              // ═══════════════════════════════════════════
+              // PHASE 2: AI Post-Edit (selective refine)
+              // ═══════════════════════════════════════════
+              if (chunkIdx === 0) onPhase(chapter.id, "ai");
+
+              const effectiveExtractDict = opts.extractDict ?? false;
+
+              const systemPrompt = buildPostEditPrompt(
+                chunk,
+                dictTranslatedContent,
+                novelCustomPrompt,
+                opts.promptType,
+                effectiveExtractDict,
+                nameDict
+              );
+
+              const userPrompt = buildPostEditUserPrompt(
+                chunk,
+                dictTranslatedContent,
+                chunkIdx === 0 ? chapter.title : undefined,
+                chunkIdx === 0 ? dictTranslatedTitle : undefined,
+                opts.promptType,
+                effectiveExtractDict,
+                novelCustomPrompt
+              );
+
+              let accumulated = "";
+              let lastError: unknown = null;
+
+              for (let attempt = 0; attempt <= MAX_PERSISTENT_ATTEMPTS; attempt++) {
+                if (signal?.aborted) {
+                  const err = new Error("Aborted");
+                  err.name = "AbortError";
+                  throw err;
+                }
+
+                try {
+                  if (attempt > 0) {
+                    onChapterError({
+                      chapterId: chapter.id,
+                      chapterTitle: chapter.title,
+                      message: `Chunk ${chunkIdx + 1}: Thử lại lần ${attempt} sau 30s...`,
+                    });
+                  }
+
+                  const result = await streamText({
+                    model: workerModel,
+                    system: systemPrompt,
+                    prompt: userPrompt,
+                    abortSignal: signal,
+                    maxOutputTokens: 10000,
+                  });
+
+                  let fullText = "";
+                  for await (const chunkTxt of result.textStream) {
+                    fullText += chunkTxt;
+                  }
+                  accumulated = fullText;
+                  lastError = null;
+                  break;
+                } catch (err) {
+                  if (err instanceof Error && err.name === "AbortError") throw err;
+
+                  lastError = err;
+                  const classified = classifyError(err);
+
+                  if (attempt >= MAX_PERSISTENT_ATTEMPTS) {
+                    throw new Error(`Chunk ${chunkIdx + 1} hết Token/lỗi AI: ${classified.message}`);
+                  }
+
+                  console.warn(`[AI Retry] Chapter ${chapter.id} chunk ${chunkIdx} failed (attempt ${attempt}): ${classified.message}`);
+                  await delay(PERSISTENT_RETRY_DELAY);
+                }
+              }
+
+              if (accumulated.trim()) {
+                const parsed = parseHybridResult(accumulated, chunkIdx === 0, opts.promptType, effectiveExtractDict);
+                if (chunkIdx === 0) finalParsedTitle = parsed.title || dictTranslatedTitle;
+
+                // Save extracted names to novel dictionary dynamically
+                if (parsed.extractedNames.length > 0) {
+                  try {
+                    const entriesWithCategory = parsed.extractedNames.map((entry) => {
+                      let category = "khác";
+                      if (entry.dictType === "names") category = "nhân vật";
+                      else if (entry.dictType === "tuvung") category = "thuật ngữ";
+                      else if (entry.dictType === "ngucanh") category = "context mapping";
+                      return { ...entry, category };
+                    });
+
+                    const importResult = await bulkImportNameEntries(
+                      novelId,
+                      entriesWithCategory,
+                      "khác",
+                      "skip"
+                    );
+                    totalExtractedNamesCount += parsed.extractedNames.length;
+                    nameDict = await getMergedNameDict(novelId);
+                  } catch (err) { }
+                }
+
+                finalAccumulatedContent += (finalAccumulatedContent ? "\n\n" : "") + (parsed.content || dictTranslatedContent);
+              } else {
+                throw new Error(`AI trả về nội dung trống ở đoạn ${chunkIdx + 1}`);
+              }
+            } // end of chunks loop
+
+            // Map final string back to scenes
+            if (isMultiScene) {
+              const parts = finalAccumulatedContent.split(SCENE_BREAK).map((s) => s.trim());
+              finalParsedScenes = scenes.map((s, i) => ({
+                sceneId: s.id,
+                content: parts[i] || s.content,
+              }));
+            } else {
+              finalParsedScenes = [{ sceneId: scenes[0].id, content: finalAccumulatedContent }];
+            }
+
+            onPhase(chapter.id, "done");
+
+            // Auto-save
+            const now = new Date();
+            if (finalParsedTitle) {
+              await db.chapters.update(chapter.id, { title: finalParsedTitle, updatedAt: now });
+            }
+            for (const scene of finalParsedScenes) {
+              const existing = await db.scenes.get(scene.sceneId);
+              if (existing) {
+                const origContent = await getOriginalContent(scene.sceneId);
+                await ensureInitialVersion(scene.sceneId, existing.novelId, origContent);
+                await createSceneVersion(scene.sceneId, existing.novelId, "hybrid-converter", scene.content);
+              }
+              await db.scenes.update(scene.sceneId, {
+                content: scene.content,
+                wordCount: countWords(scene.content),
+                updatedAt: now,
+              });
+            }
+
+            onChapterComplete({
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              originalTitle: chapter.title,
+              newTitle: finalParsedTitle ?? chapter.title,
+              scenes: finalParsedScenes,
+              extractedNamesCount: totalExtractedNamesCount,
+            });
+
+            store.setChapterStatus(novelId, chapter.id, "done");
+            store.addResult(novelId, {
+              chapterId: chapter.id,
+              chapterTitle: chapter.title,
+              originalTitle: chapter.title,
+              newTitle: finalParsedTitle ?? chapter.title,
+              originalLineCount: 0,
+              translatedLineCount: 0,
+              scenes: finalParsedScenes,
+            });
+            store.incrementCompleted(novelId);
+
+            success = true;
+            break;
           } catch (err) {
             if (err instanceof Error && err.name === "AbortError") throw err;
-            throw new Error(`STV Chunk ${chunkIdx + 1}/${chunks.length} thất bại: ${err instanceof Error ? err.message : "Lỗi"}`);
+            finalError = err;
+            console.warn(`[Chapter Attempt ${chapterAttempt} Failed]`, err);
           }
+        } // end retry loop
 
-          // ═══════════════════════════════════════════
-          // PHASE 2: AI Post-Edit (selective refine)
-          // ═══════════════════════════════════════════
-          if (chunkIdx === 0) onPhase(chapter.id, "ai");
-
-          const effectiveExtractDict = opts.extractDict ?? false;
-
-          const systemPrompt = buildPostEditPrompt(
-            chunk,
-            dictTranslatedContent,
-            novelCustomPrompt,
-            opts.promptType,
-            effectiveExtractDict,
-            nameDict
-          );
-
-          const userPrompt = buildPostEditUserPrompt(
-            chunk,
-            dictTranslatedContent,
-            chunkIdx === 0 ? chapter.title : undefined,
-            chunkIdx === 0 ? dictTranslatedTitle : undefined,
-            opts.promptType,
-            effectiveExtractDict
-          );
-
-          let accumulated = "";
-          let lastError: unknown = null;
-
-          for (let attempt = 0; attempt <= MAX_PERSISTENT_ATTEMPTS; attempt++) {
-            if (signal?.aborted) {
-              const err = new Error("Aborted");
-              err.name = "AbortError";
-              throw err;
-            }
-
-            try {
-              if (attempt > 0) {
-                onChapterError({
-                  chapterId: chapter.id,
-                  chapterTitle: chapter.title,
-                  message: `Chunk ${chunkIdx + 1}: Thử lại lần ${attempt} sau 30s...`,
-                });
-              }
-
-              const result = await streamText({
-                model: workerModel,
-                system: systemPrompt,
-                prompt: userPrompt,
-                abortSignal: signal,
-              });
-
-              let fullText = "";
-              for await (const chunkTxt of result.textStream) {
-                fullText += chunkTxt;
-              }
-              accumulated = fullText;
-              lastError = null;
-              break;
-            } catch (err) {
-              if (err instanceof Error && err.name === "AbortError") throw err;
-
-              lastError = err;
-              const classified = classifyError(err);
-
-              if (attempt >= MAX_PERSISTENT_ATTEMPTS) {
-                throw new Error(`Chunk ${chunkIdx + 1} hết Token/lỗi AI: ${classified.message}`);
-              }
-
-              console.warn(`[AI Retry] Chapter ${chapter.id} chunk ${chunkIdx} failed (attempt ${attempt}): ${classified.message}`);
-              await delay(PERSISTENT_RETRY_DELAY);
-            }
-          }
-
-          if (accumulated.trim()) {
-            const parsed = parseHybridResult(accumulated, chunkIdx === 0, opts.promptType, effectiveExtractDict);
-            if (chunkIdx === 0) finalParsedTitle = parsed.title || dictTranslatedTitle;
-
-            // Save extracted names to novel dictionary dynamically
-            if (parsed.extractedNames.length > 0) {
-              try {
-                const entriesWithCategory = parsed.extractedNames.map((entry) => {
-                  let category = "khác";
-                  if (entry.dictType === "names") category = "nhân vật";
-                  else if (entry.dictType === "tuvung") category = "thuật ngữ";
-                  else if (entry.dictType === "ngucanh") category = "context mapping";
-                  return { ...entry, category };
-                });
-
-                const importResult = await bulkImportNameEntries(
-                  novelId,
-                  entriesWithCategory,
-                  "khác",
-                  "skip"
-                );
-                totalExtractedNamesCount += parsed.extractedNames.length;
-                nameDict = await getMergedNameDict(novelId);
-              } catch (err) { }
-            }
-
-            finalAccumulatedContent += (finalAccumulatedContent ? "\n\n" : "") + (parsed.content || dictTranslatedContent);
-          } else {
-            throw new Error(`AI trả về nội dung trống ở đoạn ${chunkIdx + 1}`);
-          }
-        } // end of chunks loop
-
-        // Map final string back to scenes
-        if (isMultiScene) {
-          const parts = finalAccumulatedContent.split(SCENE_BREAK).map((s) => s.trim());
-          finalParsedScenes = scenes.map((s, i) => ({
-            sceneId: s.id,
-            content: parts[i] || s.content,
-          }));
-        } else {
-          finalParsedScenes = [{ sceneId: scenes[0].id, content: finalAccumulatedContent }];
+        if (!success) {
+          throw finalError || new Error("Dịch chương thất bại sau 3 lần thử");
         }
-
-        onPhase(chapter.id, "done");
-
-        // Auto-save
-        const now = new Date();
-        if (finalParsedTitle) {
-          await db.chapters.update(chapter.id, { title: finalParsedTitle, updatedAt: now });
-        }
-        for (const scene of finalParsedScenes) {
-          const existing = await db.scenes.get(scene.sceneId);
-          if (existing) {
-            const origContent = await getOriginalContent(scene.sceneId);
-            await ensureInitialVersion(scene.sceneId, existing.novelId, origContent);
-            await createSceneVersion(scene.sceneId, existing.novelId, "hybrid-converter", scene.content);
-          }
-          await db.scenes.update(scene.sceneId, {
-            content: scene.content,
-            wordCount: countWords(scene.content),
-            updatedAt: now,
-          });
-        }
-
-        onChapterComplete({
-          chapterId: chapter.id,
-          chapterTitle: chapter.title,
-          originalTitle: chapter.title,
-          newTitle: finalParsedTitle ?? chapter.title,
-          scenes: finalParsedScenes,
-          extractedNamesCount: totalExtractedNamesCount,
-        });
-
-        store.setChapterStatus(novelId, chapter.id, "done");
-        store.addResult(novelId, {
-          chapterId: chapter.id,
-          chapterTitle: chapter.title,
-          originalTitle: chapter.title,
-          newTitle: finalParsedTitle ?? chapter.title,
-          originalLineCount: 0,
-          translatedLineCount: 0,
-          scenes: finalParsedScenes,
-        });
-        store.incrementCompleted(novelId);
 
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") break;

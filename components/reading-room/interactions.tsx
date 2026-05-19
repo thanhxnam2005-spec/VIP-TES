@@ -175,7 +175,7 @@ export function ReadingRoomInteractions({ novelId }: { novelId: string }) {
 
     // Xếp con theo thời gian tăng dần (cũ nhất ở trên cùng)
     Object.keys(childrenByParent).forEach(key => {
-        childrenByParent[key].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        childrenByParent[key].sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     });
 
     return (
@@ -279,7 +279,7 @@ export function ReadingRoomInteractions({ novelId }: { novelId: string }) {
                             {/* Children Replies */}
                             {(childrenByParent[comment.id] || []).length > 0 && (
                                 <div className="pl-14 space-y-4 mt-2">
-                                    {childrenByParent[comment.id].map(child => (
+                                    {childrenByParent[comment.id].map((child: any) => (
                                         <div key={child.id} className="flex gap-3 group/child">
                                             <div className="w-8 h-8 rounded-full bg-muted/50 flex items-center justify-center font-bold text-xs shrink-0 uppercase border">
                                                 {child.display_name.charAt(0)}

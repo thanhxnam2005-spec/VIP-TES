@@ -17,13 +17,16 @@ import { runHybridTranslate } from "@/lib/chapter-tools/hybrid-translate";
 import type { HybridTranslateResult, HybridTranslateError } from "@/lib/chapter-tools/hybrid-translate";
 import { PromptTunerDialog } from "@/components/novel/prompt-tuner-dialog";
 import { scanNovelStyle } from "@/lib/chapter-tools/scan-novel-style";
-import { useAnalysisSettings } from "@/lib/hooks/use-analysis-settings";
-import { useChatSettings } from "@/lib/hooks/use-chat-settings";
 import {
   useAIProvider,
   useApiInferenceProviders,
   useAIModels,
 } from "@/lib/hooks/use-ai-providers";
+import { runComprehensiveTranslate } from "@/lib/chapter-tools/comprehensive-translate";
+import { streamText } from "ai";
+import { getOriginalContent } from "@/lib/hooks/use-scene-versions";
+import { useAnalysisSettings } from "@/lib/hooks/use-analysis-settings";
+import { useChatSettings } from "@/lib/hooks/use-chat-settings";
 import {
   resolveChapterToolModel,
   getChapterToolModelMissingMessage,
@@ -88,7 +91,7 @@ export function TranslateWorkspaceDialog({
   // Selected state
   const [selectedProviderId, setSelectedProviderId] = useState<string | undefined>();
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
-  const [extraModelIds, setExtraModelIds] = useState<string[]>([]);
+  const [extraModels, setExtraModels] = useState<Array<{ providerId: string; modelId: string }>>([]);
 
   // Fetch models for selected provider
   const models = useAIModels(selectedProviderId);
@@ -203,10 +206,118 @@ export function TranslateWorkspaceDialog({
   const [tunerOpen, setTunerOpen] = useState(false);
   const [qtDictSources, setQtDictSources] = useState<string[]>(["tienhiep"]);
   const [confirmMode, setConfirmMode] = useState<"khuyen_nghi" | "cuc_ngan" | "custom" | null>(null);
-  const [activeTab, setActiveTab] = useState<string>("stv-hybrid");
+  const [activeTab, setActiveTab] = useState<string>("comprehensive");
   const [extractDict, setExtractDict] = useState(true);
   const [skipTranslated, setSkipTranslated] = useState(true);
+  const [twoPass, setTwoPass] = useState(true);
+  const [inlinePrompt, setInlinePrompt] = useState("");
+  const [isScanningInline, setIsScanningInline] = useState(false);
+  const [stylePreset, setStylePreset] = useState<string>("default");
+  const [pronounMatrix, setPronounMatrix] = useState<string>("");
+  const [pronounMatrixEnabled, setPronounMatrixEnabled] = useState<boolean>(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (novel) {
+      if (novel.customTranslatePrompt !== undefined) {
+        setInlinePrompt(novel.customTranslatePrompt);
+      }
+      if (novel.stylePreset !== undefined) {
+        setStylePreset(novel.stylePreset);
+      } else {
+        setStylePreset("default");
+      }
+      if (novel.pronounMatrix !== undefined) {
+        setPronounMatrix(novel.pronounMatrix);
+      } else {
+        setPronounMatrix("");
+      }
+      if (novel.pronounMatrixEnabled !== undefined) {
+        setPronounMatrixEnabled(novel.pronounMatrixEnabled);
+      } else {
+        setPronounMatrixEnabled(false);
+      }
+    }
+  }, [novel]);
+
+  const handleSaveInlinePrompt = async () => {
+    await db.novels.update(novelId, {
+      customTranslatePrompt: inlinePrompt.trim(),
+      updatedAt: new Date(),
+    });
+    toast.success("Đã cài đặt quy tắc xưng hô thành công!");
+  };
+
+  const handleInlineScan = async () => {
+    let model = await resolveModel();
+    if (!model) return;
+
+    setIsScanningInline(true);
+    try {
+      const chapters = await db.chapters
+        .where("novelId")
+        .equals(novelId)
+        .sortBy("order");
+
+      const firstChapters = chapters.slice(0, 10);
+      if (firstChapters.length === 0) {
+        throw new Error("Truyện chưa có chương nào.");
+      }
+
+      const chapterIdsSet = new Set(firstChapters.map((c) => c.id));
+      const allScenes = await db.scenes
+        .where("[novelId+isActive]")
+        .equals([novelId, 1])
+        .toArray();
+
+      const scenesByChapter = new Map<string, typeof allScenes>();
+      for (const s of allScenes) {
+        if (!chapterIdsSet.has(s.chapterId)) continue;
+        const arr = scenesByChapter.get(s.chapterId) ?? [];
+        arr.push(s);
+        scenesByChapter.set(s.chapterId, arr);
+      }
+
+      const parts: string[] = [];
+      for (const chapter of firstChapters) {
+        const scenes = scenesByChapter.get(chapter.id) ?? [];
+        if (scenes.length === 0) continue;
+        const contents = await Promise.all(scenes.map((s) => getOriginalContent(s.id)));
+        const content = contents.join("\n\n");
+        if (!content.trim()) continue;
+        parts.push(content.slice(0, 1000));
+      }
+
+      const sampleText = parts.join("\n---\n");
+
+      const INITIAL_PROMPT = `Bạn là chuyên gia phân tích và dịch thuật tiểu thuyết mạng Trung Quốc hàng đầu.
+Hãy đọc mẫu truyện và trích xuất phong cách viết, mối quan hệ chính và đại từ xưng hô thích hợp của nhân vật chính/phụ.
+Trả về dạng quy tắc xưng hô gạch đầu dòng cực ngắn gọn, thiết thực nhất (vô cùng ngắn gọn và trực quan để làm prompt).`;
+
+      const result = await streamText({
+        model,
+        system: INITIAL_PROMPT,
+        prompt: "MẪU TRUYỆN:\n" + sampleText,
+      });
+
+      let fullText = "";
+      for await (const chunk of result.textStream) {
+        fullText += chunk;
+      }
+
+      setInlinePrompt(fullText.trim());
+      await db.novels.update(novelId, {
+        customTranslatePrompt: fullText.trim(),
+        styleScannedAt: new Date(),
+        updatedAt: new Date(),
+      });
+      toast.success("Quét và tạo quy tắc xưng hô thành công!");
+    } catch (err: any) {
+      toast.error("Quét thất bại: " + err.message);
+    } finally {
+      setIsScanningInline(false);
+    }
+  };
 
   const GENRE_DICTS = [
     "hiendai", "tienhiep", "huyenhuyen", "dammi", "hocduong",
@@ -320,10 +431,14 @@ export function TranslateWorkspaceDialog({
 
     // Resolve extra models for multi-model translation
     let resolvedModels: any[] | undefined;
-    if (extraModelIds.length > 0 && selectedProviderId) {
-      const allIds = [selectedModelId, ...extraModelIds].filter(Boolean) as string[];
-      const promises = allIds.map(mid => resolveChapterToolModel(
-        { providerId: selectedProviderId!, modelId: mid },
+    if (extraModels.length > 0) {
+      const allConfigs = [
+        { providerId: selectedProviderId!, modelId: selectedModelId! },
+        ...extraModels
+      ].filter(item => item.providerId && item.modelId);
+
+      const promises = allConfigs.map(item => resolveChapterToolModel(
+        { providerId: item.providerId, modelId: item.modelId },
         defaultProvider,
         chatSettings
       ));
@@ -345,7 +460,38 @@ export function TranslateWorkspaceDialog({
     abortRef.current = controller;
 
     try {
-      if (activeTab === "stv-hybrid") {
+      if (activeTab === "comprehensive") {
+        await runComprehensiveTranslate({
+          novelId,
+          chapterIds: targetChapterIds,
+          model: model!,
+          qtDictSources,
+          novelCustomPrompt: inlinePrompt,
+          twoPass,
+          skipTranslated,
+          signal: controller.signal,
+          delayMs: (settings.translateDelaySeconds ?? 0) * 1000,
+          onPhase: (_chapterId, phase) => {
+            setCurrentPhase(phase as Phase);
+          },
+          onChapterStart: (_chapterId, title) => {
+            setCurrentChapterTitle(title);
+          },
+          onChapterComplete: (result) => {
+            setResults((prev) => [...prev, result as any]);
+            setProcessedCount((c) => c + 1);
+          },
+          onChapterError: (error) => {
+            setErrors((prev) => [...prev, error as any]);
+            setProcessedCount((c) => c + 1);
+          },
+          onAllComplete: () => {
+            if (!controller.signal.aborted) {
+              setStep("done");
+            }
+          },
+        });
+      } else if (activeTab === "stv-hybrid") {
         await runHybridTranslate({
           novelId,
           chapterIds: targetChapterIds,
@@ -417,7 +563,7 @@ export function TranslateWorkspaceDialog({
         setStep("config");
       }
     }
-  }, [novelId, chapterIds, chapters, settings, resolveModel, activeTab, extractDict, skipTranslated, qtDictSources, extraModelIds, selectedProviderId, selectedModelId, defaultProvider, chatSettings]);
+  }, [novelId, chapterIds, chapters, settings, resolveModel, activeTab, extractDict, skipTranslated, qtDictSources, extraModels, selectedProviderId, selectedModelId, defaultProvider, chatSettings]);
 
   const handleClose = () => {
     if (step === "processing") {
@@ -467,12 +613,163 @@ export function TranslateWorkspaceDialog({
         {step === "config" && (
           <div className="space-y-4 py-2">
             <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setConfirmMode(null); }} className="w-full">
-              <TabsList className="flex flex-col sm:grid w-full sm:grid-cols-3 h-auto p-1 gap-1">
+              <TabsList className="grid grid-cols-2 w-full group-data-horizontal/tabs:h-auto p-1 gap-1.5 bg-muted rounded-lg font-medium">
+                <TabsTrigger value="comprehensive" className="text-xs h-9 py-1.5 text-center">✨ Dịch Toàn Diện</TabsTrigger>
                 <TabsTrigger value="hybrid" className="hidden">Gốc + Thô + AI</TabsTrigger>
-                <TabsTrigger value="stv-hybrid">Dịch Converter AI</TabsTrigger>
-                <TabsTrigger value="pure-ai">Dịch Converter Prompt</TabsTrigger>
-                <TabsTrigger value="bot-queue" className="gap-1">🤖 Bot Dịch</TabsTrigger>
+                <TabsTrigger value="stv-hybrid" className="text-xs h-9 py-1.5 text-center">Dịch Converter AI</TabsTrigger>
+                <TabsTrigger value="pure-ai" className="text-xs h-9 py-1.5 text-center">Dịch Converter Prompt</TabsTrigger>
+                <TabsTrigger value="bot-queue" className="gap-1 text-xs h-9 py-1.5 text-center">🤖 Bot Dịch</TabsTrigger>
               </TabsList>
+
+              <TabsContent value="comprehensive" className="space-y-4 mt-4">
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">✨ Dịch thuật Toàn diện & Biên tập mượt mà</p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Luồng dịch chuyên sâu nhất: Tự động trích xuất toàn bộ từ vựng, tối ưu hóa các cụm tên riêng dài lên hàng đầu, sửa đại từ nhân xưng và áp dụng biên tập viên AI ở bước 2 để văn phong trôi chảy tự nhiên nhất.
+                  </p>
+                </div>
+
+                {/* Prompt Tuner / Scanner Section */}
+                <div className="rounded-lg border bg-card p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ScanSearchIcon className="size-4 text-emerald-600 animate-pulse" />
+                      <span className="text-xs font-medium">Cấu hình Prompt Dịch</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-muted-foreground">
+                    Mở công cụ quét 10 chương đầu để phân tích thể loại và tạo ra System Prompt/quy tắc tối ưu nhất cho riêng bộ truyện này.
+                  </p>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 h-8"
+                    onClick={() => setTunerOpen(true)}
+                  >
+                    <SparklesIcon className="size-3.5" />
+                    Mở cấu hình Prompt
+                  </Button>
+                </div>
+
+                {/* Style Preset Selector */}
+                <div className="space-y-2 rounded-lg border bg-card p-3">
+                  <Label className="text-xs font-semibold text-foreground">Bộ lọc văn phong bản dịch:</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Điều chỉnh hướng văn phong dịch thuật AI để phù hợp nhất với thể loại truyện.
+                  </p>
+                  <Select
+                    value={stylePreset}
+                    onValueChange={async (val) => {
+                      setStylePreset(val);
+                      await db.novels.update(novelId, { stylePreset: val });
+                      toast.success("Đã cập nhật phong cách dịch!");
+                    }}
+                  >
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="Chọn văn phong..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">🌟 Mặc định (Tự nhiên / Chuẩn)</SelectItem>
+                      <SelectItem value="epic">⚔️ Hùng tráng / Kịch tính (Action/Epic)</SelectItem>
+                      <SelectItem value="poetic">🌸 Bay bổng / Cổ phong (Poetic/Wuxia)</SelectItem>
+                      <SelectItem value="modern">🏙️ Đời thường / Đô thị (Modern/Casual)</SelectItem>
+                      <SelectItem value="romantic">💞 Ngọt ngào / Tình cảm (Romantic)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2 rounded-lg border bg-card p-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground">Quy tắc xưng hô & Bối cảnh:</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleInlineScan}
+                      disabled={isScanningInline}
+                      className="h-6 text-[10px] text-primary hover:bg-primary/10 gap-1"
+                    >
+                      {isScanningInline ? <Loader2Icon className="size-3 animate-spin" /> : <SparklesIcon className="size-3" />}
+                      Quét xưng hô / phong cách
+                    </Button>
+                  </div>
+                  <Textarea
+                    placeholder="VD: Nam chính xưng ta - gọi người khác là ngươi. Văn phong võ hiệp Tiên hiệp cổ trang..."
+                    value={inlinePrompt}
+                    onChange={(e) => setInlinePrompt(e.target.value)}
+                    className="min-h-[100px] text-[11px]"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full h-7 text-[11px]"
+                    variant="outline"
+                    onClick={handleSaveInlinePrompt}
+                  >
+                    Lưu quy tắc xưng hô
+                  </Button>
+                </div>
+
+                {/* Pronoun Relationship Matrix */}
+                <div className="space-y-3 rounded-lg border bg-card p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="pronoun-matrix-enabled" className="text-xs font-bold text-foreground cursor-pointer">
+                        Ma trận xưng hô cặp nhân vật
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        Quy định cách xưng hô khi 2 nhân vật giao tiếp.
+                      </p>
+                    </div>
+                    <Switch
+                      id="pronoun-matrix-enabled"
+                      checked={pronounMatrixEnabled}
+                      onCheckedChange={async (checked) => {
+                        setPronounMatrixEnabled(checked);
+                        await db.novels.update(novelId, { pronounMatrixEnabled: checked });
+                        toast.success(checked ? "Đã bật Ma trận xưng hô!" : "Đã tắt Ma trận xưng hô!");
+                      }}
+                    />
+                  </div>
+
+                  {pronounMatrixEnabled && (
+                    <div className="space-y-2 mt-2 pt-2 border-t">
+                      <Textarea
+                        placeholder="Định dạng: NhânVậtA -> NhânVậtB: Xưng - Gọi&#10;Ví dụ:&#10;Trần Phàm -> Lục Tuyết Kỳ: Ta - Nàng&#10;Sư Tôn -> Trần Phàm: Ta - Đồ nhi"
+                        value={pronounMatrix}
+                        onChange={(e) => setPronounMatrix(e.target.value)}
+                        className="min-h-[90px] text-[11px] font-mono leading-normal"
+                      />
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[11px] bg-primary/10 hover:bg-primary/20 text-primary border-0"
+                        onClick={async () => {
+                          await db.novels.update(novelId, { pronounMatrix });
+                          toast.success("Đã lưu Ma trận xưng hô!");
+                        }}
+                      >
+                        Lưu Ma trận xưng hô
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between border-t pt-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="two-pass-mode" className="text-xs font-medium cursor-pointer">
+                      Biên tập viên AI chuyên nghiệp (2-Pass Mode)
+                    </Label>
+                    <p className="text-[10px] text-muted-foreground">
+                      Chạy thêm bước 2 để làm mịn từ viết thô sang văn thuần Việt tự nhiên.
+                    </p>
+                  </div>
+                  <Switch
+                    id="two-pass-mode"
+                    checked={twoPass}
+                    onCheckedChange={setTwoPass}
+                  />
+                </div>
+              </TabsContent>
 
               <TabsContent value="stv-hybrid" className="space-y-4 mt-4">
                 <div className="rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3 space-y-2">
@@ -649,7 +946,7 @@ export function TranslateWorkspaceDialog({
             <div className="space-y-2 border-t pt-4">
               <Label className="text-xs">AI Model (Dùng chung cho cả 2 chế độ)</Label>
               <div className="flex gap-2">
-                <Select value={selectedProviderId} onValueChange={(val) => { handleProviderChange(val); setExtraModelIds([]); }}>
+                <Select value={selectedProviderId} onValueChange={(val) => { handleProviderChange(val); setExtraModels([]); }}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Chọn Provider..." />
                   </SelectTrigger>
@@ -683,56 +980,37 @@ export function TranslateWorkspaceDialog({
               {/* Extra model rows for multi-model */}
               {selectedProviderId && selectedModelId && (
                 <div className="space-y-1.5 pl-1">
-                  {extraModelIds.map((mid, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground w-16 shrink-0">Model {idx + 2}</span>
-                      <Select
-                        value={mid}
-                        onValueChange={(val) => {
-                          const newIds = [...extraModelIds];
-                          newIds[idx] = val;
-                          setExtraModelIds(newIds);
-                        }}
-                      >
-                        <SelectTrigger className="flex-1 h-8 text-xs">
-                          <SelectValue placeholder="Chọn model..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {models?.filter(m => m.modelId !== selectedModelId && !extraModelIds.includes(m.modelId) || m.modelId === mid).map((m) => (
-                            <SelectItem key={m.id} value={m.modelId}>
-                              {m.name || m.modelId}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0 text-destructive hover:text-destructive"
-                        onClick={() => setExtraModelIds(prev => prev.filter((_, i) => i !== idx))}
-                      >
-                        <Trash2Icon className="size-3.5" />
-                      </Button>
-                    </div>
-                  ))}
-                  {models && models.length > 1 && extraModelIds.length < models.length - 1 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-[11px] gap-1.5 mt-1"
-                      onClick={() => {
-                        const usedIds = new Set([selectedModelId, ...extraModelIds]);
-                        const nextModel = models?.find(m => !usedIds.has(m.modelId));
-                        setExtraModelIds(prev => [...prev, nextModel?.modelId || ""]);
+                  {extraModels.map((item, idx) => (
+                    <ExtraModelRow
+                      key={idx}
+                      index={idx}
+                      providers={providers}
+                      value={item}
+                      onChange={(newVal) => {
+                        const newModels = [...extraModels];
+                        newModels[idx] = newVal;
+                        setExtraModels(newModels);
                       }}
-                    >
-                      <PlusIcon className="size-3" />
-                      Thêm Model {extraModelIds.length + 2}
-                    </Button>
-                  )}
-                  {extraModelIds.length > 0 && (
+                      onRemove={() => {
+                        setExtraModels(prev => prev.filter((_, i) => i !== idx));
+                      }}
+                    />
+                  ))}
+                  <Button
+                    variant="outline"
+                    type="button"
+                    size="sm"
+                    className="h-7 text-[11px] gap-1.5 mt-1"
+                    onClick={() => {
+                      setExtraModels(prev => [...prev, { providerId: selectedProviderId || "", modelId: "" }]);
+                    }}
+                  >
+                    <PlusIcon className="size-3" />
+                    Thêm Model {extraModels.length + 2}
+                  </Button>
+                  {extraModels.length > 0 && (
                     <p className="text-[10px] text-muted-foreground">
-                      💡 {extraModelIds.length + 1} models sẽ dịch song song, mỗi model xử lý 1 chương riêng biệt
+                      💡 {extraModels.length + 1} models sẽ dịch song song, mỗi model xử lý 1 chương riêng biệt
                     </p>
                   )}
                 </div>
@@ -752,7 +1030,7 @@ export function TranslateWorkspaceDialog({
             </div>
 
             {/* Action buttons pinned at the bottom depending on active tab */}
-            {(activeTab === "hybrid" || activeTab === "stv-hybrid") && (
+            {(activeTab === "comprehensive" || activeTab === "hybrid" || activeTab === "stv-hybrid") && (
               <div className="space-y-2 mt-2">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Button
@@ -953,6 +1231,77 @@ export function TranslateWorkspaceDialog({
           </div>
         )}
       </DialogContent>
-    </Dialog>
+    </Dialog >
+  );
+}
+
+interface ExtraModelRowProps {
+  index: number;
+  providers: any[] | undefined;
+  value: { providerId: string; modelId: string };
+  onChange: (val: { providerId: string; modelId: string }) => void;
+  onRemove: () => void;
+}
+
+function ExtraModelRow({
+  index,
+  providers,
+  value,
+  onChange,
+  onRemove,
+}: ExtraModelRowProps) {
+  const models = useAIModels(value.providerId || undefined);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-muted-foreground w-16 shrink-0 font-medium">Model {index + 2}</span>
+
+      <Select
+        value={value.providerId}
+        onValueChange={(pId) => {
+          onChange({ providerId: pId, modelId: "" });
+        }}
+      >
+        <SelectTrigger className="flex-1 h-8 text-xs">
+          <SelectValue placeholder="Chọn Provider..." />
+        </SelectTrigger>
+        <SelectContent>
+          {providers?.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={value.modelId}
+        onValueChange={(mId) => {
+          onChange({ ...value, modelId: mId });
+        }}
+        disabled={!value.providerId}
+      >
+        <SelectTrigger className="flex-1 h-8 text-xs">
+          <SelectValue placeholder="Chọn model..." />
+        </SelectTrigger>
+        <SelectContent>
+          {models?.map((m) => (
+            <SelectItem key={m.id} value={m.modelId}>
+              {m.name || m.modelId}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        type="button"
+        className="size-7 shrink-0 text-destructive hover:text-destructive"
+        onClick={onRemove}
+      >
+        <Trash2Icon className="size-3.5" />
+      </Button>
+    </div>
   );
 }
