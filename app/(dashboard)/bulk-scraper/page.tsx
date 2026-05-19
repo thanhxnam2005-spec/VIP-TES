@@ -313,144 +313,211 @@ function MottruyenScannerCard() {
     };
 
     const downloadNovelInFrontend = async (novelInfo: any) => {
-        try {
-            const { id, novelData } = novelInfo;
-            const totalChap = parseInt(novelData.TOTALCHAPTER || "0");
+        const { id, novelData } = novelInfo;
+        const novelIdStr = `mottruyen-${id}`;
 
-            setProgressData(prev => ({ ...prev, [id]: { name: novelData.NAME, downloaded: 0, total: totalChap, status: "fetching" } }));
+        try {
+            // 1. Kiểm tra tồn tại
+            const existingInDb = await db.novels.get(novelIdStr);
+            if (existingInDb) {
+                // Nếu đã có, kiểm tra xem có đủ chương không (tùy chọn)
+                // Ở đây ta tạm thời bỏ qua nếu đã có novel record
+                console.log(`[ID ${id}] Đã có trong Thư viện, bỏ qua.`);
+                return;
+            }
+
+            const totalChap = parseInt(novelData.TOTALCHAPTER || "0");
+            setProgressData(prev => ({ 
+                ...prev, 
+                [id]: { name: novelData.NAME, downloaded: 0, total: totalChap, status: "fetching" } 
+            }));
 
             let novelObj = {
-                id: `mottruyen-${id}`,
+                id: novelIdStr,
                 title: novelData.NAME,
                 author: novelData.AUTHOR || "Unknown",
                 coverImage: novelData.IMG || "",
-                description: "",
+                description: (novelData.DESC || "").replace(/<[^>]*>?/gm, '').trim(),
                 sourceUrl: `http://api.mottruyen.com/story/?story_id=${id}`,
                 createdAt: new Date(),
                 updatedAt: new Date(),
             };
 
-            // Lưu ngay metadata để tránh mất mát nếu bị ngắt giữa chừng
             await db.novels.put(novelObj);
 
-            const chapterIds: string[] = Array.isArray(novelData.CHAPTER)
+            // 2. Crawl toàn bộ chương (Bi-directional)
+            let initialChapterIds: string[] = Array.isArray(novelData.CHAPTER)
                 ? novelData.CHAPTER
                     .map((ch: any) => String(ch?.id ?? "").trim())
                     .filter((id: string) => id.length > 0)
                 : [];
 
-            const uniqueChapterIds = [...new Set(chapterIds)];
-            let chapCount = 0;
+            if (initialChapterIds.length === 0) {
+                 setProgressData(prev => ({ ...prev, [id]: { ...prev[id], status: "done" } }));
+                 return;
+            }
 
+            const queue: string[] = [...initialChapterIds];
+            const processed = new Set<string>();
+            let activeCount = 0;
+            let downloadedCount = 0;
+            const CONCURRENCY = 15; // Tăng lên 15 luồng để tải cực nhanh
+            
             let lastUiUpdate = Date.now();
 
-            setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: chapCount } }));
+            const fetchAndStore = async (cId: string) => {
+                if (processed.has(cId) || !runningRef.current) return;
+                processed.add(cId);
+                activeCount++;
 
-            for (const chapterSourceId of uniqueChapterIds) {
-                if (!runningRef.current) break;
-                const proxyUrl = encodeURIComponent(`http://api.mottruyen.com/chapter/?chapter_id=${chapterSourceId}`);
-                const chapRes = await fetch(`/api/mottruyen-proxy?url=${proxyUrl}`);
-                if (!chapRes.ok) break;
+                try {
+                    const proxyUrl = encodeURIComponent(`http://api.mottruyen.com/chapter/?chapter_id=${cId}`);
+                    const chapRes = await fetch(`/api/mottruyen-proxy?url=${proxyUrl}`);
+                    if (!chapRes.ok) throw new Error("Fetch failed");
 
-                const chapData = await chapRes.json();
-                if (chapData?.success === 1 && chapData.data) {
-                    let chapName = chapData.data.ENAME || `Chương ${chapCount + 1}`;
-                    chapName = chapName.replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                    const chapData = await chapRes.json();
+                    if (chapData?.success === 1 && chapData.data) {
+                        const data = chapData.data;
+                        
+                        // Xử lý nội dung
+                        let chapName = data.ENAME || `Chương ${data.ORDER || "?"}`;
+                        chapName = chapName.replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
-                    let chapContent = chapData.data.CONTENT || "";
-                    chapContent = chapContent.replace(/<p>/g, "").replace(/<\/p>/g, "\n\n").replace(/&nbsp;/g, " ").replace(/<br\s*\/?>/g, "\n");
-                    chapContent = chapContent.replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                        let chapContent = data.CONTENT || "";
+                        chapContent = chapContent.replace(/<p>/g, "").replace(/<\/p>/g, "\n\n").replace(/&nbsp;/g, " ").replace(/<br\s*\/?>/g, "\n");
+                        chapContent = chapContent.replace(/&#039;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
-                    chapContent = chapContent.split('\n').filter((line: string) => {
-                        const lower = line.toLowerCase();
-                        if (lower.includes("người đăng") || lower.includes("thời gian đổi mới") || lower.includes("thời gian cập nhật") || lower.includes("cầu nguyệt phiếu") || lower.includes("nhóm dịch") || lower.includes("mời đọc giả")) return false;
-                        return true;
-                    }).join('\n');
+                        chapContent = chapContent.split('\n').filter((line: string) => {
+                            const lower = line.toLowerCase();
+                            const blacklist = ["người đăng", "thời gian đổi mới", "thời gian cập nhật", "cầu nguyệt phiếu", "nhóm dịch", "mời đọc giả", "mottruyen.com"];
+                            return !blacklist.some(b => lower.includes(b));
+                        }).join('\n').trim();
 
-                    const chapterId = `chap-${chapterSourceId}`;
-                    const now = new Date();
+                        const order = parseInt(data.ORDER || "0");
+                        const dbId = `chap-${cId}`;
+                        const now = new Date();
 
-                    // Đẩy dữ liệu vào DB (không chờ tuần tự để tối ưu tốc độ)
-                    const dbPromises = [
-                        db.chapters.put({
-                            id: chapterId,
-                            novelId: novelObj.id,
-                            title: chapName,
-                            order: chapCount,
-                            createdAt: now,
-                            updatedAt: now,
-                        }),
-                        db.scenes.put({
-                            id: `scene-${chapterId}`,
-                            novelId: novelObj.id,
-                            chapterId: chapterId,
-                            title: "",
-                            content: chapContent.trim(),
-                            wordCount: chapContent.trim().split(/\s+/).length,
-                            order: 0,
-                            version: 1,
-                            versionType: "manual" as any,
-                            isActive: 1,
-                            createdAt: now,
-                            updatedAt: now,
-                        })
-                    ];
+                        // Lưu vào DB
+                        await Promise.all([
+                            db.chapters.put({
+                                id: dbId,
+                                novelId: novelObj.id,
+                                title: chapName,
+                                order: order,
+                                createdAt: now,
+                                updatedAt: now,
+                            }),
+                            db.scenes.put({
+                                id: `scene-${dbId}`,
+                                novelId: novelObj.id,
+                                chapterId: dbId,
+                                title: "",
+                                content: chapContent,
+                                wordCount: chapContent.split(/\s+/).length,
+                                order: 0,
+                                version: 1,
+                                versionType: "manual" as any,
+                                isActive: 1,
+                                createdAt: now,
+                                updatedAt: now,
+                            })
+                        ]);
 
-                    chapCount++;
-                    // Giảm thiểu re-render UI: chỉ cập nhật state mỗi 500ms hoặc 20 chương
-                    if (Date.now() - lastUiUpdate > 500 || chapCount % 20 === 0) {
-                        setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: chapCount } }));
-                        lastUiUpdate = Date.now();
+                        downloadedCount++;
+                        
+                        // Thêm NEXT và PREV vào hàng đợi nếu chưa có
+                        if (data.NEXT && data.NEXT !== "0" && !processed.has(data.NEXT)) {
+                            queue.push(data.NEXT);
+                        }
+                        if (data.PREV && data.PREV !== "0" && !processed.has(data.PREV)) {
+                            queue.push(data.PREV);
+                        }
+
+                        // Cập nhật UI
+                        if (Date.now() - lastUiUpdate > 1000) {
+                            setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: downloadedCount } }));
+                            lastUiUpdate = Date.now();
+                        }
                     }
+                } catch (e) {
+                    console.error(`Lỗi tải chương ${cId}:`, e);
+                } finally {
+                    activeCount--;
+                }
+            };
 
-                    await Promise.all(dbPromises);
+            // Loop chính của Crawler
+            while ((queue.length > 0 || activeCount > 0) && runningRef.current) {
+                if (queue.length > 0 && activeCount < CONCURRENCY) {
+                    const cId = queue.shift()!;
+                    fetchAndStore(cId);
                 } else {
-                    break;
+                    await new Promise(r => setTimeout(r, 50));
                 }
             }
 
             if (!runningRef.current) {
-                setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: chapCount, status: "paused" } }));
+                setProgressData(prev => ({ ...prev, [id]: { ...prev[id], status: "paused" } }));
                 return;
             }
 
-            setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: chapCount, status: "done" } }));
+            setProgressData(prev => ({ ...prev, [id]: { ...prev[id], downloaded: downloadedCount, status: "done" } }));
 
-            // Upload to Reading Room
+            // 3. Upload to Reading Room
+            const [chapters, scenes] = await Promise.all([
+                db.chapters.where("novelId").equals(novelObj.id).toArray(),
+                db.scenes.where("novelId").equals(novelObj.id).toArray()
+            ]);
+
+            // Sắp xếp lại theo ORDER từ API
+            const sortedChapters = chapters.sort((a, b) => a.order - b.order);
+
             const exportData = {
                 novel: await db.novels.get(novelObj.id),
-                chapters: await db.chapters.where("novelId").equals(novelObj.id).toArray(),
-                scenes: await db.scenes.where("novelId").equals(novelObj.id).toArray()
+                chapters: sortedChapters,
+                scenes: scenes
             };
 
-            const uploadRes = await fetch(`/api/reading-room?action=upload&novelId=${novelObj.id}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(exportData),
-            });
+            const jsonString = JSON.stringify(exportData);
+            const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+            const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
+            const uploadId = crypto.randomUUID();
 
-            if (uploadRes.ok) {
-                toast.success(`Đã tự động tải lên phòng đọc: ${novelObj.title}`);
+            let uploadRes;
+            let uploadSuccess = true;
 
-                // Tự động xóa khỏi Thư viện (DB cục bộ) để giải phóng bộ nhớ
-                try {
-                    await db.scenes.where("novelId").equals(novelObj.id).delete();
-                    await db.chapters.where("novelId").equals(novelObj.id).delete();
-                    await db.novels.delete(novelObj.id);
-                } catch (e) {
-                    console.error("Lỗi xóa dữ liệu cục bộ:", e);
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = jsonString.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+                uploadRes = await fetch(`/api/reading-room?action=upload_chunk&novelId=${novelObj.id}&uploadId=${uploadId}&chunkIndex=${i}&totalChunks=${totalChunks}`, {
+                    method: "POST",
+                    body: chunk,
+                });
+                if (!uploadRes.ok) {
+                    uploadSuccess = false;
+                    break;
                 }
+            }
 
-                // Xóa khỏi danh sách "chỗ tải" trên giao diện
+            if (uploadSuccess) {
+                toast.success(`Đã lưu phòng đọc: ${novelObj.title} (${downloadedCount} ch)`);
+                // Xóa cục bộ sau khi đã upload thành công trọn bộ
+                await Promise.all([
+                    db.scenes.where("novelId").equals(novelObj.id).delete(),
+                    db.chapters.where("novelId").equals(novelObj.id).delete(),
+                    db.novels.delete(novelObj.id)
+                ]);
+
                 setProgressData(prev => {
                     const newData = { ...prev };
                     delete newData[id];
                     return newData;
                 });
+            } else {
+                toast.error(`Lỗi upload phòng đọc: ${novelObj.title}`);
             }
-
         } catch (err) {
-            setProgressData(prev => ({ ...prev, [novelInfo.id]: { ...prev[novelInfo.id], status: "error" } }));
+            console.error("Lỗi downloadNovelInFrontend:", err);
+            setProgressData(prev => ({ ...prev, [id]: { ...prev[id], status: "error" } }));
         }
     };
 

@@ -264,14 +264,29 @@ export default function LibraryPage() {
     const toastId = toast.loading(`Đang đăng "${novel.title}" lên Phòng Đọc...`);
     try {
       const data = await exportNovel(novel.id, { includeVersions: false });
-      const json = JSON.stringify(data);
+      const jsonString = JSON.stringify(data);
+      const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+      const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
+      const uploadId = crypto.randomUUID();
 
-      const res = await fetch(`/api/reading-room?action=upload&novelId=${novel.id}`, {
-        method: 'POST',
-        body: json
-      });
-      if (!res.ok) throw new Error(await res.text());
-      toast.success(`Đã đăng "${novel.title}" lên Phòng Đọc thành công! Mọi người đã có thể vào đọc.`, { id: toastId });
+      let uploadSuccess = true;
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = jsonString.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        const res = await fetch(`/api/reading-room?action=upload_chunk&novelId=${novel.id}&uploadId=${uploadId}&chunkIndex=${i}&totalChunks=${totalChunks}`, {
+          method: 'POST',
+          body: chunk
+        });
+        if (!res.ok) {
+          uploadSuccess = false;
+          break;
+        }
+      }
+
+      if (uploadSuccess) {
+        toast.success(`Đã đăng "${novel.title}" lên Phòng Đọc thành công! Mọi người đã có thể vào đọc.`, { id: toastId });
+      } else {
+        throw new Error("Lỗi tải lên từng phần.");
+      }
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }

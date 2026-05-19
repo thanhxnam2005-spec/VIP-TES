@@ -168,6 +168,180 @@ export async function POST(req: Request) {
             uploaderName = user.user_metadata.custom_name;
         }
 
+/** Helper to split a large novel into smaller chapter-scenes chunks on disk */
+function splitNovelToChunks(novelId: string, data: any) {
+    const novelDir = path.join(CACHE_DIR, novelId);
+    if (!fs.existsSync(novelDir)) {
+        fs.mkdirSync(novelDir, { recursive: true });
+    }
+
+    // Save Meta
+    const meta = {
+        novel: data.novel,
+        chapters: data.chapters?.sort((a: any, b: any) => a.order - b.order) || [],
+    };
+    fs.writeFileSync(path.join(novelDir, 'meta.json'), JSON.stringify(meta), 'utf-8');
+
+    // Save Scenes in chunks of 20 chapters to keep files small
+    const chapters = meta.chapters;
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < chapters.length; i += CHUNK_SIZE) {
+        const chunkChapters = chapters.slice(i, i + CHUNK_SIZE);
+        const chunkChapterIds = new Set(chunkChapters.map((c: any) => c.id));
+        const chunkScenes = data.scenes?.filter((s: any) => chunkChapterIds.has(s.chapterId)) || [];
+        
+        fs.writeFileSync(
+            path.join(novelDir, `chunk_${Math.floor(i / CHUNK_SIZE)}.json`), 
+            JSON.stringify(chunkScenes), 
+            'utf-8'
+        );
+    }
+    
+    // Mark as split
+    fs.writeFileSync(path.join(novelDir, '.split'), Date.now().toString());
+}
+
+export async function GET(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const action = searchParams.get('action');
+
+        if (action === 'list') {
+            const index = await getReadingRoomIndex();
+            return NextResponse.json({ success: true, novels: index });
+        }
+
+        if (action === 'novel_data') {
+            const novelId = searchParams.get('id');
+            if (!novelId) return NextResponse.json({ error: 'Missing novel ID' }, { status: 400 });
+
+            ensureCacheDir();
+            const novelDir = path.join(CACHE_DIR, novelId);
+            const metaFile = path.join(novelDir, 'meta.json');
+
+            // If not split-cached, try to download and split
+            if (!fs.existsSync(metaFile)) {
+                const fullDataStr = await downloadNovelFromReadingRoom(novelId);
+                if (!fullDataStr) return NextResponse.json({ error: 'Novel not found' }, { status: 404 });
+                const data = JSON.parse(fullDataStr);
+                splitNovelToChunks(novelId, data);
+                // Also save the full file for 'download_full' action
+                fs.writeFileSync(path.join(CACHE_DIR, `${novelId}.json`), fullDataStr);
+            }
+
+            const meta = JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
+            const index = await getReadingRoomIndex();
+            const indexMeta = index.find(n => n.id === novelId);
+            const returnedNovel = { ...meta.novel, uploaderId: indexMeta?.uploaderId };
+
+            return NextResponse.json({
+                success: true,
+                novel: returnedNovel,
+                chapters: meta.chapters
+            });
+        }
+
+        if (action === 'chapter') {
+            const novelId = searchParams.get('id');
+            const chapterIdx = searchParams.get('idx');
+            if (!novelId || !chapterIdx) {
+                return NextResponse.json({ error: 'Missing ID or Index' }, { status: 400 });
+            }
+
+            ensureCacheDir();
+            const novelDir = path.join(CACHE_DIR, novelId);
+            const metaFile = path.join(novelDir, 'meta.json');
+            
+            // Ensure we have split cache
+            if (!fs.existsSync(metaFile)) {
+                const fullDataStr = await downloadNovelFromReadingRoom(novelId);
+                if (!fullDataStr) return NextResponse.json({ error: 'Novel not found' }, { status: 404 });
+                const data = JSON.parse(fullDataStr);
+                splitNovelToChunks(novelId, data);
+                fs.writeFileSync(path.join(CACHE_DIR, `${novelId}.json`), fullDataStr);
+            }
+
+            const meta = JSON.parse(fs.readFileSync(metaFile, 'utf-8'));
+            const idx = Number(chapterIdx);
+            if (idx < 0 || idx >= meta.chapters.length) {
+                return NextResponse.json({ error: 'Chapter not found' }, { status: 404 });
+            }
+
+            const targetChapter = meta.chapters[idx];
+
+            // Security check for locked chapters
+            if (targetChapter.isLocked) {
+                const supabase = await createClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                const index = await getReadingRoomIndex();
+                const indexMeta = index.find(n => n.id === novelId);
+                if (!user || user.id !== indexMeta?.uploaderId) {
+                    return NextResponse.json({ error: 'Chương này đã bị khóa' }, { status: 403 });
+                }
+            }
+
+            // Load only the relevant chunk
+            const chunkIdx = Math.floor(idx / 20);
+            const chunkFile = path.join(novelDir, `chunk_${chunkIdx}.json`);
+            if (!fs.existsSync(chunkFile)) {
+                 return NextResponse.json({ error: 'Chunk data missing' }, { status: 500 });
+            }
+
+            const chunkScenes = JSON.parse(fs.readFileSync(chunkFile, 'utf-8'));
+            const targetScenes = chunkScenes.filter((s: any) => 
+                s.chapterId === targetChapter.id && (s.isActive === 1 || s.isActive === undefined)
+            ).sort((a: any, b: any) => a.order - b.order);
+
+            return NextResponse.json({
+                success: true,
+                chapter: targetChapter,
+                scenes: targetScenes,
+            });
+        }
+
+        if (action === 'download_full') {
+            const novelId = searchParams.get('id');
+            if (!novelId) return NextResponse.json({ error: 'Missing novel ID' }, { status: 400 });
+
+            ensureCacheDir();
+            const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+
+            if (!fs.existsSync(cacheFile)) {
+                const fullDataStr = await downloadNovelFromReadingRoom(novelId);
+                if (!fullDataStr) return NextResponse.json({ error: 'Novel not found' }, { status: 404 });
+                fs.writeFileSync(cacheFile, fullDataStr, 'utf-8');
+            }
+
+            const dataStr = fs.readFileSync(cacheFile, 'utf-8');
+            return new NextResponse(dataStr, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    } catch (error: any) {
+        console.error('Reading Room GET Error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+export async function POST(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const action = searchParams.get('action');
+
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        let uploaderName = 'Ẩn danh';
+        const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', user.id).single();
+        if (profile?.display_name) {
+            uploaderName = profile.display_name;
+        } else if (user.user_metadata?.custom_name) {
+            uploaderName = user.user_metadata.custom_name;
+        }
+
         if (action === 'upload') {
             const novelId = searchParams.get('novelId');
             if (!novelId) return NextResponse.json({ error: 'Missing novelId' }, { status: 400 });
@@ -198,13 +372,74 @@ export async function POST(req: Request) {
 
             await uploadToReadingRoom(novelId, metadata, content);
 
-            // Force refresh cache if it exists on this server
-            const cacheFile = path.join(os.tmpdir(), 'novel-studio-reading-room', `${novelId}.json`);
-            if (fs.existsSync(cacheFile)) {
-                fs.unlinkSync(cacheFile); // Xoá cache để update file mới
-            }
+            // Cache and Split
+            ensureCacheDir();
+            const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+            fs.writeFileSync(cacheFile, content);
+            splitNovelToChunks(novelId, parseData);
 
             return NextResponse.json({ success: true });
+        }
+
+        if (action === 'upload_chunk') {
+            const uploadId = searchParams.get('uploadId');
+            const chunkIndex = Number(searchParams.get('chunkIndex'));
+            const totalChunks = Number(searchParams.get('totalChunks'));
+            const novelId = searchParams.get('novelId');
+
+            if (!uploadId || isNaN(chunkIndex) || isNaN(totalChunks) || !novelId) {
+                return NextResponse.json({ error: 'Missing chunk info' }, { status: 400 });
+            }
+
+            const chunkData = await req.text();
+            ensureCacheDir();
+            const tempFile = path.join(CACHE_DIR, `upload_${uploadId}.tmp`);
+
+            if (chunkIndex === 0) {
+                fs.writeFileSync(tempFile, chunkData);
+            } else {
+                fs.appendFileSync(tempFile, chunkData);
+            }
+
+            if (chunkIndex === totalChunks - 1) {
+                // Finalize
+                const content = fs.readFileSync(tempFile, 'utf-8');
+                fs.unlinkSync(tempFile);
+
+                let parseData;
+                try {
+                    parseData = JSON.parse(content);
+                } catch (err) {
+                    return NextResponse.json({ error: 'Invalid JSON body in assembled chunks' }, { status: 400 });
+                }
+
+                const novel = parseData.novel;
+                const chapters = parseData.chapters || [];
+
+                const metadata: ReadingRoomMetadata = {
+                    id: novelId,
+                    title: novel.title,
+                    author: novel.author,
+                    description: novel.description,
+                    coverImage: novel.coverImage,
+                    chapterCount: chapters.length,
+                    uploaderName: uploaderName,
+                    uploaderId: user.id,
+                    genres: novel.genres || [],
+                    updatedAt: Date.now(),
+                };
+
+                await uploadToReadingRoom(novelId, metadata, content);
+
+                // Cache final version and Split
+                const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+                fs.writeFileSync(cacheFile, content);
+                splitNovelToChunks(novelId, parseData);
+
+                return NextResponse.json({ success: true, finalized: true });
+            }
+
+            return NextResponse.json({ success: true, chunkIndex });
         }
 
         if (action === 'edit_metadata') {
