@@ -32,6 +32,26 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
     const [fontSize, setFontSize] = useState(20);
     const [fontFamily, setFontFamily] = useState("font-serif");
 
+    // Load settings from localStorage on mount
+    useEffect(() => {
+        const savedSize = localStorage.getItem("rr_font_size");
+        const savedFamily = localStorage.getItem("rr_font_family");
+        if (savedSize) setFontSize(parseInt(savedSize));
+        if (savedFamily) setFontFamily(savedFamily);
+    }, []);
+
+    // Save settings when changed
+    const updateFontSize = (newSize: number) => {
+        const val = Math.max(14, Math.min(32, newSize));
+        setFontSize(val);
+        localStorage.setItem("rr_font_size", val.toString());
+    };
+
+    const updateFontFamily = (newFamily: string) => {
+        setFontFamily(newFamily);
+        localStorage.setItem("rr_font_family", newFamily);
+    };
+
     useEffect(() => {
         setLoading(true);
         // Fetch chapter
@@ -108,10 +128,23 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
         );
     }
 
-    const UNWANTED_TEXT = "Bạn đang xem văn bản gốc chưa dịch, có thể kéo xuống cuối trang để chọn bản dịch.";
+    const UNWANTED_PATTERNS = [
+        "Bạn đang xem văn bản gốc chưa dịch, có thể kéo xuống cuối trang để chọn bản dịch.",
+        "Mời bạn đọc tiếp tại",
+        "Chúc bạn đọc truyện vui vẻ",
+        "Hãy ủng hộ tác giả bằng cách",
+    ];
+
+    const cleanContent = (text: string) => {
+        let cleaned = text;
+        UNWANTED_PATTERNS.forEach(pattern => {
+            cleaned = cleaned.replace(new RegExp(pattern, "gi"), "");
+        });
+        return cleaned.trim();
+    };
 
     const displayScenes = scenes
-        .map(s => s.content.replace(UNWANTED_TEXT, "").trim())
+        .map(s => cleanContent(s.content))
         .filter(text => text.length > 0);
 
     const rawTitle = chapter.title || "Không Tên";
@@ -121,37 +154,35 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
     const displayTitle = hasExistingPrefix ? rawTitle : `Chương ${currentOrder + 1}: ${rawTitle}`;
 
     return (
-        <main className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8 bg-background min-h-screen pb-24">
-            {/* Navbar đọc truyện */}
-            <div className="sticky top-0 z-10 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 bg-background/90 backdrop-blur border-b flex items-center justify-between mb-8">
+        <main className="mx-auto w-full max-w-4xl px-4 py-0 sm:px-8 bg-background min-h-screen pb-24">
+            {/* Navbar đọc truyện - Sticky */}
+            <div className="sticky top-0 z-50 -mx-4 sm:-mx-8 px-4 sm:px-8 py-3 bg-background/95 backdrop-blur-md border-b flex items-center justify-between mb-8 shadow-sm">
                 <Link href={`/reading-room/${novelId}`} className="text-muted-foreground hover:text-primary transition-colors flex items-center text-sm font-medium">
-                    <ListIcon className="w-4 h-4 mr-2" /> Mục lục
+                    <ListIcon className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">Mục lục</span>
                 </Link>
-                <div className="flex gap-4 items-center">
-                    <div className="flex items-center gap-2">
-                        <Select value={fontFamily} onValueChange={setFontFamily}>
-                            <SelectTrigger className="w-[140px] h-8 bg-transparent">
-                                <SelectValue placeholder="Chọn font" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="font-serif">Serif (Mặc định)</SelectItem>
-                                <SelectItem value="font-sans">Sans-serif</SelectItem>
-                                <SelectItem value="font-mono">Monospace</SelectItem>
-                                <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
-                                <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
-                                <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
-                                <SelectItem value="!font-[Verdana,_Geneva,_sans-serif]">Verdana</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.max(14, f - 2))}>A-</Button>
-                        <Button variant="outline" size="sm" onClick={() => setFontSize(f => Math.min(32, f + 2))}>A+</Button>
+                <div className="flex gap-3 items-center">
+                    <Select value={fontFamily} onValueChange={updateFontFamily}>
+                        <SelectTrigger className="w-[120px] sm:w-[150px] h-8 bg-transparent">
+                            <SelectValue placeholder="Font chữ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="font-serif">Serif (Mặc định)</SelectItem>
+                            <SelectItem value="font-sans">Sans-serif</SelectItem>
+                            <SelectItem value="font-mono">Monospace</SelectItem>
+                            <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
+                            <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
+                            <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div className="flex gap-1 items-center bg-muted/30 p-0.5 rounded-md border">
+                        <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize - 2)}>A-</Button>
+                        <span className="text-[10px] font-bold w-5 text-center tabular-nums">{fontSize}</span>
+                        <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize + 2)}>A+</Button>
                     </div>
                 </div>
             </div>
 
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold font-heading text-center text-foreground mb-12 leading-snug px-4">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold font-heading text-center text-foreground mb-12 leading-snug px-4 pt-8">
                 {displayTitle}
             </h1>
 

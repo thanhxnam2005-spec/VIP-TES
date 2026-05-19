@@ -19,16 +19,21 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function ChapterContent({
   chapterId,
   readerOpen,
   chapterHeader,
+  fontSize,
+  fontFamily,
 }: {
   chapterId: string;
   readerOpen: boolean;
   chapterHeader?: string;
+  fontSize: number;
+  fontFamily: string;
 }) {
   const scenes = useScenes(chapterId);
   const originalScenes = useOriginalScenes(chapterId);
@@ -55,14 +60,17 @@ function ChapterContent({
     if (readerOpen) {
       const ttsContent = chapterHeader ? `${chapterHeader}\n\n${text}` : text;
       return (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
+        <div className={`prose prose-sm max-w-none dark:prose-invert ${fontFamily.startsWith('!') ? '' : fontFamily}`} style={fontFamily.startsWith('!') ? { fontFamily: fontFamily.replace("!font-[", "").replace("]", "").replace(/_/g, " ").replace(/'/g, "") } : {}}>
           <SentenceRenderer content={ttsContent} />
         </div>
       );
     }
 
     return (
-      <div className="prose prose-stone max-w-none dark:prose-invert whitespace-pre-wrap leading-relaxed md:leading-loose text-lg md:text-xl font-sans tracking-wide px-2 md:px-4 [&>br+br]:block [&>br+br]:content-[''] [&>br+br]:mb-4">
+      <div 
+        className={`prose prose-stone max-w-none dark:prose-invert whitespace-pre-wrap leading-relaxed md:leading-loose tracking-wide px-2 md:px-4 ${fontFamily.startsWith('!') ? '' : fontFamily}`}
+        style={{ fontSize: `${fontSize}px`, ...(fontFamily.startsWith('!') ? { fontFamily: fontFamily.replace("!font-[", "").replace("]", "").replace(/_/g, " ").replace(/'/g, "") } : {}) }}
+      >
         {text.split(/\n{2,}/).map((paragraph, i) => (
           <p key={i} className="mb-4 first:mt-0">
             {paragraph}
@@ -104,6 +112,28 @@ export default function ReadingView() {
   const novel = useNovel(id);
   const chapters = useChapters(id);
   const isReaderOpen = useReaderPanel((s) => s.isOpen);
+
+  const [fontSize, setFontSize] = useState(20);
+  const [fontFamily, setFontFamily] = useState("font-serif");
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const savedSize = localStorage.getItem("reader_font_size");
+    const savedFamily = localStorage.getItem("reader_font_family");
+    if (savedSize) setFontSize(parseInt(savedSize));
+    if (savedFamily) setFontFamily(savedFamily);
+  }, []);
+
+  const updateFontSize = (newSize: number) => {
+    const val = Math.max(14, Math.min(32, newSize));
+    setFontSize(val);
+    localStorage.setItem("reader_font_size", val.toString());
+  };
+
+  const updateFontFamily = (newFamily: string) => {
+    setFontFamily(newFamily);
+    localStorage.setItem("reader_font_family", newFamily);
+  };
 
   // order is 1-based in the URL → convert to 0-based index
   const orderNum = parseInt(order, 10);
@@ -176,54 +206,80 @@ export default function ReadingView() {
   }
 
   return (
-    <main className="flex h-[calc(100svh-3rem)] flex-col overflow-hidden px-6 py-4">
-      {/* Header */}
-      <div className="mb-4 flex shrink-0 items-center gap-3">
-        <Button variant="ghost" size="icon-sm" asChild>
-          <Link href={`/novels/${id}`}>
-            <ArrowLeftIcon className="size-4" />
-          </Link>
-        </Button>
-        <span className="text-sm font-medium text-muted-foreground">
-          {novel.title}
-        </span>
-        {chapter && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            asChild
-            title="Chỉnh sửa chương"
-          >
-            <Link href={`/novels/${id}/chapters/${chapter.id}`}>
-              <PencilIcon className="size-4" />
+    <main className="flex flex-col min-h-screen">
+      {/* Header - Sticky Style */}
+      <div className="sticky top-0 z-50 flex shrink-0 items-center justify-between gap-3 bg-background/95 px-6 py-3 backdrop-blur-md border-b shadow-sm">
+        <div className="flex items-center gap-3 min-w-0">
+            <Button variant="ghost" size="icon-sm" asChild>
+            <Link href={`/novels/${id}`}>
+                <ArrowLeftIcon className="size-4" />
             </Link>
-          </Button>
-        )}
-        <ChapterSelectDialog
-          chapters={chapters}
-          currentIndex={clampedIndex}
-          onSelect={navigateTo}
-        />
+            </Button>
+            <span className="text-sm font-semibold text-muted-foreground truncate hidden sm:inline">
+            {novel.title}
+            </span>
+            {chapter && (
+            <Button
+                variant="ghost"
+                size="icon-sm"
+                asChild
+                title="Chỉnh sửa chương"
+            >
+                <Link href={`/novels/${id}/chapters/${chapter.id}`}>
+                <PencilIcon className="size-4" />
+                </Link>
+            </Button>
+            )}
+            <ChapterSelectDialog
+            chapters={chapters}
+            currentIndex={clampedIndex}
+            onSelect={navigateTo}
+            />
+        </div>
+
+        <div className="flex items-center gap-3">
+            <Select value={fontFamily} onValueChange={updateFontFamily}>
+                <SelectTrigger className="h-8 w-[130px] sm:w-[150px] bg-transparent">
+                    <SelectValue placeholder="Font" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="font-serif">Serif</SelectItem>
+                    <SelectItem value="font-sans">Sans-serif</SelectItem>
+                    <SelectItem value="font-mono">Monospace</SelectItem>
+                    <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
+                    <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
+                    <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
+                </SelectContent>
+            </Select>
+
+            <div className="flex gap-1 items-center bg-muted/30 p-0.5 rounded-md border">
+                <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize - 2)}>A-</Button>
+                <span className="text-[10px] font-bold w-5 text-center tabular-nums">{fontSize}</span>
+                <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize + 2)}>A+</Button>
+            </div>
+        </div>
       </div>
 
       {/* Chapter content */}
       {chapter && (
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="mx-auto max-w-3xl pb-12">
-            <h2 className="mb-6 text-center font-heading text-2xl font-bold">
+        <div className="flex-1 px-6">
+          <div className="mx-auto max-w-3xl pb-12 pt-8">
+            <h2 className="mb-10 text-center font-heading text-3xl font-bold leading-tight">
               {chapter.title}
             </h2>
             <ChapterContent
               chapterId={chapter.id}
               readerOpen={isReaderOpen}
               chapterHeader={`Chương ${clampedIndex + 1}: ${chapter.title}`}
+              fontSize={fontSize}
+              fontFamily={fontFamily}
             />
           </div>
-        </ScrollArea>
+        </div>
       )}
 
       {/* Navigation */}
-      <div className="flex shrink-0 items-center justify-between border-t pt-3">
+      <div className="sticky bottom-0 z-40 flex shrink-0 items-center justify-between border-t bg-background/95 backdrop-blur-md px-6 py-3 mt-auto">
         <Button
           variant="outline"
           size="sm"
