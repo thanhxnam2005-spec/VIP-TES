@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["playwright-core", "cloakbrowser", "chromium-bidi"],
   // Performance: tree-shake large icon/component libraries
   experimental: {
     serverActions: {
