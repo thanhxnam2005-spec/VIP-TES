@@ -627,6 +627,7 @@ function MottruyenScannerCard() {
             const uploadId = crypto.randomUUID();
 
             let uploadSuccess = true;
+            let uploadErrorMsg = '';
 
             for (let i = 0; i < totalChunks; i++) {
                 const chunk = jsonString.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
@@ -635,6 +636,8 @@ function MottruyenScannerCard() {
                     body: chunk,
                 });
                 if (!uploadRes.ok) {
+                    const errJson = await uploadRes.json().catch(() => ({}));
+                    uploadErrorMsg = errJson.error || `HTTP Error ${uploadRes.status}`;
                     uploadSuccess = false;
                     break;
                 }
@@ -657,7 +660,7 @@ function MottruyenScannerCard() {
                     return newData;
                 });
             } else {
-                toast.error(`Lỗi upload phòng đọc: ${novelObj.title}`);
+                toast.error(`Lỗi upload phòng đọc: ${novelObj.title} - ${uploadErrorMsg}`);
             }
         } catch (err) {
             console.error("Lỗi downloadNovelInFrontend:", err);
