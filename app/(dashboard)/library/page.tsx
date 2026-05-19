@@ -265,7 +265,9 @@ export default function LibraryPage() {
     try {
       const data = await exportNovel(novel.id, { includeVersions: false });
       const jsonString = JSON.stringify(data);
-      const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+      // Giảm dung lượng tải lên mỗi phần xuống 512KB (nhỏ hơn 1MB) 
+      // để tránh lỗi 413 Payload Too Large cấu hình mặc định Nginx trên VPS.
+      const CHUNK_SIZE = 512 * 1024; // 512KB
       const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
       const uploadId = crypto.randomUUID();
 

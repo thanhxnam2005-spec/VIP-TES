@@ -606,7 +606,9 @@ function MottruyenScannerCard() {
             };
 
             const jsonString = JSON.stringify(exportData);
-            const CHUNK_SIZE = 2 * 1024 * 1024;
+            // Giảm dung lượng tải lên mỗi phần xuống 512KB 
+            // để tránh lỗi 413 Payload Too Large của Nginx trên VPS.
+            const CHUNK_SIZE = 512 * 1024; // 512KB
             const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
             const uploadId = crypto.randomUUID();
 
