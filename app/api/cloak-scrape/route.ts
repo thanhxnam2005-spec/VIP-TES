@@ -19,7 +19,10 @@ let cloakModule: any = null;
 async function getCloakModule() {
     if (cloakModule) return cloakModule;
     try {
-        cloakModule = await import("cloakbrowser");
+        // Use Function to hide the import from Cloudflare's esbuild!
+        // This prevents the edge compiler from crashing trying to bundle playwright-core.
+        const dynamicImport = new Function('modulePath', 'return import(modulePath)');
+        cloakModule = await dynamicImport("cloakbrowser");
         return cloakModule;
     } catch (err) {
         console.warn("[CloakBrowser] Module not available:", (err as Error).message);
