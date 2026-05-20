@@ -80,6 +80,31 @@ export async function loadRawDictTexts(
       onProgress?.(cached[i].source, Math.round(((i + 1) / cached.length) * 100));
     }
 
+    // Re-verify/initialize meta asynchronously if missing or incomplete
+    void (async () => {
+      try {
+        let meta = await db.dictMeta.get("dict-meta");
+        if (!meta || Object.keys(meta.sources).length < ALL_SOURCES.length) {
+          const counts: Record<string, number> = {};
+          for (const item of cached) {
+            const lines = item.rawText.split("\n");
+            let c = 0;
+            for (let j = 0; j < lines.length; j++) {
+              if (lines[j].indexOf("=") > 0) c++;
+            }
+            counts[item.source] = c;
+          }
+          await db.dictMeta.put({
+            id: "dict-meta",
+            loadedAt: new Date(),
+            sources: counts as DictMeta["sources"],
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to initialize dict-meta in background:", err);
+      }
+    })();
+
     // Also load override file
     try {
       const resp = await fetch(VIETPHRASE_OVERRIDE_URL, { signal: AbortSignal.timeout(3000) });
@@ -135,14 +160,32 @@ export async function loadRawDictTexts(
     onProgress?.("all", Math.round(Math.min(i + batch.length, missingSources.length) / missingSources.length * 100));
   }
 
-  // Cache raw texts in background
+  // Cache raw texts in background and update counts
   void (async () => {
     try {
       const toCache = missingSources
         .filter(s => result[s])
         .map(s => ({ source: s, rawText: result[s] }));
       if (toCache.length > 0) await db.dictCache.bulkPut(toCache);
-    } catch { /* non-critical */ }
+
+      const allCached = await db.dictCache.toArray();
+      const counts: Record<string, number> = {};
+      for (const item of allCached) {
+        const lines = item.rawText.split("\n");
+        let c = 0;
+        for (let j = 0; j < lines.length; j++) {
+          if (lines[j].indexOf("=") > 0) c++;
+        }
+        counts[item.source] = c;
+      }
+      await db.dictMeta.put({
+        id: "dict-meta",
+        loadedAt: new Date(),
+        sources: counts as DictMeta["sources"],
+      });
+    } catch (err) {
+      console.warn("Background IDB write failed (non-critical):", err);
+    }
   })();
 
   // Load overrides
@@ -493,6 +536,16 @@ export async function appendToDictSource(source: DictSource, entries: { chinese:
   }
 
   if (addedEntriesCount === 0) {
+    // Ensure meta count is present and correct even if no new items were added
+    let meta = await db.dictMeta.get("dict-meta");
+    if (!meta) {
+      meta = { id: "dict-meta", loadedAt: new Date(), sources: {} as Record<DictSource, number> };
+    }
+    if (!meta.sources[source] || meta.sources[source] !== map.size) {
+      meta.sources[source] = map.size;
+      meta.loadedAt = new Date();
+      await db.dictMeta.put(meta);
+    }
     return { added: 0, skipped: entries.length };
   }
 

@@ -268,24 +268,26 @@ const ICON_MAPPING: Record<string, string> = {
 };
 
 export const ChomeredAdapter: SiteAdapter = {
-  name: "Chomered / Welove (糯米書棧)",
+  name: "Chomered / Welove / Bjtriz / Parents-Note",
   group: "cn",
-  urlPattern: /chomered\.com|welove-gourmet\.com/i,
+  urlPattern: /chomered\.com|welove-gourmet\.com|bjtriz\.com|parents-note\.com/i,
   chapterWaitSelector: ".novelcontent, .chapterlist",
 
   getNovelInfo(html, url) {
     const doc = new DOMParser().parseFromString(html, "text/html");
     const base = new URL(url);
 
-    const title = doc.querySelector(".bookbox .title .name")?.textContent?.trim() || doc.querySelector("h1")?.textContent?.trim() || "";
+    const title = doc.querySelector(".bookbox .title .name")?.textContent?.trim() ||
+      doc.querySelector(".bookbox .title b")?.textContent?.trim() ||
+      doc.querySelector("h1")?.textContent?.trim() || "";
 
     // Author is often near title or in meta
-    let author = doc.querySelector(".bookbox .author span, .bookinfo .bookdetail dd a")?.textContent?.trim() || undefined;
+    let author = doc.querySelector(".bookbox .author span, .bookbox .author, .bookinfo .bookdetail dd a, .bookAuthor")?.textContent?.trim() || undefined;
     if (author && author.includes("作者 :")) {
       author = author.split("作者 :")[1].trim();
     }
 
-    const description = doc.querySelector(".bookbox .desc .overdesc, .bookinfo .intro")?.textContent?.trim() || undefined;
+    const description = doc.querySelector(".bookbox .desc .overdesc, .bookbox .desc, .bookinfo .intro")?.textContent?.trim() || undefined;
 
     const coverImg = doc.querySelector(".bookbox .cover img, .bookinfo .bookcover img");
     let coverImage = (coverImg ? coverImg.getAttribute("src") : undefined) || undefined;
@@ -297,7 +299,7 @@ export const ChomeredAdapter: SiteAdapter = {
       }
     }
 
-    const chapterLinks = doc.querySelectorAll("#chapterlist a, .chapterlist a");
+    const chapterLinks = doc.querySelectorAll("#chapterlist a, .chapterlist a, a.pc-chapter-link");
     const chapters = Array.from(chapterLinks)
       .filter((a) => {
         const href = a.getAttribute("href");
@@ -395,6 +397,8 @@ export const ChomeredAdapter: SiteAdapter = {
       .replace(/糯米書棧/g, "")
       .replace(/www\.chomered\.com/g, "")
       .replace(/welove-gourmet\.com/g, "")
+      .replace(/bjtriz\.com/g, "")
+      .replace(/parents-note\.com/g, "")
       .replace(/腐看天地/g, "")
       .trim();
 

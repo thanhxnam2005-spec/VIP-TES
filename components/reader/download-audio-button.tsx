@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DownloadIcon, Loader2Icon, LockIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useReaderPanel } from "@/lib/stores/reader-panel";
@@ -14,11 +14,16 @@ export function DownloadAudioButton() {
     const [progressMsg, setProgressMsg] = useState("");
     const [progressPct, setProgressPct] = useState(0);
 
+    const [mounted, setMounted] = useState(false);
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const ttsSettings = useReaderPanel((s) => s.ttsSettings);
     const sentences = useReaderPanel((s) => s.sentences);
     const { isVip, isAdmin } = useProfile();
 
-    const canDownload = isVip || isAdmin;
+    const canDownload = mounted && (isVip || isAdmin);
 
     async function handleDownload() {
         if (!canDownload) {

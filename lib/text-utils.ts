@@ -355,6 +355,25 @@ export function cleanGarbageLines(text: string): string {
 }
 
 /**
+ * Remove icons, emojis, and decorative symbols that commonly cause AI translation errors.
+ */
+export function cleanErrorCausingCharacters(text: string): string {
+  if (!text) return "";
+
+  // 1. Remove standard emojis & pictographs (using Unicode property escape)
+  let cleaned = text.normalize("NFC").replace(/\p{Extended_Pictographic}/gu, "");
+
+  // 2. Remove common decorative shapes, signs, and symbols that aren't letters or numbers
+  cleaned = cleaned.replace(/[♥♡❣❤✨⭐🌟⚡💥🔥✖️➖➕➗🥀🌹🍀🍁🍂🍃🌸🌺🌻🌼🏵️⚜️🔱⚓🌈🌊🌀🌬️💨🫧❄️⛄☄️⛱️☔☠️☣️☢️]/gu, "");
+  cleaned = cleaned.replace(/[❀✿❁❃❋✦✧✩✪✫✬✭✭✮✯✰★☆❖⊙㍿卍卐▬▭▮▮▰▱▲▼◆◇○●■□]/g, "");
+
+  // 3. Remove miscellaneous symbols/dingbats/geometric shapes [\u2500-\u27BF]
+  cleaned = cleaned.replace(/[\u2500-\u27BF]/g, "");
+
+  return cleaned.trim();
+}
+
+/**
  * Splits a large text into smaller chunks based on a maximum character limit.
  * Attempts to break cleanly at paragraph marks.
  */
@@ -381,3 +400,4 @@ export function chunkText(text: string, maxLimit: number = 2500): string[] {
 
   return chunks;
 }
+

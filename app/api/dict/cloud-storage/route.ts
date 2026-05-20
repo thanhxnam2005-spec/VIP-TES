@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import { 
-  uploadToAdminDrive, 
+import {
+  uploadToAdminDrive,
   downloadFromAdminDrive,
   downloadAllUserNovelsFromAdminDrive,
   listUserNovelsFromAdminDrive,
@@ -45,15 +45,16 @@ export async function POST(req: Request) {
       if (!filename) return NextResponse.json({ error: 'Missing filename' }, { status: 400 });
       const data = await downloadDictFromAdminDrive(filename, true);
       if (data === null) return new Response('File not found', { status: 404 });
-      
-      const headers = new Headers();
-      headers.set('Content-Type', 'text/plain; charset=utf-8');
-      
+
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as any);
-      if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-        headers.set('Content-Encoding', 'gzip');
-      }
-      return new Response(bytes, { headers });
+      const { decompressIfNeeded } = await import('@/lib/compression');
+      const decompressedText = await decompressIfNeeded(bytes);
+
+      return new Response(decompressedText, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8'
+        }
+      });
     }
 
     if (action === 'download-all-dicts') {
@@ -72,15 +73,16 @@ export async function POST(req: Request) {
       const fileId = searchParams.get('fileId');
       if (!fileId) return NextResponse.json({ error: 'Missing fileId parameter' }, { status: 400 });
       const data = await getDriveFileContent(fileId, true);
-      
-      const headers = new Headers();
-      headers.set('Content-Type', 'text/plain; charset=utf-8');
-      
+
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as any);
-      if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-        headers.set('Content-Encoding', 'gzip');
-      }
-      return new Response(bytes, { headers });
+      const { decompressIfNeeded } = await import('@/lib/compression');
+      const decompressedText = await decompressIfNeeded(bytes);
+
+      return new Response(decompressedText, {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8'
+        }
+      });
     }
 
     // ── User-specific actions: cần auth ──
@@ -121,15 +123,16 @@ export async function POST(req: Request) {
       }
       const data = await downloadFromAdminDrive(userIdentifier, novelName, true);
       if (data === null) return new Response('File not found', { status: 404 });
-      
-      const headers = new Headers();
-      headers.set('Content-Type', 'application/json; charset=utf-8');
-      
+
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as any);
-      if (bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
-        headers.set('Content-Encoding', 'gzip');
-      }
-      return new Response(bytes, { headers });
+      const { decompressIfNeeded } = await import('@/lib/compression');
+      const decompressedText = await decompressIfNeeded(bytes);
+
+      return new Response(decompressedText, {
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8'
+        }
+      });
     }
 
     if (action === 'download-all') {

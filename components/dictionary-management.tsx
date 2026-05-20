@@ -207,7 +207,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         e.vietnamese.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory =
         categoryFilter === "all" || e.category === categoryFilter;
-      const matchesScope = 
+      const matchesScope =
         scopeFilter === "all" || e.scope === scopeFilter;
       return matchesSearch && matchesCategory && matchesScope;
     })
@@ -239,16 +239,16 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       // Read from dictCache (fast) instead of dictEntries (slow)
       const cached = await db.dictCache.get(source);
       const text = cached?.rawText || "";
-      
+
       const res = await fetch("/api/dev/sync-dict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source, text }),
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Lỗi đồng bộ");
-      
+
       toast.success(`Đã lưu trực tiếp vào public/dict/${source}.txt!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
@@ -286,7 +286,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         toast.error(`Không tìm thấy file ${filename} trên Drive (trong thư mục Novel_Studio_Dicts)`, { id: toastId });
         return;
       }
-      
+
       const entries = parseDictLines(text);
       const count = await appendToDictSource(source, entries);
       toast.success(`Đã tự động gộp ${count.toLocaleString()} mục mới từ Drive cho ${DICT_SOURCE_LABELS[source]}`, { id: toastId });
@@ -307,15 +307,15 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       // 1. Tải bản hiện tại trên Kho về để gộp (Sử dụng action mới)
       const dlParams = new URLSearchParams({ action: 'download-dict', filename });
       const dlRes = await fetch(`/api/dict/cloud-storage?${dlParams.toString()}`, { method: 'POST' });
-      
+
       let finalContent = localText;
       if (dlRes.ok) {
         const cloudText = await dlRes.text();
         const localEntries = parseDictLines(localText);
         const cloudEntries = parseDictLines(cloudText);
-        
+
         const map = new Map<string, Set<string>>();
-        
+
         const addToMap = (e: { chinese: string; vietnamese: string }) => {
           const key = e.chinese.trim();
           const meanings = e.vietnamese.split("/").map(m => m.trim()).filter(Boolean);
@@ -325,7 +325,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
 
         cloudEntries.forEach(addToMap);
         localEntries.forEach(addToMap);
-        
+
         finalContent = Array.from(map.entries())
           .map(([k, vs]) => `${k}=${Array.from(vs).join("/")}`)
           .join("\n");
@@ -337,7 +337,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const res = await fetch(`/api/dict/cloud-storage?${uploadParams.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/octet-stream" },
-        body: compressed
+        body: compressed as any
       });
 
       if (!res.ok) {
@@ -357,11 +357,11 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const params = new URLSearchParams({ action: 'download-dict', filename });
       const res = await fetch(`/api/dict/cloud-storage?${params.toString()}`, { method: 'POST' });
       if (!res.ok) throw new Error("Không tìm thấy dữ liệu trên Kho");
-      
+
       const content = await res.text();
       const entries = parseDictLines(content);
-      const count = await appendToDictSource(source, entries);
-      toast.success(`Đã cập nhật ${count.toLocaleString()} mục mới từ Kho chung!`, { id: toastId });
+      const result = await appendToDictSource(source, entries);
+      toast.success(`Đã cập nhật ${result.added.toLocaleString()} mục mới từ Kho chung!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }
@@ -381,25 +381,25 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const CONCURRENCY = 5;
       for (let i = 0; i < total; i += CONCURRENCY) {
         const batch = sources.slice(i, i + CONCURRENCY);
-        
+
         await Promise.allSettled(
           batch.map(async (source) => {
             const cached = await db.dictCache.get(source);
             processedCount++;
-            
+
             // Nếu không có dữ liệu local, bỏ qua để tiết kiệm thời gian
             if (!cached?.rawText || cached.rawText.trim().length === 0) return;
 
             const filename = `${source}.txt`;
             const dlParams = new URLSearchParams({ action: 'download-dict', filename });
             const dlRes = await fetch(`/api/dict/cloud-storage?${dlParams.toString()}`, { method: 'POST' });
-            
+
             let finalContent = cached.rawText;
             if (dlRes.ok) {
               const cloudText = await dlRes.text();
               const localEntries = parseDictLines(cached.rawText);
               const cloudEntries = parseDictLines(cloudText);
-              
+
               const map = new Map<string, Set<string>>();
               const addToMap = (e: { chinese: string; vietnamese: string }) => {
                 const key = e.chinese;
@@ -409,7 +409,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
               };
               cloudEntries.forEach(addToMap);
               localEntries.forEach(addToMap);
-              
+
               finalContent = Array.from(map.entries())
                 .map(([k, vs]) => `${k}=${Array.from(vs).join("/")}`)
                 .join("\n");
@@ -421,7 +421,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
               const res = await fetch(`/api/dict/cloud-storage?${uploadParams.toString()}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/octet-stream" },
-                body: compressed
+                body: compressed as any
               });
 
               if (res.ok) {
@@ -432,10 +432,10 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
             }
           })
         );
-        
+
         toast.loading(`Đang xử lý: ${Math.round((processedCount / total) * 100)}%...`, { id: toastId });
       }
-      
+
       toast.success(`Đã hòa nhập xong ${successCount} bộ từ điển lên Tổng kho!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
@@ -448,7 +448,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const params = new URLSearchParams({ action: 'download-all-dicts' });
       const res = await fetch(`/api/dict/cloud-storage?${params.toString()}`, { method: 'POST' });
       if (!res.ok) throw new Error("Không thể kết nối đến Tổng kho");
-      
+
       const data = await res.json();
       if (!data.success || !data.dicts) throw new Error("Dữ liệu trả về không hợp lệ");
 
@@ -489,7 +489,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
         // Yield to main thread between sources
         await new Promise(r => setTimeout(r, 0));
       }
-      
+
       toast.success(`Đã cập nhật ${newEntriesCount.toLocaleString()} mục mới từ Tổng kho!`, { id: toastId });
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
@@ -565,7 +565,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
 
     const text = cleaned.map(e => `${e.chinese}=${e.vietnamese}`).join("\n");
     await db.dictCache.put({ source, rawText: text });
-    
+
     // Update meta (dictEntries bỏ qua — dictCache là nguồn chính)
     let meta = await db.dictMeta.get("dict-meta");
     if (!meta) {
@@ -580,7 +580,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
 
   const handleCleanAllJunk = async () => {
     if (!confirm("Hệ thống sẽ quét TOÀN BỘ các bộ từ điển và xóa bỏ các mục rác (quá ngắn, quá dài, dịch lỗi). Bạn có chắc chắn muốn tổng vệ sinh không?")) return;
-    
+
     const toastId = toast.loading("Đang tổng vệ sinh kho từ điển (0%)...");
     try {
       const sources = ALL_SOURCES;
@@ -591,7 +591,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       const CONCURRENCY = 10;
       for (let i = 0; i < total; i += CONCURRENCY) {
         const batch = sources.slice(i, i + CONCURRENCY);
-        
+
         await Promise.all(batch.map(async (source) => {
           const cached = await db.dictCache.get(source);
           if (!cached?.rawText) return;
@@ -850,187 +850,187 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       <div className="space-y-4">
         {/* Tabs */}
         <div className="flex items-center gap-1 border-b pb-1 mb-2">
-           <button 
-             onClick={() => setActiveTab("list")}
-             className={cn(
-               "px-3 py-1 text-[10px] font-bold uppercase transition-colors rounded-t-md",
-               activeTab === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-             )}
-           >
-             Của tôi
-           </button>
-           <button 
-             onClick={() => setActiveTab("lookup")}
-             className={cn(
-               "px-3 py-1 text-[10px] font-bold uppercase transition-colors rounded-t-md",
-               activeTab === "lookup" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
-             )}
-           >
-             Tra hệ thống
-           </button>
+          <button
+            onClick={() => setActiveTab("list")}
+            className={cn(
+              "px-3 py-1 text-[10px] font-bold uppercase transition-colors rounded-t-md",
+              activeTab === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            Của tôi
+          </button>
+          <button
+            onClick={() => setActiveTab("lookup")}
+            className={cn(
+              "px-3 py-1 text-[10px] font-bold uppercase transition-colors rounded-t-md",
+              activeTab === "lookup" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+            )}
+          >
+            Tra hệ thống
+          </button>
         </div>
 
         {activeTab === "list" ? (
           <>
             {/* Search & filter tags */}
             <div className="flex flex-col gap-3">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 size-3.5" />
-                    <Input
-                      placeholder="Tìm trong từ điển của bạn..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setPage(0);
-                      }}
-                      className="pl-8 h-9 text-xs"
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-9 px-3"
-                    onClick={() => {
-                      setNewChinese("");
-                      setNewVietnamese("");
-                      setNewCategory("nhân vật");
-                      setAddDialogOpen(true);
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 size-3.5" />
+                  <Input
+                    placeholder="Tìm trong từ điển của bạn..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(0);
                     }}
-                  >
-                    <PlusIcon className="size-4" />
-                  </Button>
+                    className="pl-8 h-9 text-xs"
+                  />
                 </div>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-9 px-3"
+                  onClick={() => {
+                    setNewChinese("");
+                    setNewVietnamese("");
+                    setNewCategory("nhân vật");
+                    setAddDialogOpen(true);
+                  }}
+                >
+                  <PlusIcon className="size-4" />
+                </Button>
+              </div>
 
-                {/* Filter Tags */}
-                <div className="space-y-3 rounded-md border bg-muted/20 p-2.5">
-                  <div className="space-y-1.5">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Phạm vi</p>
-                    <div className="flex flex-wrap gap-1">
-                      {[
-                        { id: "all", label: "Tất cả" },
-                        { id: "local", label: "Riêng" },
-                        { id: "global", label: "Chung" },
-                      ].map((s) => (
-                        <button
-                          key={s.id}
-                          onClick={() => setScopeFilter(s.id as any)}
-                          className={cn(
-                            "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border",
-                            scopeFilter === s.id
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background hover:bg-muted border-border"
-                          )}
-                        >
-                          {s.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Loại</p>
-                    <div className="flex flex-wrap gap-1">
+              {/* Filter Tags */}
+              <div className="space-y-3 rounded-md border bg-muted/20 p-2.5">
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Phạm vi</p>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { id: "all", label: "Tất cả" },
+                      { id: "local", label: "Riêng" },
+                      { id: "global", label: "Chung" },
+                    ].map((s) => (
                       <button
-                        onClick={() => setCategoryFilter("all")}
+                        key={s.id}
+                        onClick={() => setScopeFilter(s.id as any)}
                         className={cn(
                           "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border",
-                          categoryFilter === "all"
+                          scopeFilter === s.id
                             ? "bg-primary text-primary-foreground border-primary"
                             : "bg-background hover:bg-muted border-border"
                         )}
                       >
-                        Tất cả
+                        {s.label}
                       </button>
-                      {NAME_ENTRY_CATEGORIES.map((cat) => (
-                        <button
-                          key={cat}
-                          onClick={() => setCategoryFilter(cat)}
-                          className={cn(
-                            "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border capitalize",
-                            categoryFilter === cat
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-background hover:bg-muted border-border"
-                          )}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Loại</p>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      onClick={() => setCategoryFilter("all")}
+                      className={cn(
+                        "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border",
+                        categoryFilter === "all"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted border-border"
+                      )}
+                    >
+                      Tất cả
+                    </button>
+                    {NAME_ENTRY_CATEGORIES.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setCategoryFilter(cat)}
+                        className={cn(
+                          "rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors border capitalize",
+                          categoryFilter === cat
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background hover:bg-muted border-border"
+                        )}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Compact List */}
             <div className="space-y-1 max-h-[400px] overflow-y-auto">
               {pagedEntries.map((entry) => (
                 <div key={entry.id} className="group flex items-center justify-between rounded-md border border-border/50 p-2 hover:bg-muted/30">
-                   <div className="min-w-0 flex-1">
-                     <div className="flex items-center gap-1.5">
-                       <span className="font-mono text-xs font-bold text-primary">{entry.chinese}</span>
-                       <span className="text-[10px] text-muted-foreground">→</span>
-                       <span className="text-xs font-medium">{entry.vietnamese}</span>
-                     </div>
-                     <div className="mt-0.5">
-                       <Badge variant="outline" className="h-4 px-1 text-[8px] uppercase tracking-tighter opacity-60">
-                         {entry.category}
-                       </Badge>
-                     </div>
-                   </div>
-                   <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button variant="ghost" size="icon-xs" onClick={() => openEditDialog(entry)}>
-                        <Edit3 className="size-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon-xs" className="text-destructive" onClick={() => handleDeleteEntry(entry.id)}>
-                        <Trash2Icon className="size-3" />
-                      </Button>
-                   </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-xs font-bold text-primary">{entry.chinese}</span>
+                      <span className="text-[10px] text-muted-foreground">→</span>
+                      <span className="text-xs font-medium">{entry.vietnamese}</span>
+                    </div>
+                    <div className="mt-0.5">
+                      <Badge variant="outline" className="h-4 px-1 text-[8px] uppercase tracking-tighter opacity-60">
+                        {entry.category}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <Button variant="ghost" size="icon-xs" onClick={() => openEditDialog(entry)}>
+                      <Edit3 className="size-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon-xs" className="text-destructive" onClick={() => handleDeleteEntry(entry.id)}>
+                      <Trash2Icon className="size-3" />
+                    </Button>
+                  </div>
                 </div>
               ))}
-              
+
               {filteredEntries.length === 0 && (
-                 <p className="py-8 text-center text-[10px] text-muted-foreground italic">Không tìm thấy kết quả</p>
+                <p className="py-8 text-center text-[10px] text-muted-foreground italic">Không tìm thấy kết quả</p>
               )}
             </div>
           </>
         ) : (
           <div className="space-y-4">
-             <div className="relative">
-                <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 size-3.5" />
-                <Input
-                  placeholder="Tra cứu từ điển hệ thống (Vietphrase/Hán Việt)..."
-                  value={lookupQuery}
-                  onChange={(e) => setLookupQuery(e.target.value)}
-                  className="pl-8 h-9 text-xs"
-                />
-             </div>
-             <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
-                {systemResults?.map((res, i) => (
-                   <div key={i} className="flex flex-col rounded-md border p-2 bg-muted/10">
-                      <div className="flex items-center justify-between">
-                         <span className="font-mono text-xs font-bold">{res.chinese}</span>
-                         <Badge variant="secondary" className="text-[8px] h-4">{res.source}</Badge>
-                      </div>
-                      <p className="text-xs mt-1 text-primary">{res.vietnamese}</p>
-                      <Button 
-                        variant="ghost" 
-                        size="xs" 
-                        className="mt-2 h-6 text-[9px] uppercase font-bold self-end"
-                        onClick={() => {
-                           setNewChinese(res.chinese);
-                           setNewVietnamese(res.vietnamese.split("/")[0]);
-                           setAddDialogOpen(true);
-                           setActiveTab("list");
-                        }}
-                      >
-                         Dùng nghĩa này
-                      </Button>
-                   </div>
-                ))}
-                {lookupQuery && systemResults?.length === 0 && (
-                   <p className="text-center py-10 text-[10px] text-muted-foreground">Không tìm thấy từ này trong hệ thống</p>
-                )}
-             </div>
+            <div className="relative">
+              <SearchIcon className="text-muted-foreground absolute top-2.5 left-2.5 size-3.5" />
+              <Input
+                placeholder="Tra cứu từ điển hệ thống (Vietphrase/Hán Việt)..."
+                value={lookupQuery}
+                onChange={(e) => setLookupQuery(e.target.value)}
+                className="pl-8 h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
+              {systemResults?.map((res, i) => (
+                <div key={i} className="flex flex-col rounded-md border p-2 bg-muted/10">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold">{res.chinese}</span>
+                    <Badge variant="secondary" className="text-[8px] h-4">{res.source}</Badge>
+                  </div>
+                  <p className="text-xs mt-1 text-primary">{res.vietnamese}</p>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="mt-2 h-6 text-[9px] uppercase font-bold self-end"
+                    onClick={() => {
+                      setNewChinese(res.chinese);
+                      setNewVietnamese(res.vietnamese.split("/")[0]);
+                      setAddDialogOpen(true);
+                      setActiveTab("list");
+                    }}
+                  >
+                    Dùng nghĩa này
+                  </Button>
+                </div>
+              ))}
+              {lookupQuery && systemResults?.length === 0 && (
+                <p className="text-center py-10 text-[10px] text-muted-foreground">Không tìm thấy từ này trong hệ thống</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -1059,23 +1059,23 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                 <Label className="text-[10px]">Tiếng Việt</Label>
                 <Input value={newVietnamese} onChange={(e) => setNewVietnamese(e.target.value)} className="h-8 text-xs" />
               </div>
-              
+
               {/* Gợi ý hệ thống */}
               {systemSuggestions && systemSuggestions.length > 0 && (
-                 <div className="space-y-1">
-                    <Label className="text-[9px] text-muted-foreground">Gợi ý từ hệ thống:</Label>
-                    <div className="flex flex-wrap gap-1">
-                       {systemSuggestions.map((s, i) => (
-                          <button 
-                            key={i} 
-                            onClick={() => setNewVietnamese(s.vietnamese.split("/")[0])}
-                            className="px-1.5 py-0.5 rounded border text-[9px] bg-muted/50 hover:bg-primary/10 transition-colors"
-                          >
-                             {s.vietnamese}
-                          </button>
-                       ))}
-                    </div>
-                 </div>
+                <div className="space-y-1">
+                  <Label className="text-[9px] text-muted-foreground">Gợi ý từ hệ thống:</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {systemSuggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setNewVietnamese(s.vietnamese.split("/")[0])}
+                        className="px-1.5 py-0.5 rounded border text-[9px] bg-muted/50 hover:bg-primary/10 transition-colors"
+                      >
+                        {s.vietnamese}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
 
               <div className="space-y-1">
@@ -1128,53 +1128,53 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
       {/* Dict Status — per source breakdown */}
       <Card>
         <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  Danh sách từ điển
-                  {totalDictWords > 0 && (
-                    <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20">
-                      Tổng: {totalDictWords.toLocaleString()} mục
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Quản lý và đồng bộ các bộ từ điển cá nhân và cộng đồng.
-                </CardDescription>
-              </div>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDownloadAllFromWarehouse}
-                    className="h-8 text-[11px] font-medium border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/20"
-                  >
-                    <CloudDownloadIcon className="mr-1.5 size-3.5" />
-                    Cập nhật tất cả (Kho 1TB)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCleanAllJunk}
-                    className="h-8 text-[11px] font-medium border-orange-500/30 text-orange-600 hover:bg-orange-500/10 dark:border-orange-500/20"
-                  >
-                    <Trash2Icon className="mr-1.5 size-3.5" />
-                    Tổng vệ sinh rác
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSyncAllToWarehouse}
-                    className="h-8 text-[11px] font-medium border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/20"
-                  >
-                    <CloudUploadIcon className="mr-1.5 size-3.5" />
-                    Đóng góp tất cả
-                  </Button>
-                </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                Danh sách từ điển
+                {totalDictWords > 0 && (
+                  <Badge variant="secondary" className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20">
+                    Tổng: {totalDictWords.toLocaleString()} mục
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                Quản lý và đồng bộ các bộ từ điển cá nhân và cộng đồng.
+              </CardDescription>
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadAllFromWarehouse}
+                  className="h-8 text-[11px] font-medium border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/20"
+                >
+                  <CloudDownloadIcon className="mr-1.5 size-3.5" />
+                  Cập nhật tất cả (Kho 1TB)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCleanAllJunk}
+                  className="h-8 text-[11px] font-medium border-orange-500/30 text-orange-600 hover:bg-orange-500/10 dark:border-orange-500/20"
+                >
+                  <Trash2Icon className="mr-1.5 size-3.5" />
+                  Tổng vệ sinh rác
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSyncAllToWarehouse}
+                  className="h-8 text-[11px] font-medium border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:border-emerald-500/20"
+                >
+                  <CloudUploadIcon className="mr-1.5 size-3.5" />
+                  Đóng góp tất cả
+                </Button>
               </div>
             </div>
-          </CardHeader>
+          </div>
+        </CardHeader>
         <CardContent>
           <Tabs defaultValue="core" className="w-full">
             <div className="overflow-x-auto pb-2">
@@ -1186,7 +1186,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                 ))}
               </TabsList>
             </div>
-            
+
             {DICT_GENRES.map((genre) => (
               <TabsContent key={genre} value={genre} className="mt-4">
                 <div className="rounded-md border">
@@ -1200,7 +1200,7 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {DICT_TYPES.filter((type) => 
+                      {DICT_TYPES.filter((type) =>
                         (genre === "core" && (type === "vietphrase" || type === "phienam")) ||
                         (genre !== "core")
                       ).map((type) => {
@@ -1209,8 +1209,8 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                         return (
                           <TableRow key={source}>
                             <TableCell className="font-medium text-xs">
-                              {source === "core_vietphrase" ? "Từ Điển Chính (Phụ trợ)" : 
-                               source === "core_phienam" ? "Phiên âm (Phụ trợ)" : TYPE_LABELS[type]}
+                              {source === "core_vietphrase" ? "Từ Điển Chính (Phụ trợ)" :
+                                source === "core_phienam" ? "Phiên âm (Phụ trợ)" : TYPE_LABELS[type]}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-[10px]">
                               {source}
@@ -1224,28 +1224,28 @@ export function DictionaryManagement({ compact }: { compact?: boolean }) {
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-1">
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleDownloadFromWarehouse(source)}
-                                      title="Cập nhật từ Kho chung (Tổng kho 1TB)"
-                                      className="text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10"
-                                    >
-                                      <CloudDownloadIcon className="size-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon-sm"
-                                      onClick={() => handleSyncToWarehouse(source)}
-                                      disabled={count === 0}
-                                      title="Đóng góp vào Kho chung (Hòa nhập thông minh)"
-                                      className="text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10"
-                                    >
-                                      <CloudUploadIcon className="size-3.5" />
-                                    </Button>
-                                    <div className="w-px h-4 bg-border my-auto mx-1" />
-                                  </>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => handleDownloadFromWarehouse(source)}
+                                    title="Cập nhật từ Kho chung (Tổng kho 1TB)"
+                                    className="text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10"
+                                  >
+                                    <CloudDownloadIcon className="size-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    onClick={() => handleSyncToWarehouse(source)}
+                                    disabled={count === 0}
+                                    title="Đóng góp vào Kho chung (Hòa nhập thông minh)"
+                                    className="text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10"
+                                  >
+                                    <CloudUploadIcon className="size-3.5" />
+                                  </Button>
+                                  <div className="w-px h-4 bg-border my-auto mx-1" />
+                                </>
 
                                 <Button
                                   variant="ghost"

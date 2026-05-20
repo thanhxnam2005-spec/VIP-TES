@@ -2,7 +2,7 @@
 
 import { AddChapterDialog } from "@/components/add-chapter-dialog";
 import { BulkAddChaptersDialog } from "@/components/bulk-add-chapters-dialog";
-import { TranslateWorkspaceDialog } from "@/components/novel/translate-workspace-dialog";
+import { TranslateTabPanel } from "@/components/novel/translate-tab-panel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -833,7 +833,7 @@ export function ChaptersTab({
         </AlertDialogContent>
       </AlertDialog>
 
-      <TranslateWorkspaceDialog
+      <TranslateTabPanel
         open={workspaceOpen}
         onOpenChange={setWorkspaceOpen}
         novelId={novelId}

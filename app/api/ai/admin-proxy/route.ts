@@ -71,11 +71,19 @@ export async function POST(req: NextRequest) {
       return new Response(errorText, { status: response.status, headers: { "Content-Type": "application/json" } });
     }
 
-    // Note: We don't decrement quota here yet because this might be a stream
-    // or the request might fail later. We'll decrement it from the client
-    // after a successful chapter translation.
+    const resHeaders: Record<string, string> = {
+      "Content-Type": response.headers.get("Content-Type") || "application/json",
+    };
 
-    return response;
+    if (resHeaders["Content-Type"].includes("text/event-stream")) {
+      resHeaders["Cache-Control"] = "no-cache";
+      resHeaders["Connection"] = "keep-alive";
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      headers: resHeaders,
+    });
   } catch (error) {
     console.error("Admin Proxy Exception:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

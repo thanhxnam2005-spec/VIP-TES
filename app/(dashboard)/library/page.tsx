@@ -262,7 +262,7 @@ export default function LibraryPage() {
                 'Content-Type': 'application/octet-stream',
                 'x-novel-metadata': encodeURIComponent(JSON.stringify(metadata))
               },
-              body: compressed
+              body: new Blob([compressed as any])
             });
 
             if (uploadRes.ok) {
@@ -301,7 +301,7 @@ export default function LibraryPage() {
       const res = await fetch(`/api/dict/cloud-storage?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
-        body: compressed
+        body: new Blob([compressed as any])
       });
       if (!res.ok) throw new Error(await res.text());
       toast.success(`Đã sao lưu "${novel.title}" thành công!`, { id: toastId });
@@ -375,7 +375,7 @@ export default function LibraryPage() {
           'Content-Type': 'application/octet-stream',
           'x-novel-metadata': encodeURIComponent(JSON.stringify(metadata))
         },
-        body: compressed
+        body: new Blob([compressed as any])
       });
 
       if (res.ok) {
@@ -465,17 +465,17 @@ export default function LibraryPage() {
                 fetch(`/api/dict/cloud-storage?${jsonParams.toString()}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/octet-stream' },
-                  body: compressedJson
+                  body: new Blob([compressedJson as any])
                 }),
                 compressedChinese && fetch(`/api/dict/cloud-storage?${txtTrungParams.toString()}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/octet-stream' },
-                  body: compressedChinese
+                  body: new Blob([compressedChinese as any])
                 }),
                 compressedVietnamese && fetch(`/api/dict/cloud-storage?${txtDichParams.toString()}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/octet-stream' },
-                  body: compressedVietnamese
+                  body: new Blob([compressedVietnamese as any])
                 })
               ]);
 

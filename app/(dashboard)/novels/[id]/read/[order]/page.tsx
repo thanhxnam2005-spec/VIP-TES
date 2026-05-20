@@ -67,12 +67,12 @@ function ChapterContent({
     }
 
     return (
-      <div 
+      <div
         className={`prose prose-stone max-w-none dark:prose-invert whitespace-pre-wrap leading-relaxed md:leading-loose tracking-wide px-2 md:px-4 ${fontFamily.startsWith('!') ? '' : fontFamily}`}
         style={{ fontSize: `${fontSize}px`, ...(fontFamily.startsWith('!') ? { fontFamily: fontFamily.replace("!font-[", "").replace("]", "").replace(/_/g, " ").replace(/'/g, "") } : {}) }}
       >
-        {text.split(/\n{2,}/).map((paragraph, i) => (
-          <p key={i} className="mb-4 first:mt-0">
+        {text.split(/\r?\n/).map(p => p.trim()).filter(Boolean).map((paragraph, i) => (
+          <p key={i} className="mb-6 last:mb-0">
             {paragraph}
           </p>
         ))}
@@ -210,53 +210,53 @@ export default function ReadingView() {
       {/* Header - Sticky Style */}
       <div className="sticky top-0 z-50 flex shrink-0 items-center justify-between gap-3 bg-background/95 px-6 py-3 backdrop-blur-md border-b shadow-sm">
         <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="icon-sm" asChild>
+          <Button variant="ghost" size="icon-sm" asChild>
             <Link href={`/novels/${id}`}>
-                <ArrowLeftIcon className="size-4" />
+              <ArrowLeftIcon className="size-4" />
             </Link>
-            </Button>
-            <span className="text-sm font-semibold text-muted-foreground truncate hidden sm:inline">
+          </Button>
+          <span className="text-sm font-semibold text-muted-foreground truncate hidden sm:inline">
             {novel.title}
-            </span>
-            {chapter && (
+          </span>
+          {chapter && (
             <Button
-                variant="ghost"
-                size="icon-sm"
-                asChild
-                title="Chỉnh sửa chương"
+              variant="ghost"
+              size="icon-sm"
+              asChild
+              title="Chỉnh sửa chương"
             >
-                <Link href={`/novels/${id}/chapters/${chapter.id}`}>
+              <Link href={`/novels/${id}/chapters/${chapter.id}`}>
                 <PencilIcon className="size-4" />
-                </Link>
+              </Link>
             </Button>
-            )}
-            <ChapterSelectDialog
+          )}
+          <ChapterSelectDialog
             chapters={chapters}
             currentIndex={clampedIndex}
             onSelect={navigateTo}
-            />
+          />
         </div>
 
         <div className="flex items-center gap-3">
-            <Select value={fontFamily} onValueChange={updateFontFamily}>
-                <SelectTrigger className="h-8 w-[130px] sm:w-[150px] bg-transparent">
-                    <SelectValue placeholder="Font" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="font-serif">Serif</SelectItem>
-                    <SelectItem value="font-sans">Sans-serif</SelectItem>
-                    <SelectItem value="font-mono">Monospace</SelectItem>
-                    <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
-                    <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
-                    <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
-                </SelectContent>
-            </Select>
+          <Select value={fontFamily} onValueChange={updateFontFamily}>
+            <SelectTrigger className="h-8 w-[130px] sm:w-[150px] bg-transparent">
+              <SelectValue placeholder="Font" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="font-serif">Serif</SelectItem>
+              <SelectItem value="font-sans">Sans-serif</SelectItem>
+              <SelectItem value="font-mono">Monospace</SelectItem>
+              <SelectItem value="!font-['Palatino_Linotype',_'Book_Antiqua',_Palatino,_serif]">Palatino</SelectItem>
+              <SelectItem value="!font-['Times_New_Roman',_Times,_serif]">Times New Roman</SelectItem>
+              <SelectItem value="!font-[Arial,_Helvetica,_sans-serif]">Arial</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <div className="flex gap-1 items-center bg-muted/30 p-0.5 rounded-md border">
-                <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize - 2)}>A-</Button>
-                <span className="text-[10px] font-bold w-5 text-center tabular-nums">{fontSize}</span>
-                <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize + 2)}>A+</Button>
-            </div>
+          <div className="flex gap-1 items-center bg-muted/30 p-0.5 rounded-md border">
+            <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize - 2)}>A-</Button>
+            <span className="text-[10px] font-bold w-5 text-center tabular-nums">{fontSize}</span>
+            <Button variant="ghost" size="icon-xs" className="h-7 w-7" onClick={() => updateFontSize(fontSize + 2)}>A+</Button>
+          </div>
         </div>
       </div>
 

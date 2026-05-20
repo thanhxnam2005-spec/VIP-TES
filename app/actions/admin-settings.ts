@@ -39,3 +39,45 @@ export async function saveAdminSettingsAction(url: string, apiKey: string) {
 
   return { success: true };
 }
+
+export async function getAutoClassifySettingAction() {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "admin_auto_classify_new_novels")
+      .single();
+
+    if (error) return { success: true, value: false };
+    return { success: true, value: data?.value === "true" };
+  } catch (e) {
+    return { success: true, value: false };
+  }
+}
+
+export async function saveAutoClassifySettingAction(enabled: boolean) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user || !isAdmin(user.email)) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const adminDb = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    const { error } = await adminDb
+      .from("app_settings")
+      .upsert({ key: "admin_auto_classify_new_novels", value: enabled ? "true" : "false" }, { onConflict: "key" });
+
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+

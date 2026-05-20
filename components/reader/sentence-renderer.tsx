@@ -73,7 +73,7 @@ export function SentenceRenderer({ content }: { content: string }) {
         line.isBlank ? (
           <div key={i} className="mt-4" />
         ) : (
-          <div key={i}>
+          <div key={i} className="mb-6">
             {sentences.slice(line.start, line.end).map((sentence) => (
               <span
                 key={sentence.index}
@@ -82,7 +82,7 @@ export function SentenceRenderer({ content }: { content: string }) {
                 className={cn(
                   "transition-colors duration-200 mr-0.75",
                   isActive(sentence.index) &&
-                    "rounded-sm ring-1 ring-primary/20",
+                  "rounded-sm ring-1 ring-primary/20",
                 )}
                 style={
                   isActive(sentence.index)

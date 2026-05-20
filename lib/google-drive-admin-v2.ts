@@ -186,7 +186,7 @@ async function uploadMultipart(
 
   const part3 = encoder.encode(close_delim);
 
-  const body = new Blob([part1, part2, part3]);
+  const body = new Blob([part1, part2 as any, part3]);
 
   const url = fileIdToUpdate
     ? `https://www.googleapis.com/upload/drive/v3/files/${fileIdToUpdate}?uploadType=multipart`
@@ -200,7 +200,7 @@ async function uploadMultipart(
   });
 }
 
-export async function uploadToAdminDrive(userIdentifier: string, novelName: string, content: string) {
+export async function uploadToAdminDrive(userIdentifier: string, novelName: string, content: string | ArrayBuffer | Uint8Array) {
   const userFolderId = await getUserNovelFolder(userIdentifier);
   const filename = `${novelName}.json`;
   const safeName = filename.replace(/'/g, "\\'");
@@ -223,7 +223,7 @@ export async function uploadToAdminDrive(userIdentifier: string, novelName: stri
   }
 }
 
-export async function uploadTxtToAdminDrive(type: 'text_trung' | 'text_dich', novelName: string, content: string) {
+export async function uploadTxtToAdminDrive(type: 'text_trung' | 'text_dich', novelName: string, content: string | ArrayBuffer | Uint8Array) {
   const folderId = await getTxtFolder(type);
   const filename = `${novelName}.txt`;
   const safeName = filename.replace(/'/g, "\\'");
@@ -232,7 +232,9 @@ export async function uploadTxtToAdminDrive(type: 'text_trung' | 'text_dich', no
   const listRes = await fetchDriveAPI(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,size)`);
 
   // Tính size (tương đối cho UTF-8 bằng encoder)
-  const newSize = new TextEncoder().encode(content).length;
+  const newSize = typeof content === 'string'
+    ? new TextEncoder().encode(content).length
+    : (content instanceof ArrayBuffer ? content.byteLength : content.length);
 
   if (listRes.files && listRes.files.length > 0) {
     const fileId = listRes.files[0].id;
@@ -325,7 +327,7 @@ export async function listUserNovelsFromAdminDrive(userIdentifier: string) {
 let _dictCache: { timestamp: number, data: Record<string, string> } | null = null;
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
-export async function uploadDictToAdminDrive(filename: string, content: string) {
+export async function uploadDictToAdminDrive(filename: string, content: string | ArrayBuffer | Uint8Array) {
   const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
   const dictFolderId = await findOrCreateFolder(DICT_FOLDER_NAME, masterId);
 
@@ -342,7 +344,17 @@ export async function uploadDictToAdminDrive(filename: string, content: string) 
   if (_dictCache) {
     let sourceName = filename;
     if (sourceName.endsWith('.txt')) sourceName = sourceName.slice(0, -4);
-    _dictCache.data[sourceName] = content;
+
+    let contentStr: string;
+    if (typeof content === 'string') {
+      contentStr = content;
+    } else {
+      const bytes = content instanceof ArrayBuffer ? new Uint8Array(content) : content;
+      const { decompressIfNeeded } = await import('./compression');
+      contentStr = await decompressIfNeeded(bytes);
+    }
+
+    _dictCache.data[sourceName] = contentStr;
     _dictCache.timestamp = Date.now();
   }
 }
@@ -576,7 +588,14 @@ export async function uploadToReadingRoom(
   _readingRoomIndexCache = null; // Invalidate cache
 }
 
-export async function editMetadataInReadingRoom(novelId: string, newTitle: string, newDescription: string | undefined, userId: string) {
+export async function editMetadataInReadingRoom(
+  novelId: string,
+  newTitle: string,
+  newDescription: string | undefined,
+  userId: string,
+  newGenres?: string[],
+  isAdminOverride?: boolean
+) {
   const masterId = await findOrCreateFolder(MASTER_FOLDER_NAME);
   const readingRoomId = await findOrCreateFolder(READING_ROOM_FOLDER_NAME, masterId);
 
@@ -598,13 +617,14 @@ export async function editMetadataInReadingRoom(novelId: string, newTitle: strin
   if (novelIndex < 0) throw new Error("Novel not found in Room");
 
   const novel = currentList[novelIndex];
-  if (novel.uploaderId !== userId && novel.uploaderId) {
+  if (!isAdminOverride && novel.uploaderId !== userId && novel.uploaderId) {
     // If it has uploaderId and doesn't match, block it.
     throw new Error("Unauthorized: Bạn không phải người đăng gốc của bộ truyện này.");
   }
 
   if (newTitle) novel.title = newTitle;
   if (newDescription !== undefined) novel.description = newDescription;
+  if (newGenres !== undefined) novel.genres = newGenres;
   novel.updatedAt = Date.now();
 
   const indexStr = JSON.stringify(currentList, null, 2);
@@ -630,6 +650,10 @@ export async function editMetadataInReadingRoom(novelId: string, newTitle: strin
     if (newDescription !== undefined) {
       if (parsedData.description !== undefined) parsedData.description = newDescription;
       if (parsedData.novel?.description !== undefined) parsedData.novel.description = newDescription;
+    }
+    if (newGenres !== undefined) {
+      if (parsedData.genres !== undefined) parsedData.genres = newGenres;
+      if (parsedData.novel?.genres !== undefined) parsedData.novel.genres = newGenres;
     }
 
     await uploadMultipart(dataFilename, JSON.stringify(parsedData), 'application/json', undefined, dataId);

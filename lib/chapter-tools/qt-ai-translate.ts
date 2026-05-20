@@ -230,8 +230,30 @@ function buildPostEditPrompt(
 ): string {
   let prompt = "";
 
-  // When extractDict is on, force legacy extraction mode
-  if (extractDict && (promptType === "khuyen_nghi" || promptType === "cuc_ngan")) {
+  if (promptType === "custom") {
+    prompt = `# Vai trò
+Bạn là một dịch giả kiêm nhà biên kịch văn học Trung-Việt xuất sắc.
+Nhiệm vụ: Hãy dịch trực tiếp văn bản TIẾNG TRUNG sau sang TIẾNG VIỆT tự nhiên, mượt mà và sinh động nhất.
+Yêu cầu:
+- BẮT BUỘC trả về kết quả bằng TIẾNG VIỆT hoàn chỉnh.
+- Bảo đảm câu văn thuần Việt, trôi chảy, giữ nguyên ngữ cảnh và hồn tác phẩm.
+- Tuân thủ tuyệt đối quy tắc dịch tên riêng từ danh sách được cung cấp.
+- Giữ nguyên cấu trúc dòng, đoạn văn, dấu câu gốc.
+- Không tự ý thêm bớt chi tiết cốt truyện.
+- NGHIÊM CẤM chèn bất kỳ định dạng Markdown nào như in đậm **, ###. Chỉ xuất văn bản thuần túy.`;
+
+    if (extractDict) {
+      prompt += `\n\nĐịnh dạng đầu ra BẮT BUỘC:
+<names>
+[names]TênTrung1=TênViệt1
+[names]TênTrung2=TênViệt2
+[tuvung]ThuậtNgữTrung=ThuậtNgữViệt
+</names>
+<content>
+(Nội dung dịch TIẾNG VIỆT hoàn thiện cuối cùng)
+</content>`;
+    }
+  } else if (extractDict && (promptType === "khuyen_nghi" || promptType === "cuc_ngan")) {
     prompt = HYBRID_POST_EDIT_BASE;
   } else if (promptType === "khuyen_nghi" || promptType === "cuc_ngan") {
     prompt = "Bạn là dịch giả chuyên nghiệp Trung → Việt. BẮT BUỘC trả lời bằng TIẾNG VIỆT. TUYỆT ĐỐI KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM sử dụng định dạng Markdown (như **, ###). CHỈ trả về văn bản thuần túy.";
@@ -241,7 +263,7 @@ function buildPostEditPrompt(
 
   // Luôn luôn nối thêm custom prompt (chứa định nghĩa xưng hô, thể loại)
   if (novelCustomPrompt && novelCustomPrompt.trim()) {
-    prompt += `\n\n# BẮT BUỘC TUÂN THỦ XƯNG HÔ & THỂ LOẠI SAU (ƯU TIÊN CAO NHẤT):\n${novelCustomPrompt.trim()}`;
+    prompt += `\n\n# BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI PROMPT DỊCH / XƯNG HÔ / THỂ LOẠI SAU (ƯU TIÊN CAO NHẤT, TUYỆT ĐỐI KHÔNG TỰ Ý THÊM BỚT):\n${novelCustomPrompt.trim()}`;
   }
 
   // Add name dictionary context
@@ -276,6 +298,31 @@ function buildPostEditUserPrompt(
     customInstructions = `\n\n⚠️ LƯU Ý BẮT BUỘC VỀ XƯNG HÔ/PHONG CÁCH:\n${novelCustomPrompt.trim()}\n\n`;
   }
 
+  if (promptType === "custom") {
+    let user = "";
+    if (chineseTitle) {
+      user += `Tiêu đề: ${chineseTitle}\n---\n`;
+    }
+    user += `[VĂN BẢN TIẾNG TRUNG BẢN GỐC]\n${chineseText}\n\n`;
+
+    if (extractDict) {
+      user += `Hãy dịch trực tiếp đoạn trên sang tiếng Việt và trả về theo định dạng thẻ <names> và <content>.
+Trong đó:
+- Phần <names>: Trích xuất các tên riêng mới xuất hiện nếu có.
+- Phần <content>: Chứa nội dung dịch tiếng Việt hoàn chỉnh.
+${chineseTitle ? `⚠️ LƯU Ý: Phần <content> PHẢI bắt đầu bằng Tiêu đề tiếng Việt mới, rồi đến dòng phân cách \n---\n rồi đến nội dung chương.` : ""}
+⚠️ LƯU Ý 1: Vế trái trong thẻ names BẮT BUỘC phải là CHỮ HÁN BẢN GỐC.
+⚠️ LƯU Ý 2: NGHIÊM CẤM dùng định dạng Markdown (**, ###) bên trong thẻ <content>.`;
+    } else {
+      user += `Hãy dịch trực tiếp đoạn trên sang tiếng Việt.`;
+      if (chineseTitle) {
+        user += `\n⚠️ BẮT BUỘC trả về đúng định dạng:\nTiêu đề tiếng Việt\n---\nNội dung chương dịch dịch tương ứng.`;
+      }
+      user += `\nChỉ trả về nội dung dịch tiếng Việt duy nhất, không giải thích gì thêm.`;
+    }
+    return user;
+  }
+
   // When extractDict is on, force legacy user prompt format
   if (!extractDict) {
     if (promptType === "khuyen_nghi") {
@@ -284,9 +331,6 @@ function buildPostEditUserPrompt(
     if (promptType === "cuc_ngan") {
       return `Sửa bản dịch Trung→Việt sau cho mượt, xưng hô đúng, sát gốc:\n\nGốc: ${chineseText.trim()}\n\nThô: ${dictTranslation.trim()}\n\nChỉ trả về bản dịch TIẾNG VIỆT đã sửa. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM dùng ký tự **. ⚠️ TUYỆT ĐỐI TUÂN THỦ QUY TẮC XƯNG HÔ!${customInstructions}`;
     }
-  }
-  if (promptType === "custom" && !extractDict) {
-    return `【Gốc】\n${chineseText.trim()}\n\n【Thô】\n${dictTranslation.trim()}\n\n【Refine】Sửa cho mượt mà, xưng hô chuẩn, văn phong đúng thể loại. Chỉ trả về bản dịch TIẾNG VIỆT cuối. KHÔNG dịch sang tiếng Anh. NGHIÊM CẤM sử dụng **. ⚠️ BẮT BUỘC SỬ DỤNG ĐÚNG XƯNG HÔ BÊN TRÊN!${customInstructions}`;
   }
 
   let user = "";
@@ -707,8 +751,8 @@ ${cleaned}`;
                 const [titleRes, contentRes] = await Promise.all([titlePromise, contentPromise]);
                 dictTranslatedTitle = titleRes;
                 dictTranslatedContent = contentRes;
-              } catch (err) {
-                if (err instanceof Error && err.name === "AbortError") throw err;
+              } catch (err: any) {
+                if (signal?.aborted || err?.name === "AbortError") throw err;
                 throw new Error(`STV Chunk ${chunkIdx + 1}/${chunks.length} thất bại: ${err instanceof Error ? err.message : "Lỗi"}`);
               }
 
@@ -772,8 +816,8 @@ ${cleaned}`;
                   accumulated = fullText;
                   lastError = null;
                   break;
-                } catch (err) {
-                  if (err instanceof Error && err.name === "AbortError") throw err;
+                } catch (err: any) {
+                  if (signal?.aborted || err?.name === "AbortError") throw err;
 
                   lastError = err;
                   const classified = classifyError(err);
@@ -900,6 +944,10 @@ ${cleaned}`;
           message: msg,
         });
         store.incrementCompleted(novelId);
+
+        // Stop the entire translation job immediately upon chapter failure
+        store.cancel(novelId);
+        break;
       }
     } // End of while loop
   }; // End of runWorker

@@ -42,8 +42,13 @@ export interface Novel {
   }>;
   /** AI-generated per-novel translation prompt from style analysis. */
   customTranslatePrompt?: string;
+  customStvPrompt?: string;
+  customComprehensivePrompt?: string;
+  customStylePrompt?: string;
+  customPronounPrompt?: string;
   customTranslateProviderId?: string;
   customTranslateModelId?: string;
+  customTranslateMode?: string;
   /** Active genre dictionaries specifically selected for this novel */
   activeDictSources?: string[];
   /** Timestamp of last style scan. */
@@ -76,6 +81,8 @@ export type SceneVersionType =
   | "stv-translate"
   | "stv-convert"
   | "hybrid-converter"
+  | "edit-translate"
+  | "scan-fix"
   | "find-replace";
 
 export interface Scene {

@@ -68,7 +68,7 @@ function buildGenreAwareSystemPrompt(
   let prompt = HYBRID_POST_EDIT_BASE;
 
   if (novelCustomPrompt?.trim()) {
-    prompt += `\n\n# BẮT BUỘC TUÂN THỦ XƯNG HÔ & THỂ LOẠI SAU (ƯU TIÊN CAO NHẤT):\n${novelCustomPrompt.trim()}`;
+    prompt += `\n\n# BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI PROMPT DỊCH / XƯNG HÔ / THỂ LOẠI SAU (ƯU TIÊN CAO NHẤT, TUYỆT ĐỐI KHÔNG TỰ Ý THÊM BỚT):\n${novelCustomPrompt.trim()}`;
   }
 
   return prompt;
@@ -231,7 +231,7 @@ function buildPostEditUserPrompt(
 ): string {
   let customInstructions = "";
   if (novelCustomPrompt && novelCustomPrompt.trim()) {
-    customInstructions = `\n\n⚠️ LƯU Ý BẮT BUỘC VỀ XƯNG HÔ/PHONG CÁCH:\n${novelCustomPrompt.trim()}\n\n`;
+    customInstructions = `\n\n⚠️ LƯU Ý BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI PROMPT DỊCH / XƯNG HÔ / PHONG CÁCH (Nghiêm cấm tự ý thêm bớt):\n${novelCustomPrompt.trim()}\n\n`;
   }
 
   let user = "";
@@ -337,7 +337,7 @@ export async function runHybridTranslate(opts: HybridTranslateOptions): Promise<
 
   // Fetch novel's custom translate prompt (from genre scan)
   const novel = await db.novels.get(novelId);
-  const novelCustomPrompt = novel?.customTranslatePrompt;
+  const novelCustomPrompt = novel?.customStvPrompt;
 
   let isFirst = true;
 
@@ -614,8 +614,8 @@ ${cleaned}`;
               const [titleRes, contentRes] = await Promise.all([titlePromise, contentPromise]);
               dictTranslatedTitle = titleRes;
               dictTranslatedContent = contentRes;
-            } catch (err) {
-              if (err instanceof Error && err.name === "AbortError") throw err;
+            } catch (err: any) {
+              if (signal?.aborted || err?.name === "AbortError") throw err;
               throw new Error(`STV Chunk ${chunkIdx + 1}/${chunks.length} thất bại: ${err instanceof Error ? err.message : "Lỗi"}`);
             }
 
@@ -669,8 +669,8 @@ ${cleaned}`;
                 accumulated = result.text ?? "";
                 lastError = null;
                 break;
-              } catch (err) {
-                if (err instanceof Error && err.name === "AbortError") throw err;
+              } catch (err: any) {
+                if (signal?.aborted || err?.name === "AbortError") throw err;
 
                 lastError = err;
                 const classified = classifyError(err);
@@ -792,6 +792,10 @@ ${cleaned}`;
         message: msg,
       });
       store.incrementCompleted(novelId);
+
+      // Stop the entire translation job immediately upon chapter failure
+      store.cancel(novelId);
+      break;
     }
   }
 

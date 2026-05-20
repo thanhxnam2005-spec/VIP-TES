@@ -126,7 +126,7 @@ export async function analyzeNovelPage(url: string): Promise<ServerNovelInfo> {
   // Clean common suffixes: 【xxx】,最新章节,免費閱讀 - SiteName
   const title = rawTitle
     .replace(/[,，]\s*最新章[节節].*$/i, "")
-    .replace(/\s*[-–—|]\s*(糯米書棧|快看小說|腐看天地|chomered|welove).*$/i, "")
+    .replace(/\s*[-–—|]\s*(糯米書棧|快看小說|腐看天地|chomered|welove|bjtriz|parents-note).*$/i, "")
     .replace(/^【(.+?)】$/, "$1")  // Remove 【】 brackets
     .trim() || rawTitle;
 
@@ -184,9 +184,14 @@ export async function analyzeNovelPage(url: string): Promise<ServerNovelInfo> {
     } catch { }
   };
 
-  // ── Site-specific: chomered.com / welove-gourmet.com ──
+  // ── Site-specific: chomered.com / welove-gourmet.com / bjtriz.com / parents-note.com ──
   const hostname = new URL(url).hostname.replace(/^www\./, "");
-  if (hostname.includes("chomered.com") || hostname.includes("welove-gourmet.com")) {
+  if (
+    hostname.includes("chomered.com") ||
+    hostname.includes("welove-gourmet.com") ||
+    hostname.includes("bjtriz.com") ||
+    hostname.includes("parents-note.com")
+  ) {
     // These sites use /book/chapter/ID for chapter URLs
     // First pass: collect all unique chapter URLs
     const chapterUrlSet = new Set<string>();

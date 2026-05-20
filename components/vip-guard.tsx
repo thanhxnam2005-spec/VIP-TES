@@ -13,7 +13,6 @@ export function VipGuard({ children, pathname }: { children: React.ReactNode, pa
 
   const isRestrictedPath =
     !isExempt && (
-      pathname.startsWith("/import") ||
       pathname.startsWith("/settings") ||
       pathname === "/admin"
     );

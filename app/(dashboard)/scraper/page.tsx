@@ -357,6 +357,12 @@ export default function ScraperLibraryPage() {
                       <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
                         <a href="https://welove-gourmet.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500" /> Welove-gourmet</a>
                       </Button>
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://www.bjtriz.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500" /> Bjtriz</a>
+                      </Button>
+                      <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
+                        <a href="https://parents-note.com" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-blue-500" /> Parents-Note</a>
+                      </Button>
 
                       <Button variant="outline" size="sm" className="border-blue-200 bg-blue-50 dark:bg-blue-950/20" asChild>
                         <a href="https://www.piaotia.com/" target="_blank" rel="noreferrer"><ZapIcon className="mr-1.5 w-3 h-3 text-green-600" /> PiaoTian</a>
