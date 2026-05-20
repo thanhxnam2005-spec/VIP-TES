@@ -118,14 +118,34 @@ export async function POST(req: NextRequest) {
       }
     }
     // Forward the request to the actual AI provider
-    const acceptHeader = req.headers.get("Accept") || "application/json";
+    const headersToSend: Record<string, string> = {};
+    req.headers.forEach((value, key) => {
+      const lowerKey = key.toLowerCase();
+      // Exclude Vercel, hop-by-hop, nextjs internal, and connection-specific headers
+      if (
+        lowerKey === "host" ||
+        lowerKey === "connection" ||
+        lowerKey === "content-length" ||
+        lowerKey === "x-target-url" ||
+        lowerKey === "x-supabase-auth" ||
+        lowerKey === "cookie" ||
+        lowerKey === "origin" ||
+        lowerKey === "referer" ||
+        lowerKey.startsWith("sec-") ||
+        lowerKey.startsWith("x-forwarded-")
+      ) {
+        return;
+      }
+      headersToSend[key] = value;
+    });
+
+    if (authHeader) {
+      headersToSend["Authorization"] = authHeader;
+    }
+
     const response = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Authorization": authHeader || "",
-        "Content-Type": contentType,
-        "Accept": acceptHeader,
-      },
+      headers: headersToSend,
       body,
     });
 
