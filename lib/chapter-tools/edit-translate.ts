@@ -160,6 +160,19 @@ export async function runEditTranslate(opts: EditTranslateOptions) {
                             let text = "";
                             for await (const t of res.textStream) { text += t; }
 
+                            // Streaming fallback
+                            if (!text.trim()) {
+                                console.warn(`[AI Edit] Stream returned empty. Retrying with generateText...`);
+                                const { generateText } = await import("ai");
+                                const directRes = await generateText({
+                                    model,
+                                    system: systemPrompt,
+                                    prompt: `[BẢN DỊCH CẦN BIÊN TẬP]\n${chunk}\n\nHãy biên tập lại bản dịch trên cho văn phong trôi chảy, tự nhiên nhất.`,
+                                    abortSignal: signal,
+                                });
+                                text = directRes.text;
+                            }
+
                             const parsed = parseContent(text);
                             if (parsed.trim()) {
                                 editedContent += (editedContent ? "\n\n" : "") + parsed;

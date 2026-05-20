@@ -406,6 +406,20 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                             for await (const t of res.textStream) {
                                 text += t;
                             }
+
+                            // Streaming fallback
+                            if (!text.trim()) {
+                                console.warn(`[AI Draft] Stream returned empty. Retrying with generateText...`);
+                                const { generateText } = await import("ai");
+                                const directRes = await generateText({
+                                    model,
+                                    system: draftSystem,
+                                    prompt: draftUser,
+                                    abortSignal: signal,
+                                });
+                                text = directRes.text;
+                            }
+
                             rawDraftOutput = text;
                             draftSuccess = true;
                             break;
@@ -481,6 +495,20 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                                 for await (const t of res.textStream) {
                                     text += t;
                                 }
+
+                                // Streaming fallback
+                                if (!text.trim()) {
+                                    console.warn(`[AI Editor] Stream returned empty. Retrying with generateText...`);
+                                    const { generateText } = await import("ai");
+                                    const directRes = await generateText({
+                                        model,
+                                        system: editSystem,
+                                        prompt: editUser,
+                                        abortSignal: signal,
+                                    });
+                                    text = directRes.text;
+                                }
+
                                 rawEditOutput = text;
                                 editSuccess = true;
                                 break;

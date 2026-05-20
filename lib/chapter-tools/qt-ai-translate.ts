@@ -815,6 +815,20 @@ ${cleaned}`;
                   for await (const chunkTxt of result.textStream) {
                     fullText += chunkTxt;
                   }
+
+                  // Non-streaming fallback for proxy environments with buffering issues
+                  if (!fullText.trim()) {
+                    console.warn(`[AI] Stream returned empty. Retrying with generateText...`);
+                    const { generateText } = await import("ai");
+                    const directRes = await generateText({
+                      model: workerModel,
+                      system: systemPrompt,
+                      prompt: userPrompt,
+                      abortSignal: signal,
+                    });
+                    fullText = directRes.text;
+                  }
+
                   accumulated = fullText;
                   lastError = null;
                   break;

@@ -195,6 +195,19 @@ export async function runScanFix(opts: ScanFixOptions) {
                             let text = "";
                             for await (const t of res.textStream) { text += t; }
 
+                            // Streaming fallback
+                            if (!text.trim()) {
+                                console.warn(`[AI ScanFix] Stream returned empty. Retrying with generateText...`);
+                                const { generateText } = await import("ai");
+                                const directRes = await generateText({
+                                    model,
+                                    system: systemPrompt,
+                                    prompt: `[BẢN DỊCH CẦN QUÉT LỖI]\n${chunk}${sceneNameHint}\n\nHãy quét tất cả lỗi trong đoạn trên, sửa và trả về kết quả.`,
+                                    abortSignal: signal,
+                                });
+                                text = directRes.text;
+                            }
+
                             const parsed = parseResult(text);
                             if (parsed.content.trim()) {
                                 fixedContent += (fixedContent ? "\n\n" : "") + parsed.content;
