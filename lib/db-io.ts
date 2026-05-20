@@ -635,7 +635,7 @@ export async function buildExportPayload(
 
   const exportData: DatabaseExportData = { meta, data };
   // Don't pretty-print if encrypting (saves ~30% size)
-  const json = JSON.stringify(exportData, null, password ? undefined : 2);
+  const json = JSON.stringify(exportData);
 
   checkAbort(signal);
 
@@ -777,7 +777,16 @@ export async function importDatabase(
     const table = getTable(tableName);
 
     if (conflictMode === "overwrite") {
-      await table.bulkPut(records);
+      // Batch large tables to keep UI responsive
+      const IMPORT_BATCH = 500;
+      if (records.length > IMPORT_BATCH) {
+        for (let b = 0; b < records.length; b += IMPORT_BATCH) {
+          await table.bulkPut(records.slice(b, b + IMPORT_BATCH));
+          await new Promise(r => setTimeout(r, 0));
+        }
+      } else {
+        await table.bulkPut(records);
+      }
     } else if (conflictMode === "skip") {
       // Use primaryKeys() instead of toArray() — avoids loading full records
       const existingIds = new Set(await table.toCollection().primaryKeys());
@@ -785,7 +794,15 @@ export async function importDatabase(
         (r) => !existingIds.has(r.id as string),
       );
       if (newRecords.length > 0) {
-        await table.bulkAdd(newRecords);
+        const IMPORT_BATCH = 500;
+        if (newRecords.length > IMPORT_BATCH) {
+          for (let b = 0; b < newRecords.length; b += IMPORT_BATCH) {
+            await table.bulkAdd(newRecords.slice(b, b + IMPORT_BATCH));
+            await new Promise(r => setTimeout(r, 0));
+          }
+        } else {
+          await table.bulkAdd(newRecords);
+        }
       }
     } else if (conflictMode === "keep-both") {
       // Singletons: use overwrite semantics (can't have two "default" rows)

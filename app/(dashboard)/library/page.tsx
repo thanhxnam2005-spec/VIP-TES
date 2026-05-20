@@ -283,8 +283,7 @@ export default function LibraryPage() {
         `Đồng bộ thư viện thành công!\n- Đã xóa ${uploadedAndDeleted} bộ đã có trên Drive.\n- Đã tải lên & dọn dẹp ${newlyUploadedAndDeleted} bộ mới.\n${failedUploads > 0 ? `- Thất bại ${failedUploads} bộ.` : ""}`,
         { id: toastId, duration: 6000 }
       );
-      // Reload để cập nhật UI
-      setTimeout(() => window.location.reload(), 1500);
+      // useLiveQuery in useNovels() auto-updates — no reload needed
     } catch (err: any) {
       toast.error(`Đồng bộ thất bại: ${err.message}`, { id: toastId });
     } finally {
@@ -324,7 +323,6 @@ export default function LibraryPage() {
       const file = new File([json], "novel_data.json", { type: "application/json" });
       await importNovel(file);
       toast.success(`Đã nhập "${novel.title}" thành công!`, { id: toastId });
-      setTimeout(() => window.location.reload(), 1000);
     } catch (err: any) {
       toast.error(`Lỗi: ${err.message}`, { id: toastId });
     }
@@ -559,7 +557,6 @@ export default function LibraryPage() {
       if (processed > 0) {
         const failMsg = failedNames.length > 0 ? ` (Thất bại ${failedNames.length}: ${failedNames.slice(0, 2).join(", ")}...)` : "";
         toast.success(`Đồng bộ thành công ${processed} truyện!${failMsg}`, { id: toastId, duration: 5000 });
-        setTimeout(() => window.location.reload(), 2000);
       } else {
         toast.error(`Không có truyện nào được tải về. Thất bại: ${failedNames.join(", ")}`, { id: toastId });
       }
@@ -597,7 +594,6 @@ export default function LibraryPage() {
         { conflictMode: "overwrite", signal: ac.signal, onProgress: setProgress }
       );
       setResult({ success: true, message: "Nhập dữ liệu thành công!" });
-      setTimeout(() => window.location.reload(), 1500);
     } catch (err: any) {
       if (err instanceof DOMException && err.name === "AbortError") {
         setResult({ success: false, message: "Đã huỷ nhập dữ liệu." });

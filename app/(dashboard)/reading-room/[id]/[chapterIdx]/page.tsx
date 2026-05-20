@@ -54,31 +54,21 @@ export default function ReadingRoomChapterPage(props: { params: Promise<{ id: st
 
     useEffect(() => {
         setLoading(true);
-        // Fetch chapter
+        // Fetch chapter — API now returns totalChapters & novelTitle too
         fetch(`/api/reading-room?action=chapter&id=${novelId}&idx=${chapterOrder}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
                     setChapter(data.chapter);
                     setScenes(data.scenes || []);
+                    if (data.totalChapters) setTotalChapters(data.totalChapters);
+                    if (data.novelTitle) setNovelTitle(data.novelTitle);
                 } else {
                     setError(data.error || "Không tìm thấy chương.");
                 }
             })
             .catch(() => setError("Lỗi kết nối."))
             .finally(() => setLoading(false));
-
-        // Lấy thông tin novel để biết tổng chương
-        fetch(`/api/reading-room?action=novel_data&id=${novelId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.chapters) {
-                    setTotalChapters(data.chapters.length);
-                    setNovelTitle(data.title || "Reading Room");
-                }
-            })
-            .catch(console.error);
-
     }, [novelId, chapterOrder]);
 
     const currentOrder = Number(chapterOrder);

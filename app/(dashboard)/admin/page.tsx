@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -22,18 +21,12 @@ interface Profile {
   email: string;
   display_name: string;
   vip_until: string | null;
-}
-
-interface Lease {
-  id: string;
-  user_id: string;
-  email: string;
-  last_active_at: string;
+  admin_assigned_model: string | null;
+  admin_model_quota: number;
 }
 
 export default function AdminPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [leases, setLeases] = useState<Lease[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [freeMode, setFreeMode] = useState(false);
@@ -158,13 +151,7 @@ export default function AdminPage() {
       setProfiles(profilesData as Profile[]);
     }
 
-    // Load active leases
-    const { data: leasesData } = await supabase
-      .from("model_leases")
-      .select("*")
-      .order("last_active_at", { ascending: false });
-    
-    setLeases(leasesData || []);
+
 
     setLoading(false);
   };
@@ -283,6 +270,22 @@ export default function AdminPage() {
       toast.error(error.message);
     } else {
       toast.success("Đã thu hồi VIP");
+      loadData();
+    }
+  };
+
+  const handleAssignModel = async (userId: string) => {
+    const modelId = modelInputs[userId];
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ admin_assigned_model: modelId || null })
+      .eq("id", userId);
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success(modelId ? `Đã cấp model "${modelId}" cho người dùng!` : "Đã thu hồi model!");
       loadData();
     }
   };
@@ -431,8 +434,8 @@ export default function AdminPage() {
               <TableHead>Tên nhân vật</TableHead>
               <TableHead>Trạng thái VIP</TableHead>
               <TableHead>Lượt Admin</TableHead>
+              <TableHead>Model được cấp</TableHead>
               <TableHead>Hành động</TableHead>
-              <TableHead className="text-right">Khác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -492,26 +495,54 @@ export default function AdminPage() {
                           </Button>
                         </div>
                       </div>
-                    </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {availableModels.length > 0 ? (
+                        <select
+                          className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-w-[140px]"
+                          value={modelInputs[p.id] ?? (p as any).admin_assigned_model ?? ""}
+                          onChange={e => setModelInputs({ ...modelInputs, [p.id]: e.target.value })}
+                        >
+                          <option value="">-- Chưa cấp --</option>
+                          {availableModels.map(m => (
+                            <option key={m.id} value={m.id}>{m.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          placeholder="Model ID"
+                          className="w-28 h-8 text-xs"
+                          value={modelInputs[p.id] ?? (p as any).admin_assigned_model ?? ""}
+                          onChange={e => setModelInputs({ ...modelInputs, [p.id]: e.target.value })}
+                        />
+                      )}
                       <Button
                         size="sm"
-                        variant="destructive"
-                        onClick={() => handleRevokeVip(p.id)}
-                        disabled={!isVip}
-                        className="h-8 text-xs"
+                        className="bg-purple-600 hover:bg-purple-700 text-white h-8 text-xs"
+                        onClick={() => handleAssignModel(p.id)}
                       >
-                        Thu hồi VIP
+                        Cấp
                       </Button>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleRevokeVip(p.id)}
+                      disabled={!isVip}
+                      className="h-8 text-xs"
+                    >
+                      Thu hồi VIP
+                    </Button>
                   </TableCell>
                 </TableRow>
               );
             })}
             {profiles.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   Chưa có người dùng nào.
                 </TableCell>
               </TableRow>
@@ -520,47 +551,7 @@ export default function AdminPage() {
         </Table>
       </div>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
-          <RefreshCwIcon className="w-5 h-5 text-blue-500" />
-          Model đang được sử dụng ({leases.length})
-        </h2>
-        <div className="border rounded-lg overflow-hidden bg-card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Model ID</TableHead>
-                <TableHead>Người dùng</TableHead>
-                <TableHead>Hoạt động cuối</TableHead>
-                <TableHead className="text-right">Trạng thái</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {leases.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="font-mono text-xs">{l.id}</TableCell>
-                  <TableCell>{l.email}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(l.last_active_at).toLocaleTimeString("vi-VN")}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200">
-                      Đang dùng
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {leases.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center py-6 text-muted-foreground">
-                    Không có model nào đang được sử dụng.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+
     </div>
   );
 }

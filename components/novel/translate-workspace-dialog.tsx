@@ -129,45 +129,13 @@ export function TranslateWorkspaceDialog({
   };
 
   const handleModelChange = async (val: string) => {
-    if (selectedProviderId === "admin-provider") {
-      // Try to acquire lease
-      const res = await fetch("/api/ai/admin-lease", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId: val, action: "acquire" })
-      });
-      const data = await res.json();
-      if (!data.success) {
-        toast.error(data.message || "Model này đang có người khác sử dụng!");
-        return;
-      }
-    }
-
     setSelectedModelId(val);
     await db.novels.update(novelId, {
       customTranslateModelId: val,
     });
   };
 
-  // Heartbeat for admin model lease
-  useEffect(() => {
-    if (selectedProviderId === "admin-provider" && selectedModelId) {
-      const interval = setInterval(async () => {
-        const res = await fetch(`/api/ai/admin-lease?modelId=${selectedModelId}`);
-        const data = await res.json();
-        if (data.status === "locked") {
-          toast.warning(`Model của bạn đã bị giải phóng hoặc bị chiếm bởi ${data.owner}.`);
-          setSelectedModelId(undefined);
-        }
-      }, 60000); // every 1 minute
 
-      return () => {
-        clearInterval(interval);
-        // Optional: auto-release on unmount
-        // fetch("/api/ai/admin-lease", { method: "POST", body: JSON.stringify({ modelId: selectedModelId, action: "release" }) });
-      };
-    }
-  }, [selectedProviderId, selectedModelId]);
 
   const handleChapterComplete = useCallback(async (res: any) => {
     setProcessedCount((prev) => prev + 1);

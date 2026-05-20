@@ -1,7 +1,7 @@
 "use client";
 
 import { AppSidebar, miscNav, navConfig } from "@/components/app-sidebar";
-import { GlobalSearchDialog } from "@/components/global-search-dialog";
+// GlobalSearchDialog is lazy-loaded below for faster initial render
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -46,6 +46,7 @@ const ReaderPanel = lazy(() => import("@/components/reader/reader-panel").then(m
 const DictInitializer = lazy(() => import("@/components/dict-initializer").then(m => ({ default: m.DictInitializer })));
 const WelcomeModal = lazy(() => import("@/components/welcome-modal").then(m => ({ default: m.WelcomeModal })));
 const AutoDictSync = lazy(() => import("@/components/auto-dict-sync").then(m => ({ default: m.AutoDictSync })));
+const GlobalSearchDialog = lazy(() => import("@/components/global-search-dialog").then(m => ({ default: m.GlobalSearchDialog })));
 
 const pageTitles: Record<string, string> = Object.fromEntries(
   [...navConfig, ...miscNav].map((item) => [item.href, item.title]),
@@ -251,7 +252,9 @@ export default function DashboardLayout({
       <Suspense fallback={null}>
         <AutoDictSync />
       </Suspense>
-      <GlobalSearchDialog />
+      <Suspense fallback={null}>
+        <GlobalSearchDialog />
+      </Suspense>
       <Suspense fallback={null}>
         <WelcomeModal />
       </Suspense>

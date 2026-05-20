@@ -44,7 +44,7 @@ export function NavigationProgress() {
 
             // Start loading animation immediately
             setIsLoading(true);
-            setProgress(15);
+            setProgress(30);
 
             // Simulate incremental progress
             if (timerRef.current) clearInterval(timerRef.current);
@@ -55,10 +55,10 @@ export function NavigationProgress() {
                         return 90;
                     }
                     // Fast at first, then slow down
-                    const increment = prev < 50 ? 8 : prev < 80 ? 3 : 1;
+                    const increment = prev < 50 ? 10 : prev < 70 ? 5 : prev < 85 ? 2 : 1;
                     return Math.min(prev + increment, 90);
                 });
-            }, 100);
+            }, 80);
         }
 
         document.addEventListener("click", handleClick);

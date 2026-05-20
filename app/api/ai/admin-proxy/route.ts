@@ -34,20 +34,6 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const modelId = body.model;
-
-    // 3. Check if the user owns the lease for this model (skip for admins)
-    if (!isUserAdmin) {
-      const { data: lease } = await supabase
-        .from("model_leases")
-        .select("user_id")
-        .eq("id", modelId)
-        .single();
-
-      if (!lease || lease.user_id !== user.id) {
-        return NextResponse.json({ error: "Bạn chưa chiếm quyền sử dụng Model này hoặc đã hết hạn. Vui lòng chọn lại model." }, { status: 403 });
-      }
-    }
 
     // 4. Lấy cấu hình URL và API Key từ bảng app_settings
     const { data: settingsData } = await supabase

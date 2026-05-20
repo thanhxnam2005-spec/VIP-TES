@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { BookOpenIcon, SearchIcon, XIcon, Loader2Icon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { type ReadingRoomMetadata } from "@/lib/google-drive-admin-v2";
 
 const PAGE_SIZE = 9;
@@ -186,10 +187,10 @@ export default function ReadingRoomPage() {
             ) : (
                 <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                     {displayedNovels.map((novel, index) => (
-                        <div
+                        <Link
                             key={novel.id}
-                            className="group cursor-pointer"
-                            onClick={() => router.push(`/reading-room/${novel.id}`)}
+                            href={`/reading-room/${novel.id}`}
+                            className="group cursor-pointer block"
                         >
                             {/* Book cover — portrait 3:4 ratio */}
                             <div className="relative aspect-3/4 w-full overflow-hidden rounded-lg bg-muted shadow-sm transition-shadow group-hover:shadow-md">
@@ -232,7 +233,7 @@ export default function ReadingRoomPage() {
                                     {formatDate(novel.updatedAt)}
                                 </p>
                             </div>
-                        </div>
+                        </Link>
                     ))}
                 </div>
             )}

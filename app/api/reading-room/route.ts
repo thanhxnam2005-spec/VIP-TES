@@ -167,6 +167,8 @@ export async function GET(req: Request) {
                 success: true,
                 chapter: targetChapter,
                 scenes: targetScenes,
+                totalChapters: meta.chapters.length,
+                novelTitle: meta.novel?.title || "Reading Room",
             });
         }
 
