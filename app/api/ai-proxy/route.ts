@@ -120,8 +120,10 @@ export async function POST(req: NextRequest) {
     }
     // Forward ONLY essential headers to the AI provider
     // (forwarding all browser headers causes many providers to reject with 401/403)
+    const acceptHeader = req.headers.get("Accept") || "application/json";
     const headersToSend: Record<string, string> = {
       "Content-Type": contentType,
+      "Accept": acceptHeader,
     };
 
     if (authHeader) {
