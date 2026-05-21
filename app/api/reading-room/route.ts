@@ -7,8 +7,12 @@ import os from 'os';
 
 let HAS_FS = false;
 try {
-    HAS_FS = typeof _fs.existsSync === 'function';
-    if (HAS_FS) _fs.existsSync(os.tmpdir());
+    HAS_FS = typeof _fs.writeFileSync === 'function';
+    if (HAS_FS) {
+        const testFile = path.join(os.tmpdir(), `fs_test_${Date.now()}.tmp`);
+        _fs.writeFileSync(testFile, 'test');
+        _fs.unlinkSync(testFile);
+    }
 } catch (e) {
     HAS_FS = false;
 }
@@ -314,21 +318,35 @@ export async function POST(req: Request) {
 
                 const contentBuffer = await req.arrayBuffer();
                 const contentBytes = new Uint8Array(contentBuffer);
-                await uploadToReadingRoom(novelId, metadata, contentBytes);
 
-                if (HAS_FS) {
-                    try {
-                        const { decompress } = await import('@/lib/compression');
-                        const decompressedText = await decompress(contentBytes);
-                        const parseData = JSON.parse(decompressedText);
-                        ensureCacheDir();
-                        const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
-                        fs.writeFileSync(cacheFile, decompressedText);
-                        splitNovelToChunks(novelId, parseData);
-                    } catch (e) {
-                        console.error('Lỗi giải nén cache cục bộ:', e);
+                // Restore full description and genres from compressed JSON body (avoiding Cloudflare header size limits)
+                try {
+                    const { decompress } = await import('@/lib/compression');
+                    const decompressedText = await decompress(contentBytes);
+                    const parseData = JSON.parse(decompressedText);
+                    if (parseData?.novel?.description) {
+                        metadata.description = parseData.novel.description;
                     }
+                    if (parseData?.novel?.genres) {
+                        metadata.genres = parseData.novel.genres;
+                    }
+
+                    // Write cache if filesystem is writable
+                    if (HAS_FS) {
+                        try {
+                            ensureCacheDir();
+                            const cacheFile = path.join(CACHE_DIR, `${novelId}.json`);
+                            fs.writeFileSync(cacheFile, decompressedText);
+                            splitNovelToChunks(novelId, parseData);
+                        } catch (cacheErr) {
+                            console.error('Lỗi lưu cache cục bộ:', cacheErr);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Lỗi giải nén metadata từ body:', e);
                 }
+
+                await uploadToReadingRoom(novelId, metadata, contentBytes);
                 triggerAutoClassifyServer(novelId, metadata);
                 return NextResponse.json({ success: true });
             } else {

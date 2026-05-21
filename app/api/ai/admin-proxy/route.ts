@@ -84,12 +84,27 @@ export async function POST(req: NextRequest) {
       return new Response("Missing response body from AI provider", { status: 500 });
     }
 
-    const { readable, writable } = new TransformStream();
-    response.body.pipeTo(writable).catch((e) => {
-      console.error("Admin proxy stream pipe error:", e);
+    const reader = response.body.getReader();
+    const stream = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+          } else {
+            controller.enqueue(value);
+          }
+        } catch (e) {
+          console.error("Admin proxy stream read error:", e);
+          controller.error(e);
+        }
+      },
+      cancel() {
+        reader.releaseLock();
+      }
     });
 
-    return new Response(readable, {
+    return new Response(stream, {
       status: response.status,
       headers: resHeaders,
     });

@@ -250,7 +250,8 @@ export default function LibraryPage() {
               id: novel.id,
               title: novel.title,
               author: novel.author,
-              description: novel.description || '',
+              // Truncate description to 100 chars in headers to avoid Cloudflare 8KB limit (server extracts full description from compressed body)
+              description: (novel.description || '').substring(0, 100),
               coverImage: novel.coverImage || '',
               chapterCount: data.chapters?.length || 0,
               genres: novel.genres || [],
@@ -380,7 +381,8 @@ export default function LibraryPage() {
         id: novel.id,
         title: novel.title,
         author: novel.author,
-        description: novel.description || '',
+        // Truncate description to 100 chars in headers to avoid Cloudflare 8KB limit (server extracts full description from compressed body)
+        description: (novel.description || '').substring(0, 100),
         coverImage: novel.coverImage || '',
         chapterCount: data.chapters?.length || 0,
         genres: novel.genres || [],

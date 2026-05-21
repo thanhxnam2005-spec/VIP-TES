@@ -627,7 +627,8 @@ function MottruyenScannerCard() {
                 id: novelObj.id,
                 title: exportData.novel?.title || '',
                 author: exportData.novel?.author || '',
-                description: exportData.novel?.description || '',
+                // Truncate description to 100 chars in headers to avoid Cloudflare 8KB limit (server extracts full description from compressed body)
+                description: (exportData.novel?.description || '').substring(0, 100),
                 coverImage: exportData.novel?.coverImage || '',
                 chapterCount: sortedChapters.length,
                 genres: exportData.novel?.genres || [],
