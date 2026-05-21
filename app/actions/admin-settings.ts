@@ -3,7 +3,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/utils";
 
-import { getEnv } from "@/lib/env";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export async function saveAdminSettingsAction(url: string, apiKey: string) {
@@ -16,8 +15,8 @@ export async function saveAdminSettingsAction(url: string, apiKey: string) {
 
   // Create admin client to bypass RLS for app_settings
   const adminDb = createAdminClient(
-    getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
   // Clean strings
@@ -67,8 +66,8 @@ export async function saveAutoClassifySettingAction(enabled: boolean) {
     }
 
     const adminDb = createAdminClient(
-      getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
     const { error } = await adminDb

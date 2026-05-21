@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { getEnv } from "@/lib/env";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 export async function POST(req: NextRequest) {
   let targetUrl = req.headers.get("x-target-url");
@@ -11,9 +11,23 @@ export async function POST(req: NextRequest) {
   let userId = null;
   let assignedModel = "gcli-gemini-3-pro-preview"; // fallback
 
+  // Resolve env vars: process.env for build-time NEXT_PUBLIC_, CF context for runtime secrets
+  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  let serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  try {
+    const ctx = getCloudflareContext();
+    if (ctx?.env) {
+      const env = ctx.env as any;
+      supabaseUrl = supabaseUrl || env.NEXT_PUBLIC_SUPABASE_URL || "";
+      serviceKey = serviceKey || env.SUPABASE_SERVICE_ROLE_KEY || "";
+      anonKey = anonKey || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    }
+  } catch {}
+
   const supabase = createClient(
-    getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    supabaseUrl,
+    serviceKey || anonKey
   );
 
   // Authenticate user via bearer token in the auth header if present, or from cookies.

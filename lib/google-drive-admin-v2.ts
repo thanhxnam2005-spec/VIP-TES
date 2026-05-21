@@ -1,7 +1,7 @@
 let cachedToken: string | null = null;
 let tokenExpiryTime: number = 0;
 
-import { getEnv } from "./env";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { decompressIfNeeded } from "./compression";
 
 async function getAccessToken(): Promise<string> {
@@ -9,12 +9,26 @@ async function getAccessToken(): Promise<string> {
     return cachedToken;
   }
 
-  const clientId = getEnv("GOOGLE_CLIENT_ID");
-  const clientSecret = getEnv("GOOGLE_CLIENT_SECRET");
-  const refreshToken = getEnv("GOOGLE_REFRESH_TOKEN");
+  let clientId = process.env.GOOGLE_CLIENT_ID || '';
+  let clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
+  let refreshToken = process.env.GOOGLE_REFRESH_TOKEN || '';
+
+  let envKeys = "none";
+  // Fallback lấy từ Cloudflare Context trong môi trường OpenNext
+  try {
+    const ctx = getCloudflareContext();
+    if (ctx && ctx.env) {
+      envKeys = Object.keys(ctx.env).join(", ");
+      clientId = clientId || ((ctx.env as any).GOOGLE_CLIENT_ID as string) || '';
+      clientSecret = clientSecret || ((ctx.env as any).GOOGLE_CLIENT_SECRET as string) || '';
+      refreshToken = refreshToken || ((ctx.env as any).GOOGLE_REFRESH_TOKEN as string) || '';
+    }
+  } catch (err) {
+    console.warn("getCloudflareContext failed or not available:", err);
+  }
 
   if (!refreshToken) {
-    throw new Error(`Missing GOOGLE_REFRESH_TOKEN.`);
+    throw new Error(`Missing GOOGLE_REFRESH_TOKEN. Available env keys: ${envKeys}`);
   }
 
   const params = new URLSearchParams({
@@ -53,49 +67,29 @@ const READING_ROOM_FOLDER_NAME = 'Phong_doc_cong_dong';
 const folderCache: Record<string, Promise<string>> = {};
 
 async function fetchDriveAPI(url: string, options: RequestInit = {}, raw?: boolean) {
-  const maxRetries = 3;
-  let attempt = 0;
-  while (true) {
-    attempt++;
-    try {
-      const token = await getAccessToken();
-      const headers = new Headers(options.headers || {});
-      if (!headers.has('Authorization')) {
-        headers.set('Authorization', `Bearer ${token}`);
-      }
-
-      const res = await fetch(url, { cache: 'no-store', ...options, headers });
-      if (!res.ok) {
-        const isRetryable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
-        if (isRetryable && attempt < maxRetries) {
-          const delayMs = attempt * 2000 + Math.random() * 1000;
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          continue;
-        }
-        const text = await res.text();
-        throw new Error(`Google Drive API Error (${res.status}): ${text}`);
-      }
-      // Nếu là tải file dạng text (alt=media)
-      if (url.includes('alt=media')) {
-        const buffer = await res.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        if (raw) {
-          return bytes;
-        }
-        return await decompressIfNeeded(bytes);
-      }
-      // Delete trả về empty
-      if (options.method === 'DELETE') return null;
-      return res.json();
-    } catch (err) {
-      if (attempt < maxRetries) {
-        const delayMs = attempt * 2000 + Math.random() * 1000;
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        continue;
-      }
-      throw err;
-    }
+  const token = await getAccessToken();
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
+
+  const res = await fetch(url, { cache: 'no-store', ...options, headers });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google Drive API Error (${res.status}): ${text}`);
+  }
+  // Nếu là tải file dạng text (alt=media)
+  if (url.includes('alt=media')) {
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    if (raw) {
+      return bytes;
+    }
+    return await decompressIfNeeded(bytes);
+  }
+  // Delete trả về empty
+  if (options.method === 'DELETE') return null;
+  return res.json();
 }
 
 /** Find or create a folder by name under a parent (Race-condition safe) */

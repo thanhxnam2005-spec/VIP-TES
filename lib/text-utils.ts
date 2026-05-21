@@ -1,3 +1,28 @@
+// CJK Unicode ranges: Chinese, Japanese Kanji, Korean Hangul
+const CJK_RE = /[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u2E80-\u2EFF\u3000-\u303F\uFF00-\uFFEF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]/g;
+
+/**
+ * Count words in mixed Chinese/Vietnamese/English text.
+ * - CJK characters are counted individually (Chinese has no spaces between words).
+ * - Non-CJK text is counted by whitespace-separated tokens.
+ * This prevents word counts from appearing to "decrease" after translating
+ * Chinese → Vietnamese, since the old `split(/\s+/)` would count each Chinese
+ * line as a single "word".
+ */
+export function countWords(content: string): number {
+  if (!content) return 0;
+
+  // Count CJK characters
+  const cjkMatches = content.match(CJK_RE);
+  const cjkCount = cjkMatches ? cjkMatches.length : 0;
+
+  // Remove CJK characters, then count remaining space-separated words
+  const nonCjk = content.replace(CJK_RE, " ");
+  const nonCjkWords = nonCjk.split(/\s+/).filter(Boolean).length;
+
+  return cjkCount + nonCjkWords;
+}
+
 /**
  * Clean up Vietnamese text:
  * - Replace multiple spaces with a single space.
