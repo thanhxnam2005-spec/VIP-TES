@@ -66,7 +66,16 @@ export async function getModel(
         fetch: async (url, options) => {
           // Route through the dedicated admin proxy
           const plainHeaders = getPlainHeaders(options?.headers);
-          return fetch("/api/ai/admin-proxy", {
+          let proxyUrl = "/api/ai/admin-proxy";
+          if (typeof window !== "undefined") {
+            proxyUrl = window.location.origin + "/api/ai/admin-proxy";
+          } else {
+            const nextPublicUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+            if (nextPublicUrl) {
+              proxyUrl = nextPublicUrl.replace(/\/+$/, "") + "/api/ai/admin-proxy";
+            }
+          }
+          return fetch(proxyUrl, {
             ...options,
             headers: plainHeaders,
           });
@@ -91,8 +100,18 @@ export async function getModel(
     }
 
     const plainHeaders = getPlainHeaders(init?.headers);
+    let proxyUrl = "/api/ai-proxy";
+    if (typeof window !== "undefined") {
+      proxyUrl = window.location.origin + "/api/ai-proxy";
+    } else {
+      const nextPublicUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+      if (nextPublicUrl) {
+        proxyUrl = nextPublicUrl.replace(/\/+$/, "") + "/api/ai-proxy";
+      }
+    }
+
     // Route through server-side proxy to bypass CORS
-    return fetch("/api/ai-proxy", {
+    return fetch(proxyUrl, {
       ...init,
       headers: {
         ...plainHeaders,

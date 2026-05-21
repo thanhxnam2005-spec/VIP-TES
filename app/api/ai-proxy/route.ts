@@ -141,6 +141,12 @@ export async function POST(req: NextRequest) {
       body,
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("AI Proxy Error:", errorText);
+      return new Response(errorText, { status: response.status, headers: { "Content-Type": "application/json" } });
+    }
+
     // Proxy the response stream back to the client
     const resHeaders: Record<string, string> = {
       "Content-Type": response.headers.get("Content-Type") || "application/json",
@@ -152,7 +158,28 @@ export async function POST(req: NextRequest) {
       resHeaders["Connection"] = "keep-alive";
     }
 
-    return new Response(response.body, {
+    const stream = new ReadableStream({
+      async start(controller) {
+        if (!response.body) {
+          controller.close();
+          return;
+        }
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } catch (e) {
+          console.error("AI proxy stream error:", e);
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
       status: response.status,
       headers: resHeaders,
     });

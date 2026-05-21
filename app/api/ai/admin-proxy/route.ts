@@ -80,7 +80,28 @@ export async function POST(req: NextRequest) {
       resHeaders["Connection"] = "keep-alive";
     }
 
-    return new Response(response.body, {
+    const stream = new ReadableStream({
+      async start(controller) {
+        if (!response.body) {
+          controller.close();
+          return;
+        }
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } catch (e) {
+          console.error("Admin proxy stream error:", e);
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
       status: response.status,
       headers: resHeaders,
     });

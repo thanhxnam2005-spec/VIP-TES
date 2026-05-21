@@ -413,6 +413,10 @@ export function TranslateTabPanel({
             let fullText = "";
             for await (const chunk of result.textStream) { fullText += chunk; }
 
+            if (!fullText.trim()) {
+                throw new Error("Không nhận được phản hồi từ AI (kết quả rỗng). Vui lòng kiểm tra lại cấu hình API Key, kết nối mạng, hoặc thử model khác.");
+            }
+
             setInlinePrompt(fullText.trim());
             await db.novels.update(novelId, { customTranslatePrompt: fullText.trim(), styleScannedAt: new Date(), updatedAt: new Date() });
             toast.success("Quét prompt dịch thành công!");
