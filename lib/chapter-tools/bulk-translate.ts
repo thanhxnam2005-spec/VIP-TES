@@ -22,8 +22,8 @@ import { checkIsVipStandalone } from "../hooks/use-profile";
 // ── Retry & Error Handling ──
 
 const MAX_RETRIES = 3;
-const RETRY_BASE_DELAY = 30000; // 30s for rate limits
-const RETRY_EMPTY_DELAY = 5000;  // 5s for empty responses (quick transient failure)
+const RETRY_BASE_DELAY = 10000; // 10s for rate limits (reduced from 30s for speed)
+const RETRY_EMPTY_DELAY = 2000;  // 2s for empty responses (quick transient failure)
 
 /** Classify API errors and decide if they are retryable */
 function classifyError(err: unknown): { retryable: boolean; message: string } {
@@ -198,6 +198,8 @@ export interface BulkTranslateOptions {
   autoSave: boolean;
   settings: AnalysisSettings;
   skipTranslated?: boolean;
+  /** Skip name scanning pre-pass for faster translation (saves 1 AI call per chapter) */
+  skipNameScan?: boolean;
   /** Overrides the translate prompt from settings when provided. */
   customPrompt?: string;
   signal?: AbortSignal;
@@ -221,6 +223,7 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
     autoSave,
     settings,
     skipTranslated,
+    skipNameScan,
     customPrompt,
     signal,
     delayMs,
@@ -318,26 +321,28 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
 
       // ⚡ Pre-scan: detect NEW character names not yet in dictionary
       // Auto-add them before translating so this chapter + all future chapters use them
-      try {
-        const newNames = await scanNewNames({
-          model,
-          sourceText: joinedContent,
-          novelId,
-          existingDict: nameDictMap,
-          signal,
-        });
-        if (newNames.length > 0) {
-          const added = await autoAddNames(novelId, newNames);
-          if (added > 0) {
-            // Update the shared mutable dict so subsequent chapters see these names
-            for (const n of newNames) {
-              nameDictMap.set(n.chinese, n.vietnamese);
+      if (!skipNameScan) {
+        try {
+          const newNames = await scanNewNames({
+            model,
+            sourceText: joinedContent,
+            novelId,
+            existingDict: nameDictMap,
+            signal,
+          });
+          if (newNames.length > 0) {
+            const added = await autoAddNames(novelId, newNames);
+            if (added > 0) {
+              // Update the shared mutable dict so subsequent chapters see these names
+              for (const n of newNames) {
+                nameDictMap.set(n.chinese, n.vietnamese);
+              }
+              console.log(`[NameScan] Chương "${chapter.title}": phát hiện ${added} tên mới`);
             }
-            console.log(`[NameScan] Chương "${chapter.title}": phát hiện ${added} tên mới`);
           }
+        } catch {
+          // Non-critical — continue translating even if name scan fails
         }
-      } catch {
-        // Non-critical — continue translating even if name scan fails
       }
 
       // Convert current dict Map back to array for context builder
