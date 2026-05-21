@@ -375,8 +375,12 @@ export function cleanErrorCausingCharacters(text: string): string {
   cleaned = cleaned.replace(/[\u2500-\u28FF]/g, "");
   cleaned = cleaned.replace(/[\u2190-\u21FF]/g, ""); // Remove arrows
 
-  // 5. Clean up any double spaces caused by removal
-  cleaned = cleaned.replace(/\s+/g, " ");
+  // 5. Clean up any double spaces caused by removal (but preserve paragraphs)
+  cleaned = cleaned
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
 
   return cleaned.trim();
 }

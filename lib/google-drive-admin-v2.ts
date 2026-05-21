@@ -1,7 +1,7 @@
 let cachedToken: string | null = null;
 let tokenExpiryTime: number = 0;
 
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getEnv } from "./env";
 import { decompressIfNeeded } from "./compression";
 
 async function getAccessToken(): Promise<string> {
@@ -9,26 +9,12 @@ async function getAccessToken(): Promise<string> {
     return cachedToken;
   }
 
-  let clientId = process.env.GOOGLE_CLIENT_ID || '';
-  let clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
-  let refreshToken = process.env.GOOGLE_REFRESH_TOKEN || '';
-
-  let envKeys = "none";
-  // Fallback lấy từ Cloudflare Context trong môi trường OpenNext
-  try {
-    const ctx = getCloudflareContext();
-    if (ctx && ctx.env) {
-      envKeys = Object.keys(ctx.env).join(", ");
-      clientId = clientId || ((ctx.env as any).GOOGLE_CLIENT_ID as string) || '';
-      clientSecret = clientSecret || ((ctx.env as any).GOOGLE_CLIENT_SECRET as string) || '';
-      refreshToken = refreshToken || ((ctx.env as any).GOOGLE_REFRESH_TOKEN as string) || '';
-    }
-  } catch (err) {
-    console.warn("getCloudflareContext failed or not available:", err);
-  }
+  const clientId = getEnv("GOOGLE_CLIENT_ID");
+  const clientSecret = getEnv("GOOGLE_CLIENT_SECRET");
+  const refreshToken = getEnv("GOOGLE_REFRESH_TOKEN");
 
   if (!refreshToken) {
-    throw new Error(`Missing GOOGLE_REFRESH_TOKEN. Available env keys: ${envKeys}`);
+    throw new Error(`Missing GOOGLE_REFRESH_TOKEN.`);
   }
 
   const params = new URLSearchParams({

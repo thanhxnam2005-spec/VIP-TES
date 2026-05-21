@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getEnv } from "@/lib/env";
 
 export async function POST(req: NextRequest) {
   let targetUrl = req.headers.get("x-target-url");
@@ -11,8 +12,8 @@ export async function POST(req: NextRequest) {
   let assignedModel = "gcli-gemini-3-pro-preview"; // fallback
 
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    getEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    getEnv("SUPABASE_SERVICE_ROLE_KEY") || getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
   );
 
   // Authenticate user via bearer token in the auth header if present, or from cookies.

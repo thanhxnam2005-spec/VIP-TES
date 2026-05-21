@@ -145,8 +145,11 @@ export default function AdminPage() {
       .select("*")
       .order("email");
 
+    console.log("[Admin] profiles query:", { data: profilesData, error: profilesError });
+
     if (profilesError) {
-      toast.error(profilesError.message);
+      toast.error("Lỗi tải profiles: " + profilesError.message);
+      console.error("[Admin] profilesError:", profilesError);
     } else {
       setProfiles(profilesData as Profile[]);
     }
