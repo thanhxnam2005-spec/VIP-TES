@@ -280,7 +280,6 @@ export function BulkTranslateDialog({
   const [translateTitle, setTranslateTitle] = useState(true);
   const [autoSave, setAutoSave] = useState(true); // <== Changed default to true
   const [skipTranslated, setSkipTranslated] = useState(true); // <== Added skipTranslated
-  const [skipNameScan, setSkipNameScan] = useState(false);
   const [delaySeconds, setDelaySeconds] = useState(settings.translateDelaySeconds ?? 0);
   const [concurrency, setConcurrency] = useState(settings.translateConcurrency ?? 3);
 
@@ -361,7 +360,6 @@ export function BulkTranslateDialog({
         autoSave,
         settings,
         skipTranslated,
-        skipNameScan,
         customPrompt: promptText,
         signal,
         delayMs: delaySeconds * 1000,
@@ -677,19 +675,6 @@ export function BulkTranslateDialog({
                       className="cursor-pointer text-xs"
                     >
                       Bỏ qua các chương đã dịch (Tránh dịch lại)
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      id="bulk-skip-namescan"
-                      checked={skipNameScan}
-                      onCheckedChange={setSkipNameScan}
-                    />
-                    <Label
-                      htmlFor="bulk-skip-namescan"
-                      className="cursor-pointer text-xs"
-                    >
-                      Tắt quét tên nhân vật (Nhanh hơn ~2x, bỏ 1 lần gọi AI/chương)
                     </Label>
                   </div>
 

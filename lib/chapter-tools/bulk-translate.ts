@@ -198,8 +198,6 @@ export interface BulkTranslateOptions {
   autoSave: boolean;
   settings: AnalysisSettings;
   skipTranslated?: boolean;
-  /** Skip name scanning pre-pass for faster translation (saves 1 AI call per chapter) */
-  skipNameScan?: boolean;
   /** Overrides the translate prompt from settings when provided. */
   customPrompt?: string;
   signal?: AbortSignal;
@@ -223,7 +221,6 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
     autoSave,
     settings,
     skipTranslated,
-    skipNameScan,
     customPrompt,
     signal,
     delayMs,
@@ -269,6 +266,52 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
 
   const concurrency = settings.translateConcurrency && settings.translateConcurrency > 0 ? settings.translateConcurrency : 1;
   let currentIndex = 0;
+
+  // ── Lookahead name scanning ──
+  // When 2+ models are available, dedicate one model for scanning names of the
+  // NEXT chapter while the primary model translates the current chapter.
+  const allModels = models && models.length > 0 ? models : (model ? [model] : []);
+  const nameScanModel = allModels.length >= 2 ? allModels[1] : allModels[0];
+  // Track which chapters have already had their names scanned (by lookahead)
+  const scannedChapterIds = new Set<string>();
+
+  /** Fire-and-forget: scan names for a chapter and update the shared dict */
+  function lookaheadScanNames(chapterId: string) {
+    if (scannedChapterIds.has(chapterId)) return; // already scanned
+    scannedChapterIds.add(chapterId);
+
+    const scenes = scenesByChapter.get(chapterId) ?? [];
+    if (scenes.length === 0) return;
+
+    // Run in background — don't await
+    (async () => {
+      try {
+        const originalContents = await Promise.all(
+          scenes.map((s) => getOriginalContent(s.id))
+        );
+        const joinedContent = originalContents.join("\n\n");
+
+        const newNames = await scanNewNames({
+          model: nameScanModel,
+          sourceText: joinedContent,
+          novelId,
+          existingDict: nameDictMap,
+          signal,
+        });
+        if (newNames.length > 0) {
+          const added = await autoAddNames(novelId, newNames);
+          if (added > 0) {
+            for (const n of newNames) {
+              nameDictMap.set(n.chinese, n.vietnamese);
+            }
+            console.log(`[Lookahead] Chương tiếp theo: phát hiện ${added} tên mới`);
+          }
+        }
+      } catch {
+        // Non-critical — translation will still work, just without pre-scanned names
+      }
+    })();
+  }
 
   async function processChapter(chapter: typeof chapters[0], model: LanguageModel) {
     onChapterStart(chapter.id, chapter.title);
@@ -321,10 +364,12 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
 
       // ⚡ Pre-scan: detect NEW character names not yet in dictionary
       // Auto-add them before translating so this chapter + all future chapters use them
-      if (!skipNameScan) {
+      // If this chapter was already scanned by lookahead, skip the scan
+      if (!scannedChapterIds.has(chapter.id)) {
+        scannedChapterIds.add(chapter.id);
         try {
           const newNames = await scanNewNames({
-            model,
+            model: nameScanModel,
             sourceText: joinedContent,
             novelId,
             existingDict: nameDictMap,
@@ -333,7 +378,6 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
           if (newNames.length > 0) {
             const added = await autoAddNames(novelId, newNames);
             if (added > 0) {
-              // Update the shared mutable dict so subsequent chapters see these names
               for (const n of newNames) {
                 nameDictMap.set(n.chinese, n.vietnamese);
               }
@@ -342,6 +386,15 @@ export async function runBulkTranslate(opts: BulkTranslateOptions): Promise<void
           }
         } catch {
           // Non-critical — continue translating even if name scan fails
+        }
+      }
+
+      // 🔭 Lookahead: if 2+ models, scan names for the NEXT chapter in background
+      // while this chapter's translation runs on the primary model
+      if (allModels.length >= 2) {
+        const nextChapter = chapters[chapters.indexOf(chapter) + 1];
+        if (nextChapter) {
+          lookaheadScanNames(nextChapter.id);
         }
       }
 
