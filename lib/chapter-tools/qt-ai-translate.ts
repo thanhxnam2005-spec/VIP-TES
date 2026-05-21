@@ -410,7 +410,9 @@ function parseHybridResult(
   const sepIndex = contentPart.indexOf("\n---\n");
   if (sepIndex === -1) return { title: null, content: contentPart, extractedNames };
 
-  const title = contentPart.slice(0, sepIndex).trim();
+  let title = contentPart.slice(0, sepIndex).trim();
+  // Strip "Tiêu đề:" or "Title:" prefix (case-insensitive, handles standard and full-width colons)
+  title = title.replace(/^(tiêu đề|title)\s*[:：]\s*/i, "").trim();
 
   // Bảo vệ: Nếu title chứa xuống dòng (nhiều dòng) hoặc quá dài, đó không phải là title thật
   if (title.includes("\n") || title.length > 200) {

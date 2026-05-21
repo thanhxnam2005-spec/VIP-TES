@@ -96,9 +96,17 @@ export function useNovelDetailStats(novelId: string | undefined) {
   return useLiveQuery(
     async () => {
       const chapterWordCounts = new Map<string, number>();
+      const chapterOriginalWordCounts = new Map<string, number>();
       const latestEditByChapter = new Map<string, number>();
       const translatedChapterIds = new Set<string>();
-      if (!novelId || !shouldLoad) return { chapterWordCounts, analysisStatuses: [], translatedChapterIds };
+      if (!novelId || !shouldLoad) {
+        return {
+          chapterWordCounts,
+          chapterOriginalWordCounts,
+          analysisStatuses: [],
+          translatedChapterIds,
+        };
+      }
 
       const chapters = await db.chapters
         .where("novelId")
@@ -112,6 +120,27 @@ export function useNovelDetailStats(novelId: string | undefined) {
         .where("[novelId+isActive]")
         .equals([novelId, 1])
         .toArray();
+
+      // Gather original counts concurrently to prevent database lookup delay.
+      const originalWordCountPromises = allActiveScenes.map(async (s) => {
+        if (!s.versionType || s.versionType === "manual") {
+          return { chapterId: s.chapterId, count: s.wordCount };
+        }
+        // Fetch original version (v1)
+        const v1 = await db.scenes
+          .where("[activeSceneId+version]")
+          .equals([s.id, 1])
+          .first();
+        return { chapterId: s.chapterId, count: v1 ? v1.wordCount : s.wordCount };
+      });
+      const originalWordCountsList = await Promise.all(originalWordCountPromises);
+
+      for (const item of originalWordCountsList) {
+        chapterOriginalWordCounts.set(
+          item.chapterId,
+          (chapterOriginalWordCounts.get(item.chapterId) ?? 0) + item.count
+        );
+      }
 
       for (const s of allActiveScenes) {
         chapterWordCounts.set(s.chapterId, (chapterWordCounts.get(s.chapterId) ?? 0) + s.wordCount);
@@ -134,10 +163,20 @@ export function useNovelDetailStats(novelId: string | undefined) {
         };
       });
 
-      return { chapterWordCounts, analysisStatuses, translatedChapterIds };
+      return {
+        chapterWordCounts,
+        chapterOriginalWordCounts,
+        analysisStatuses,
+        translatedChapterIds,
+      };
     },
     [novelId, shouldLoad]
-  ) ?? { chapterWordCounts: new Map<string, number>(), analysisStatuses: [], translatedChapterIds: new Set<string>() };
+  ) ?? {
+    chapterWordCounts: new Map<string, number>(),
+    chapterOriginalWordCounts: new Map<string, number>(),
+    analysisStatuses: [],
+    translatedChapterIds: new Set<string>(),
+  };
 }
 
 export function useHasAnalyzedChapters(novelId: string | undefined) {

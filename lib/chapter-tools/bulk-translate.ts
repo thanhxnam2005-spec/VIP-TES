@@ -130,6 +130,8 @@ export function parseTranslateResult(
   let title = raw.slice(0, sepIndex).trim();
   // Strip XML tags like <chapter_title> if AI accidentally outputs them
   title = title.replace(/<\/?chapter_title>/gi, '').trim();
+  // Strip "Tiêu đề:" or "Title:" prefix (case-insensitive, handles standard and full-width colons)
+  title = title.replace(/^(tiêu đề|title)\s*[:：]\s*/i, "").trim();
 
   let content = raw.slice(sepIndex + TITLE_SEPARATOR.length + 2).trim();
   // Strip other XML tags just in case

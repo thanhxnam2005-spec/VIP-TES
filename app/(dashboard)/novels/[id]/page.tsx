@@ -99,7 +99,7 @@ export default function NovelDetailPage() {
   const [activeTab, setActiveTab] = useState("chapters");
   const novel = useNovel(id);
   const chapters = useChapters(id);
-  const { chapterWordCounts, analysisStatuses, translatedChapterIds } = useNovelDetailStats(id);
+  const { chapterWordCounts, chapterOriginalWordCounts, analysisStatuses, translatedChapterIds } = useNovelDetailStats(id);
   const totalWords = useMemo(() => {
     let sum = 0;
     chapterWordCounts.forEach((count) => { sum += count; });
@@ -602,6 +602,7 @@ export default function NovelDetailPage() {
             chapters={chapters ?? []}
             analysisStatuses={analysisStatuses}
             wordCounts={chapterWordCounts}
+            originalWordCounts={chapterOriginalWordCounts}
             translatedChapterIds={translatedChapterIds}
             onAnalyze={handleAnalyze}
             onTranslate={handleTranslate}

@@ -116,6 +116,7 @@ export function ChaptersTab({
   chapters,
   analysisStatuses,
   wordCounts,
+  originalWordCounts,
   translatedChapterIds,
   onAnalyze,
   onTranslate,
@@ -134,6 +135,7 @@ export function ChaptersTab({
   | { chapterId: string; status: ChapterAnalysisStatus }[]
   | undefined;
   wordCounts: Map<string, number>;
+  originalWordCounts?: Map<string, number>;
   translatedChapterIds?: Set<string>;
   onAnalyze: (
     mode: "full" | "incremental" | "selected",
@@ -540,7 +542,7 @@ export function ChaptersTab({
             />
             <span className="w-8 shrink-0">#</span>
             <span className="min-w-0 flex-1">Tiêu đề</span>
-            <span className="w-14 shrink-0 text-right">Số từ</span>
+            <span className="w-28 shrink-0 text-right">Số từ (Gốc/Dịch)</span>
             <span className="hidden w-20 shrink-0 text-right lg:block">
               Chỉnh sửa
             </span>
@@ -642,7 +644,9 @@ export function ChaptersTab({
                           </div>
                           <div className="flex items-center gap-1 px-3 pb-1.5 pl-[3.75rem]">
                             <span className="text-[10px] font-medium text-muted-foreground">
-                              {(wordCounts.get(ch.id) ?? 0).toLocaleString()} từ
+                              {translatedChapterIds?.has(ch.id)
+                                ? `${(originalWordCounts?.get(ch.id) ?? 0).toLocaleString()} gốc / ${(wordCounts.get(ch.id) ?? 0).toLocaleString()} dịch`
+                                : `${(originalWordCounts?.get(ch.id) ?? 0).toLocaleString()} từ`}
                             </span>
                             <StatusIcon
                               className={`ml-1 size-3 ${statusCfg.className}`}
@@ -702,9 +706,20 @@ export function ChaptersTab({
                               {TlBadge}
                             </span>
                           </button>
-                          <span className="w-14 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                            {(wordCounts.get(ch.id) ?? 0).toLocaleString()}
-                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground cursor-help">
+                                {translatedChapterIds?.has(ch.id)
+                                  ? `${(originalWordCounts?.get(ch.id) ?? 0).toLocaleString()} / ${(wordCounts.get(ch.id) ?? 0).toLocaleString()}`
+                                  : (originalWordCounts?.get(ch.id) ?? 0).toLocaleString()}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {translatedChapterIds?.has(ch.id)
+                                ? `Gốc: ${(originalWordCounts?.get(ch.id) ?? 0).toLocaleString()} từ / Dịch: ${(wordCounts.get(ch.id) ?? 0).toLocaleString()} từ`
+                                : `Gốc: ${(originalWordCounts?.get(ch.id) ?? 0).toLocaleString()} từ (Chưa dịch)`}
+                            </TooltipContent>
+                          </Tooltip>
 
                           {/* Edited time — only on wide screens */}
                           <Tooltip>

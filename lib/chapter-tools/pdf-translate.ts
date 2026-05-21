@@ -149,22 +149,22 @@ function buildPostEditUserPrompt(
   dictTitle?: string,
 ): string {
   let user = "";
-  
+
   if (chineseTitle && dictTitle) {
     user += `Tiêu đề: ${chineseTitle} → ${dictTitle}\n---\n`;
   }
-  
+
   user += `[GỐC]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN]\n${dictTranslation}\n\nHãy phân tích và trả về <names> (nếu tìm thấy tên mới) và <content> đã sửa lỗi theo format yêu cầu.`;
-  
+
   return user;
 }
 
 function parseHybridResult(
   raw: string,
   includeTitle: boolean,
-): { title: string | null; content: string; extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> } {
+): { title: string | null; content: string; extractedNames: Array<{ chinese: string, vietnamese: string, dictType: string }> } {
   let contentPart = raw;
-  let extractedNames: Array<{chinese: string, vietnamese: string, dictType: string}> = [];
+  let extractedNames: Array<{ chinese: string, vietnamese: string, dictType: string }> = [];
 
   // Extract <names> block if present
   const namesMatch = raw.match(/<names>([\s\S]*?)<\/names>/i);
@@ -198,7 +198,15 @@ function parseHybridResult(
   const sepIndex = contentPart.indexOf("\n---\n");
   if (sepIndex === -1) return { title: null, content: contentPart, extractedNames };
 
-  const title = contentPart.slice(0, sepIndex).trim();
+  let title = contentPart.slice(0, sepIndex).trim();
+  // Strip "Tiêu đề:" or "Title:" prefix (case-insensitive, handles standard and full-width colons)
+  title = title.replace(/^(tiêu đề|title)\s*[:：]\s*/i, "").trim();
+
+  // Bảo vệ: Nếu title chứa xuống dòng (nhiều dòng) hoặc quá dài, đó không phải là title thật
+  if (title.includes("\n") || title.length > 200) {
+    return { title: null, content: contentPart, extractedNames };
+  }
+
   const textBody = contentPart.slice(sepIndex + 5).trim();
   return { title: title || null, content: textBody, extractedNames };
 }
@@ -337,25 +345,25 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
           autoGenres = [matchedKey];
         }
 
-        const finalGenres = targetGenres && targetGenres.length > 0 && !targetGenres.includes("auto") 
-          ? targetGenres 
+        const finalGenres = targetGenres && targetGenres.length > 0 && !targetGenres.includes("auto")
+          ? targetGenres
           : autoGenres;
         const activeSources = finalGenres;
-        
+
         const titleRes = await convertText(chapter.title, {
           options: {
             activeDictSources: activeSources,
           }
         });
         dictTranslatedTitle = titleRes.plainText;
-        
+
         const contentRes = await convertText(cleanedContent, {
           options: {
             activeDictSources: activeSources,
           }
         });
         dictTranslatedContent = contentRes.plainText;
-        
+
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") throw err;
         // If QT fails, skip to error
@@ -438,7 +446,7 @@ export async function runPdfTranslate(opts: HybridTranslateOptions): Promise<voi
       if (accumulated.trim()) {
         const parsed = parseHybridResult(accumulated, true);
         parsedTitle = parsed.title;
-        
+
         // Save extracted names to novel dictionary dynamically
         if (parsed.extractedNames.length > 0) {
           try {
