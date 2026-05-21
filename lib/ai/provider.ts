@@ -77,24 +77,49 @@ export async function getModel(
 
   const type: ProviderType = provider.providerType ?? "openai-compatible";
 
+  const proxyFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    let authHeader = "";
+    try {
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        authHeader = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.error("Failed to get supabase session", e);
+    }
+
+    const plainHeaders = getPlainHeaders(init?.headers);
+    // Route through server-side proxy to bypass CORS
+    return fetch("/api/ai-proxy", {
+      ...init,
+      headers: {
+        ...plainHeaders,
+        "x-target-url": input.toString(),
+        ...(authHeader ? { "x-supabase-auth": authHeader } : {}),
+      },
+    });
+  };
+
   switch (type) {
     case "openai":
-      return createOpenAI({ apiKey: provider.apiKey })(modelId);
+      return createOpenAI({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "anthropic":
-      return createAnthropic({ apiKey: provider.apiKey })(modelId);
+      return createAnthropic({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "google":
-      return createGoogleGenerativeAI({ apiKey: provider.apiKey })(modelId);
+      return createGoogleGenerativeAI({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "groq":
-      return createGroq({ apiKey: provider.apiKey })(modelId);
+      return createGroq({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "mistral":
-      return createMistral({ apiKey: provider.apiKey })(modelId);
+      return createMistral({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "xai":
-      return createXai({ apiKey: provider.apiKey })(modelId);
+      return createXai({ apiKey: provider.apiKey, fetch: proxyFetch })(modelId);
 
     case "openrouter":
       return withJsonExtraction(
@@ -103,10 +128,9 @@ export async function getModel(
           baseURL: "https://openrouter.ai/api/v1",
           apiKey: provider.apiKey,
           supportsStructuredOutputs: false,
+          fetch: proxyFetch,
         }).chatModel(modelId),
       );
-
-
 
     case "openai-compatible":
     default:
@@ -116,31 +140,9 @@ export async function getModel(
           baseURL: provider.baseUrl.replace(/\/+$/, ""),
           apiKey: provider.apiKey,
           supportsStructuredOutputs: false,
-          fetch: async (url, options) => {
-            let authHeader = "";
-            try {
-              const { createClient } = await import("@/lib/supabase/client");
-              const supabase = createClient();
-              const { data: { session } } = await supabase.auth.getSession();
-              if (session?.access_token) {
-                authHeader = `Bearer ${session.access_token}`;
-              }
-            } catch (e) {
-              console.error("Failed to get supabase session", e);
-            }
-
-            const plainHeaders = getPlainHeaders(options?.headers);
-            // Route through server-side proxy to bypass CORS
-            return fetch("/api/ai-proxy", {
-              ...options,
-              headers: {
-                ...plainHeaders,
-                "x-target-url": url.toString(),
-                ...(authHeader ? { "x-supabase-auth": authHeader } : {}),
-              },
-            });
-          },
+          fetch: proxyFetch,
         }).chatModel(modelId),
       );
   }
 }
+

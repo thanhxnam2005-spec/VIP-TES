@@ -85,12 +85,12 @@ export async function POST(req: Request) {
       });
     }
 
-    // ── User-specific actions: cần auth ──
+    // ── User-specific actions ──
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const userIdentifier = user.email?.replace(/[@.]/g, '_') || user.id;
+    
+    // Nếu không có user đăng nhập, sử dụng định danh mặc định 'shared' để lưu vào thư mục chung của hệ thống
+    const userIdentifier = user ? (user.email?.replace(/[@.]/g, '_') || user.id) : 'shared';
 
     if (action === 'list-novels') {
       const novels = await listUserNovelsFromAdminDrive(userIdentifier);
