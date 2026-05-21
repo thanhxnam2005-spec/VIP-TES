@@ -78,7 +78,7 @@ import { cleanErrorCausingCharacters } from "@/lib/text-utils";
 
 
 // ── Types ──
-type Phase = "idle" | "dict" | "ai" | "done";
+type Phase = "idle" | "dict" | "ai" | "done" | "model1" | "model2" | "model3";
 type TranslateMode = "prompt" | "stv-prompt" | "edit" | "comprehensive" | "scan-fix";
 
 const MODES: { id: TranslateMode; label: string; icon: React.ElementType; color: string; desc: string }[] = [
@@ -156,6 +156,20 @@ export function TranslateTabPanel({
     const currentModel = models?.find(m => m.modelId === selectedModelId);
     const novel = useLiveQuery(() => db.novels.get(novelId), [novelId]);
 
+    // 3-Model Pipeline Configuration State
+    const [model1ProviderId, setModel1ProviderId] = useState<string>("");
+    const [model1ModelId, setModel1ModelId] = useState<string>("");
+    const [model2ProviderId, setModel2ProviderId] = useState<string>("");
+    const [model2ModelId, setModel2ModelId] = useState<string>("");
+    const [model3Enabled, setModel3Enabled] = useState<boolean>(false);
+    const [model3ProviderId, setModel3ProviderId] = useState<string>("");
+    const [model3ModelId, setModel3ModelId] = useState<string>("");
+    const [customModel3Prompt, setCustomModel3Prompt] = useState<string>("");
+
+    const model1Models = useAIModels(model1ProviderId);
+    const model2Models = useAIModels(model2ProviderId);
+    const model3Models = useAIModels(model3ProviderId);
+
     // Mode & config state
     const [activeMode, setActiveMode] = useState<TranslateMode>("comprehensive");
     const [step, setStep] = useState<"config" | "processing" | "done">("config");
@@ -208,6 +222,36 @@ export function TranslateTabPanel({
             const adminP = providers.find(p => p.id === "admin-provider");
             setSelectedProviderId(adminP ? "admin-provider" : providers[0].id);
         }
+
+        // Restore 3-model configuration
+        if (novel.customModel1ProviderId) {
+            setModel1ProviderId(novel.customModel1ProviderId);
+            setModel1ModelId(novel.customModel1ModelId || "");
+        } else if (novel.customTranslateProviderId) {
+            setModel1ProviderId(novel.customTranslateProviderId);
+            setModel1ModelId(novel.customTranslateModelId || "");
+        } else {
+            const adminP = providers.find(p => p.id === "admin-provider");
+            setModel1ProviderId(adminP ? "admin-provider" : providers[0].id);
+        }
+
+        if (novel.customModel2ProviderId) {
+            setModel2ProviderId(novel.customModel2ProviderId);
+            setModel2ModelId(novel.customModel2ModelId || "");
+        } else {
+            setModel2ProviderId("");
+            setModel2ModelId("");
+        }
+
+        if (novel.customModel3ProviderId) {
+            setModel3ProviderId(novel.customModel3ProviderId);
+            setModel3ModelId(novel.customModel3ModelId || "");
+        } else {
+            setModel3ProviderId("");
+            setModel3ModelId("");
+        }
+
+        setModel3Enabled(!!novel.customModel3Enabled);
     }, [novel, providers, novelId]);
 
     useEffect(() => {
@@ -215,6 +259,7 @@ export function TranslateTabPanel({
             if (novel.customTranslatePrompt !== undefined) setInlinePrompt(novel.customTranslatePrompt);
             if (novel.customStylePrompt !== undefined) setCustomStylePrompt(novel.customStylePrompt);
             if (novel.customPronounPrompt !== undefined) setCustomPronounPrompt(novel.customPronounPrompt);
+            if (novel.customModel3Prompt !== undefined) setCustomModel3Prompt(novel.customModel3Prompt);
             setStylePreset(novel.stylePreset ?? "default");
             setPronounMatrix(novel.pronounMatrix ?? "");
             setPronounMatrixEnabled(novel.pronounMatrixEnabled ?? false);
@@ -291,6 +336,44 @@ export function TranslateTabPanel({
     const handleModelChange = async (val: string) => {
         setSelectedModelId(val);
         await db.novels.update(novelId, { customTranslateModelId: val });
+    };
+
+    const handleModel1ProviderChange = async (val: string) => {
+        setModel1ProviderId(val);
+        setModel1ModelId("");
+        await db.novels.update(novelId, { customModel1ProviderId: val, customModel1ModelId: "" });
+    };
+    const handleModel1ModelChange = async (val: string) => {
+        setModel1ModelId(val);
+        await db.novels.update(novelId, { customModel1ModelId: val });
+    };
+
+    const handleModel2ProviderChange = async (val: string) => {
+        setModel2ProviderId(val);
+        setModel2ModelId("");
+        await db.novels.update(novelId, { customModel2ProviderId: val, customModel2ModelId: "" });
+    };
+    const handleModel2ModelChange = async (val: string) => {
+        setModel2ModelId(val);
+        await db.novels.update(novelId, { customModel2ModelId: val });
+    };
+
+    const handleModel3ProviderChange = async (val: string) => {
+        setModel3ProviderId(val);
+        setModel3ModelId("");
+        await db.novels.update(novelId, { customModel3ProviderId: val, customModel3ModelId: "" });
+    };
+    const handleModel3ModelChange = async (val: string) => {
+        setModel3ModelId(val);
+        await db.novels.update(novelId, { customModel3ModelId: val });
+    };
+    const handleModel3EnabledToggle = async (val: boolean) => {
+        setModel3Enabled(val);
+        await db.novels.update(novelId, { customModel3Enabled: val });
+    };
+    const handleModel3PromptChange = async (val: string) => {
+        setCustomModel3Prompt(val);
+        await db.novels.update(novelId, { customModel3Prompt: val });
     };
 
     const resolveModel = useCallback(async () => {
@@ -430,8 +513,50 @@ export function TranslateTabPanel({
 
 
     const handleStart = useCallback(async (target: "selected" | "all_untranslated" = "selected") => {
-        const model = await resolveModel();
-        if (!model) return;
+        // Resolve model configurations
+        let model: any = null;
+        let model2: any = null;
+        let model3: any = null;
+
+        if (activeMode === "stv-prompt" || activeMode === "comprehensive" || activeMode === "prompt") {
+            const config1 = { providerId: model1ProviderId, modelId: model1ModelId };
+            if (!config1.providerId || !config1.modelId) {
+                toast.error("Vui lòng cấu hình đầy đủ Model 1 (Dịch chính)");
+                return;
+            }
+            model = await resolveChapterToolModel(config1, defaultProvider, chatSettings);
+            if (!model) {
+                toast.error("Không tìm thấy cấu hình Model 1 (Dịch chính)");
+                return;
+            }
+
+            const config2 = { providerId: model2ProviderId, modelId: model2ModelId };
+            if (!config2.providerId || !config2.modelId) {
+                toast.error("Vui lòng cấu hình đầy đủ Model 2 (Trích xuất từ điển)");
+                return;
+            }
+            model2 = await resolveChapterToolModel(config2, defaultProvider, chatSettings);
+            if (!model2) {
+                toast.error("Không tìm thấy cấu hình Model 2 (Trích xuất từ điển)");
+                return;
+            }
+
+            if (model3Enabled) {
+                const config3 = { providerId: model3ProviderId, modelId: model3ModelId };
+                if (!config3.providerId || !config3.modelId) {
+                    toast.error("Vui lòng cấu hình đầy đủ Model 3 (Audit/QA Bot) hoặc tắt nó đi!");
+                    return;
+                }
+                model3 = await resolveChapterToolModel(config3, defaultProvider, chatSettings);
+                if (!model3) {
+                    toast.error("Không tìm thấy cấu hình Model 3 (Audit/QA Bot)");
+                    return;
+                }
+            }
+        } else {
+            model = await resolveModel();
+            if (!model) return;
+        }
 
         // Auto-save prompt/xưng hô rules to DB before any translation mode starts
         const updateData: any = {
@@ -445,9 +570,9 @@ export function TranslateTabPanel({
         }
         await db.novels.update(novelId, updateData);
 
-        // Resolve extra models
+        // Resolve extra models (if in legacy mode)
         let resolvedModels: any[] | undefined;
-        if (extraModels.length > 0) {
+        if (activeMode !== "stv-prompt" && extraModels.length > 0) {
             const allConfigs = [
                 { providerId: selectedProviderId!, modelId: selectedModelId! },
                 ...extraModels
@@ -536,6 +661,11 @@ export function TranslateTabPanel({
             if (activeMode === "comprehensive") {
                 await runComprehensiveTranslate({
                     novelId, chapterIds: targetChapterIds, model, qtDictSources,
+                    dictModel: model2 || undefined,
+                    qaModel: model3 || undefined,
+                    qaEnabled: model3Enabled,
+                    qaPrompt: customModel3Prompt || undefined,
+                    extractDict,
                     customTranslatePrompt: novel?.customComprehensivePrompt || "",
                     customStylePrompt: customStylePrompt,
                     customPronounPrompt: customPronounPrompt,
@@ -544,13 +674,21 @@ export function TranslateTabPanel({
                 });
             } else if (activeMode === "stv-prompt") {
                 await runHybridTranslate({
-                    novelId, chapterIds: targetChapterIds, model, models: resolvedModels,
+                    novelId, chapterIds: targetChapterIds, model,
+                    dictModel: model2 || undefined,
+                    qaModel: model3 || undefined,
+                    qaEnabled: model3Enabled,
+                    qaPrompt: customModel3Prompt || undefined,
                     extractDict, skipTranslated, continuousMode: target === "all_untranslated", errorAction,
                     ...commonCallbacks,
                 });
             } else if (activeMode === "prompt") {
                 await runQtAiTranslate({
                     novelId, chapterIds: targetChapterIds, model, models: resolvedModels,
+                    dictModel: model2 || undefined,
+                    qaModel: model3 || undefined,
+                    qaEnabled: model3Enabled,
+                    qaPrompt: customModel3Prompt || undefined,
                     qtDictSources: [],
                     promptType: "custom" as PromptType, extractDict, skipTranslated,
                     continuousMode: target === "all_untranslated", errorAction,
@@ -575,7 +713,7 @@ export function TranslateTabPanel({
                 setStep("config");
             }
         }
-    }, [novelId, chapterIds, chapters, settings, resolveModel, activeMode, extractDict, skipTranslated, qtDictSources, extraModels, selectedProviderId, selectedModelId, defaultProvider, chatSettings, inlinePrompt, twoPass]);
+    }, [novelId, chapterIds, chapters, settings, resolveModel, activeMode, extractDict, skipTranslated, qtDictSources, extraModels, selectedProviderId, selectedModelId, defaultProvider, chatSettings, inlinePrompt, twoPass, model1ProviderId, model1ModelId, model2ProviderId, model2ModelId, model3Enabled, model3ProviderId, model3ModelId, customStylePrompt, customPronounPrompt, errorAction, novel]);
 
     const handleClose = () => {
         if (step === "processing" || translateJob?.isRunning) {
@@ -774,36 +912,105 @@ export function TranslateTabPanel({
                                     </div>
                                 )}
 
-                                {/* ── AI Model Selection (shared) ── */}
-                                <div className="space-y-2 border-t pt-3">
-                                    <Label className="text-xs">AI Model:</Label>
-                                    <div className="flex gap-2">
-                                        <Select value={selectedProviderId} onValueChange={(val) => { handleProviderChange(val); setExtraModels([]); }}>
-                                            <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Provider..." /></SelectTrigger>
-                                            <SelectContent>{providers?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                        <Select value={currentModel?.modelId ?? ""} onValueChange={handleModelChange} disabled={!selectedProviderId}>
-                                            <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Model..." /></SelectTrigger>
-                                            <SelectContent>{models?.map(m => <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>)}</SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Extra models */}
-                                    {selectedProviderId && selectedModelId && (
-                                        <div className="space-y-1 pl-1">
-                                            {extraModels.map((item, idx) => (
-                                                <ExtraModelRow
-                                                    key={idx} index={idx} providers={providers} value={item}
-                                                    onChange={(newVal) => { const m = [...extraModels]; m[idx] = newVal; setExtraModels(m); }}
-                                                    onRemove={() => setExtraModels(prev => prev.filter((_, i) => i !== idx))}
-                                                />
-                                            ))}
-                                            <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => setExtraModels(prev => [...prev, { providerId: selectedProviderId || "", modelId: "" }])}>
-                                                <PlusIcon className="size-3" /> Thêm Model
-                                            </Button>
+                                {/* ── AI Model Configuration ── */}
+                                {activeMode === "stv-prompt" || activeMode === "comprehensive" || activeMode === "prompt" ? (
+                                    <div className="space-y-3.5 border-t pt-3.5">
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <Label className="text-xs font-bold text-blue-600 dark:text-blue-400">Model 1: Dịch chính (Khuyên dùng Pro)</Label>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Select value={model1ProviderId} onValueChange={handleModel1ProviderChange}>
+                                                    <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Provider..." /></SelectTrigger>
+                                                    <SelectContent>{providers?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                                </Select>
+                                                <Select value={model1ModelId} onValueChange={handleModel1ModelChange} disabled={!model1ProviderId}>
+                                                    <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Model..." /></SelectTrigger>
+                                                    <SelectContent>{model1Models?.map(m => <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>)}</SelectContent>
+                                                </Select>
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-center text-xs">
+                                                <Label className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Model 2: Quét từ điển (Khuyên dùng Flash)</Label>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <Select value={model2ProviderId} onValueChange={handleModel2ProviderChange}>
+                                                    <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Provider..." /></SelectTrigger>
+                                                    <SelectContent>{providers?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                                </Select>
+                                                <Select value={model2ModelId} onValueChange={handleModel2ModelChange} disabled={!model2ProviderId}>
+                                                    <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Model..." /></SelectTrigger>
+                                                    <SelectContent>{model2Models?.map(m => <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>)}</SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1.5 pt-1.5 border-t border-muted/30">
+                                            <div className="flex justify-between items-center">
+                                                <Label htmlFor="model3-enable" className="text-xs font-bold cursor-pointer text-purple-600 dark:text-purple-400 flex items-center gap-1.5">
+                                                    <BotIcon className="size-3.5" /> Model 3: QA Bot (Giám sát & Tinh chỉnh)
+                                                </Label>
+                                                <Switch id="model3-enable" checked={model3Enabled} onCheckedChange={handleModel3EnabledToggle} />
+                                            </div>
+                                            {model3Enabled && (
+                                                <div className="space-y-2 pt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="flex gap-2">
+                                                        <Select value={model3ProviderId} onValueChange={handleModel3ProviderChange}>
+                                                            <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Provider..." /></SelectTrigger>
+                                                            <SelectContent>{providers?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                                        </Select>
+                                                        <Select value={model3ModelId} onValueChange={handleModel3ModelChange} disabled={!model3ProviderId}>
+                                                            <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Model..." /></SelectTrigger>
+                                                            <SelectContent>{model3Models?.map(m => <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>)}</SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor="model3-prompt" className="text-[10px] font-medium text-purple-600 dark:text-purple-400">Prompt Cấu Hình QA Bot (Giám sát & Tinh chỉnh)</Label>
+                                                        <Textarea
+                                                            id="model3-prompt"
+                                                            placeholder="Nhập prompt điều chỉnh chất lượng dịch, sửa lỗi ngữ pháp, đại từ xưng hô..."
+                                                            value={customModel3Prompt}
+                                                            onChange={(e) => handleModel3PromptChange(e.target.value)}
+                                                            className="text-xs h-16 min-h-[60px] max-h-32 focus-visible:ring-purple-500"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 border-t pt-3">
+                                        <Label className="text-xs">AI Model:</Label>
+                                        <div className="flex gap-2">
+                                            <Select value={selectedProviderId} onValueChange={(val) => { handleProviderChange(val); setExtraModels([]); }}>
+                                                <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Provider..." /></SelectTrigger>
+                                                <SelectContent>{providers?.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                            <Select value={selectedModelId || ""} onValueChange={handleModelChange} disabled={!selectedProviderId}>
+                                                <SelectTrigger className="flex-1 h-8 text-xs"><SelectValue placeholder="Model..." /></SelectTrigger>
+                                                <SelectContent>{models?.map(m => <SelectItem key={m.id} value={m.modelId}>{m.name || m.modelId}</SelectItem>)}</SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Extra models */}
+                                        {selectedProviderId && selectedModelId && (
+                                            <div className="space-y-1 pl-1">
+                                                {extraModels.map((item, idx) => (
+                                                    <ExtraModelRow
+                                                        key={idx} index={idx} providers={providers} value={item}
+                                                        onChange={(newVal) => { const m = [...extraModels]; m[idx] = newVal; setExtraModels(m); }}
+                                                        onRemove={() => setExtraModels(prev => prev.filter((_, i) => i !== idx))}
+                                                    />
+                                                ))}
+                                                <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => setExtraModels(prev => [...prev, { providerId: selectedProviderId || "", modelId: "" }])}>
+                                                    <PlusIcon className="size-3" /> Thêm Model
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {/* ── Common Options ── */}
                                 <div className="space-y-2">
@@ -865,7 +1072,13 @@ export function TranslateTabPanel({
                                     <Button
                                         onClick={() => handleStart("selected")}
                                         className="w-full gap-1.5 bg-primary hover:bg-primary/90"
-                                        disabled={selectedProviderId === "admin-provider" ? (!isAdmin && rawQuota <= 0) : !currentModel}
+                                        disabled={
+                                            selectedProviderId === "admin-provider"
+                                                ? (!isAdmin && rawQuota <= 0)
+                                                : ((activeMode === "stv-prompt" || activeMode === "comprehensive" || activeMode === "prompt")
+                                                    ? (!model1ProviderId || !model1ModelId || !model2ProviderId || !model2ModelId || (model3Enabled && (!model3ProviderId || !model3ModelId)))
+                                                    : !currentModel)
+                                        }
                                     >
                                         <ActiveIcon className="size-3.5" />
                                         {chapterIds.length} chương đã chọn
@@ -874,7 +1087,13 @@ export function TranslateTabPanel({
                                         onClick={() => handleStart("all_untranslated")}
                                         variant="outline"
                                         className="w-full gap-1.5"
-                                        disabled={selectedProviderId === "admin-provider" ? (!isAdmin && rawQuota <= 0) : !currentModel}
+                                        disabled={
+                                            selectedProviderId === "admin-provider"
+                                                ? (!isAdmin && rawQuota <= 0)
+                                                : ((activeMode === "stv-prompt" || activeMode === "comprehensive" || activeMode === "prompt")
+                                                    ? (!model1ProviderId || !model1ModelId || !model2ProviderId || !model2ModelId || (model3Enabled && (!model3ProviderId || !model3ModelId)))
+                                                    : !currentModel)
+                                        }
                                     >
                                         <ActiveIcon className="size-3.5" />
                                         Dịch đến hết truyện
@@ -1031,14 +1250,19 @@ export function TranslateTabPanel({
                         <Progress value={progress} className="h-2" />
                         {currentPhase !== "idle" && (
                             <div className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2">
-                                {currentPhase === "dict" && (
-                                    <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                                        <BookOpenIcon className="size-3.5 animate-pulse" /> Dịch từ điển...
+                                {(currentPhase === "dict" || currentPhase === "model2") && (
+                                    <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                        <ScanSearchIcon className="size-3.5 animate-pulse text-emerald-500" /> Model 2 [Flash]: Đang quét từ điển & phân tích...
                                     </span>
                                 )}
-                                {currentPhase === "ai" && (
-                                    <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400">
-                                        <SparklesIcon className="size-3.5 animate-pulse" /> AI đang xử lý...
+                                {(currentPhase === "ai" || currentPhase === "model1") && (
+                                    <span className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                                        <LanguagesIcon className="size-3.5 animate-pulse text-blue-500" /> Model 1 [Pro]: Đang dịch nội dung chính...
+                                    </span>
+                                )}
+                                {currentPhase === "model3" && (
+                                    <span className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 font-medium">
+                                        <BotIcon className="size-3.5 animate-pulse text-purple-500" /> Model 3 [QA Bot]: Giám sát & Tinh chỉnh bản dịch...
                                     </span>
                                 )}
                             </div>

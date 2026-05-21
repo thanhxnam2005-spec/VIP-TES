@@ -4,9 +4,12 @@ import { db, GENRE_LABELS } from "@/lib/db";
 import { createSceneVersion, ensureInitialVersion, getOriginalContent } from "@/lib/hooks/use-scene-versions";
 import { getMergedNameDict, bulkImportNameEntries } from "@/lib/hooks/use-name-entries";
 import { convertText } from "@/lib/hooks/use-qt-engine";
-import { chunkText } from "@/lib/text-utils";
+import { chunkText, cleanGarbageLines } from "@/lib/text-utils";
 import { useBulkTranslateStore } from "@/lib/stores/bulk-translate";
 import { isSceneTranslated } from "@/lib/novel-io";
+import { scanNewNames, autoAddNames } from "./name-scanner";
+import { checkAndIncrementUsage } from "../usage-limits";
+import { checkIsVipStandalone } from "../hooks/use-profile";
 
 // ── Constants ──
 const MAX_PERSISTENT_ATTEMPTS = 3;
@@ -43,13 +46,8 @@ ${genreGuidelines}
 2. **Phiên âm tên riêng & Nhất quán chính tả tuyệt đối**:
    - Tất cả tên nhân vật, địa danh, môn phái phải được phiên âm Hán-Việt CHUẨN và viết hoa.
    - NGHIÊM CẤM tự ý dịch chệch âm hoặc bỏ bớt/thay đổi nhầm dấu tiếng Việt của tên riêng được cung cấp trong Bảng tên riêng bắt buộc.
-3. **Trích xuất tên mới**: Nếu phát hiện tên riêng mới hoặc thuật ngữ mới chưa có trong Bảng tên riêng, hãy trích xuất sang thẻ <names>.
 
 # Yêu cầu định dạng đầu ra bắt buộc:
-<names>
-[names]TênChữHán=TênTiếngViệt
-[tuvung]ThuậtNgữHán=GiảiNghĩaViệt
-</names>
 <content>
 (Văn bản dịch thô đã được làm mịn bước 1 - TIẾNG VIỆT)
 </content>
@@ -65,35 +63,35 @@ function getEditorSystemPrompt(
 ) {
     let customInstructions = "";
     if (customTranslatePrompt?.trim()) {
-        customInstructions += `\n\n# CHỈ DẪN PROMPT DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT):\n${customTranslatePrompt.trim()}`;
+        customInstructions += `\n\n# CHỈ DẪN PROMPT DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): \n${customTranslatePrompt.trim()} `;
     }
     if (customStylePrompt?.trim()) {
-        customInstructions += `\n\n# CHỈ DẪN VỀ VĂN PHONG DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT):\n${customStylePrompt.trim()}`;
+        customInstructions += `\n\n# CHỈ DẪN VỀ VĂN PHONG DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): \n${customStylePrompt.trim()} `;
     }
     if (customPronounPrompt?.trim()) {
-        customInstructions += `\n\n# QUY TẮC XƯNG HÔ & BỐI CẢNH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT):\n${customPronounPrompt.trim()}`;
+        customInstructions += `\n\n# QUY TẮC XƯNG HÔ & BỐI CẢNH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): \n${customPronounPrompt.trim()} `;
     }
 
     return `# Vai trò
 Bạn là tổng biên tập văn học kì cựu chuyên biên tập tiểu thuyết dịch tại Việt Nam.
-Nhiệm vụ của bạn là đọc bản dịch nháp Tiếng Việt (Draft) dưới đây, đối chiếu bản gốc tiếng Trung để hoàn thiện thành một chương truyện có văn phong trôi chảy, giàu cảm xúc văn học, thuần Việt và không bị thô ráp.
+Nhiệm vụ của bạn là đọc bản dịch nháp Tiếng Việt(Draft) dưới đây, đối chiếu bản gốc tiếng Trung để hoàn thiện thành một chương truyện có văn phong trôi chảy, giàu cảm xúc văn học, thuần Việt và không bị thô ráp.
 
 # Thể loại truyện của tác phẩm này: ${genreText}
 ${genreGuidelines}
 
-# Chỉ dẫn biên tập nâng cao (BẮT BUỘC):
-1. **Xóa bỏ phong cách Hán Việt thô cứng**:
-   - Tránh các từ lặp/cũ khó hiểu như 'híp híp mắt', 'hướng về', 'bên trong', 'lại một lần nữa', 'kia cái', 'trả về'.
-   - Chuyển thành diễn đạt tự nhiên chuẩn thuần Việt (ví dụ: 'nheo mắt cười', 'mắt nhắm lại', 'trong lòng', 'một lần nữa', 'tên kia', 'vẫn còn').
-2. **Nhịp điệu câu từ**: Điều chỉnh độ dài ngắn của câu để tạo sự nhịp nhàng, tăng sức truyền cảm cho cảnh chiến đấu, đối thoại hay miêu tả nội tâm.
-3. **Nhất quán tên riêng**: Giữ nguyên tên nhân vật, địa danh chính xác tuyệt đối như đã dịch ở bản nháp. Cấm thay đổi dấu tiếng Việt hay làm biến âm tên nhân vật.
-4. **Không tùy tiện sáng tác**: Không tự ý thêm bớt tình tiết ngoại truyện hoặc cắt xén cốt truyện gốc.
+# Chỉ dẫn biên tập nâng cao(BẮT BUỘC):
+    1. ** Xóa bỏ phong cách Hán Việt thô cứng **:
+    - Tránh các từ lặp / cũ khó hiểu như 'híp híp mắt', 'hướng về', 'bên trong', 'lại một lần nữa', 'kia cái', 'trả về'.
+   - Chuyển thành diễn đạt tự nhiên chuẩn thuần Việt(ví dụ: 'nheo mắt cười', 'mắt nhắm lại', 'trong lòng', 'một lần nữa', 'tên kia', 'vẫn còn').
+2. ** Nhịp điệu câu từ **: Điều chỉnh độ dài ngắn của câu để tạo sự nhịp nhàng, tăng sức truyền cảm cho cảnh chiến đấu, đối thoại hay miêu tả nội tâm.
+3. ** Nhất quán tên riêng **: Giữ nguyên tên nhân vật, địa danh chính xác tuyệt đối như đã dịch ở bản nháp.Cấm thay đổi dấu tiếng Việt hay làm biến âm tên nhân vật.
+4. ** Không tùy tiện sáng tác **: Không tự ý thêm bớt tình tiết ngoại truyện hoặc cắt xén cốt truyện gốc.
 
 # Định dạng đầu ra:
-<content>
-(Bản dịch hoàn thiện cuối cùng sau khi đã được biên tập và chau chuốt xuất sắc - hoàn toàn bằng TIẾNG VIỆT)
-</content>
-` + customInstructions;
+    <content>
+        (Bản dịch hoàn thiện cuối cùng sau khi đã được biên tập và chau chuốt xuất sắc - hoàn toàn bằng TIẾNG VIỆT)
+    </content>
+        ` + customInstructions;
 }
 
 function buildDraftUserPrompt(
@@ -103,24 +101,24 @@ function buildDraftUserPrompt(
     customStylePrompt?: string,
     customPronounPrompt?: string
 ): string {
-    let userPrompt = `[GỐC - TIẾNG TRUNG]\n${chineseText}\n\n[DỊCH TỪ ĐIỂN QT]\n${dictTranslation}`;
+    let userPrompt = `[GỐC - TIẾNG TRUNG]\n${chineseText} \n\n[DỊCH TỪ ĐIỂN QT]\n${dictTranslation} `;
 
     let customInstructions = "";
     if (customTranslatePrompt?.trim()) {
-        customInstructions += `\n- PROMPT DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customTranslatePrompt.trim()}`;
+        customInstructions += `\n - PROMPT DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customTranslatePrompt.trim()} `;
     }
     if (customStylePrompt?.trim()) {
-        customInstructions += `\n- VĂN PHONG DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customStylePrompt.trim()}`;
+        customInstructions += `\n - VĂN PHONG DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customStylePrompt.trim()} `;
     }
     if (customPronounPrompt?.trim()) {
-        customInstructions += `\n- QUY TẮC XƯNG HÔ & BỐI CẢNH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customPronounPrompt.trim()}`;
+        customInstructions += `\n - QUY TẮC XƯNG HÔ & BỐI CẢNH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customPronounPrompt.trim()} `;
     }
 
     if (customInstructions) {
-        userPrompt += `\n\n⚠️ LƯU Ý BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI VỀ DỊCH THUẬT:${customInstructions}`;
+        userPrompt += `\n\n⚠️ LƯU Ý BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI VỀ DỊCH THUẬT:${customInstructions} `;
     }
 
-    userPrompt += `\n\nHãy dịch thô mịn đoạn văn trên theo định dạng thẻ <names> và <content>.`;
+    userPrompt += `\n\nHãy dịch thô mịn đoạn văn trên theo định dạng thẻ < names > và <content>.`;
     return userPrompt;
 }
 
@@ -131,21 +129,21 @@ function buildEditorUserPrompt(
     customStylePrompt?: string,
     customPronounPrompt?: string
 ): string {
-    let userPrompt = `[BẢN GỐC - CHỮ HÁN]\n${chineseText}\n\n[BẢN DỊCH NHÁP (DRAFT)]\n${draftTranslation}`;
+    let userPrompt = `[BẢN GỐC - CHỮ HÁN]\n${chineseText} \n\n[BẢN DỊCH NHÁP(DRAFT)]\n${draftTranslation} `;
 
     let customInstructions = "";
     if (customTranslatePrompt?.trim()) {
-        customInstructions += `\n- PROMPT DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customTranslatePrompt.trim()}`;
+        customInstructions += `\n - PROMPT DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customTranslatePrompt.trim()} `;
     }
     if (customStylePrompt?.trim()) {
-        customInstructions += `\n- VĂN PHONG DỊCH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customStylePrompt.trim()}`;
+        customInstructions += `\n - VĂN PHONG DỊCH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customStylePrompt.trim()} `;
     }
     if (customPronounPrompt?.trim()) {
-        customInstructions += `\n- QUY TẮC XƯNG HÔ & BỐI CẢNH (BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customPronounPrompt.trim()}`;
+        customInstructions += `\n - QUY TẮC XƯNG HÔ & BỐI CẢNH(BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI - KHÔNG TỰ Ý THÊM BỚT): ${customPronounPrompt.trim()} `;
     }
 
     if (customInstructions) {
-        userPrompt += `\n\n⚠️ LƯU Ý BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI VỀ DỊCH THUẬT:${customInstructions}`;
+        userPrompt += `\n\n⚠️ LƯU Ý BẮT BUỘC TUÂN THỦ TUYỆT ĐỐI VỀ DỊCH THUẬT:${customInstructions} `;
     }
 
     userPrompt += `\n\nHãy biên tập lại bản dịch nháp trên thành tiếng Việt văn học trôi chảy nhất nằm trong thẻ <content>.`;
@@ -208,6 +206,11 @@ export interface ComprehensiveTranslateOptions {
     twoPass?: boolean; // Enable two-pass edit/polish pipeline
     skipTranslated?: boolean;
     continuousMode?: boolean;
+    extractDict?: boolean;
+    dictModel?: LanguageModel;
+    qaModel?: LanguageModel;
+    qaEnabled?: boolean;
+    qaPrompt?: string;
     errorAction?: "stop" | "skip"; // "stop" = dừng lại khi lỗi, "skip" = bỏ qua chương lỗi
     signal?: AbortSignal;
     delayMs?: number;
@@ -229,6 +232,13 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
         customPronounPrompt,
         twoPass = true,
         skipTranslated = true,
+        continuousMode = false,
+        extractDict = false,
+        dictModel,
+        qaModel,
+        qaEnabled = false,
+        qaPrompt,
+        errorAction = "stop",
         signal,
         delayMs = 0,
         onPhase = () => { },
@@ -247,71 +257,239 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
     let genreGuidelines = "";
     if (genreKeys.some(k => ["tienhiep", "huyenhuyen", "dongphuong", "quybi"].includes(k))) {
         genreGuidelines = `
-- **Đặc trưng Thể loại (Tiên hiệp/Khởi huyễn/Huyền huyễn)**: Tông giọng cổ kính, tôn nghiêm, sử dụng từ ngữ Hán Việt văn học cổ phong hợp lý. 
-- **Quy tắc xưng hô**: Ưu tiên cổ phong trang nghiêm (Ta - Ngươi, Huynh - Đệ, Sư tôn - Đồ đệ, Bổn tọa, Các hạ, Tiền bối - Vãn bối). Tránh dùng xưng hô hiện đại trừ phi bối cảnh hài hước/đặc biệt.`;
+        - ** Đặc trưng Thể loại(Tiên hiệp / Khởi huyễn / Huyền huyen) **: Tông giọng cổ kính, tôn nghiêm, sử dụng từ ngữ Hán Việt văn học cổ phong hợp lý. 
+- ** Quy tắc xưng hô **: Ưu tiên cổ phong trang nghiêm(Ta - Ngươi, Huynh - Đệ, Sư tôn - Đồ đệ, Bổn tọa, Các hạ, Tiền bối - Vãn bối).Tránh dùng xưng hô hiện đại trừ phi bối cảnh hài hước / đặc biệt.`;
     } else if (genreKeys.some(k => ["dothi", "hiendai", "school", "hocduong", "vongdu"].includes(k))) {
         genreGuidelines = `
-- **Đặc trưng Thể loại (Hiện hiện/Đô thị/Võng du)**: Hành văn hiện đại, trẻ trung, đời thường, trôi chảy tự nhiên.
-- **Quy tắc xưng hô**: Linh hoạt theo bối cảnh xã hội hiện đại (Tôi - Cậu, Anh - Em, Ta - Ngươi khi thù địch/khiêu khích, Hắn, Nàng, Gã). Tránh hành văn cổ phong quá đà.`;
+        - ** Đặc trưng Thể loại(Hiện hiện / Đô thị / Võng du) **: Hành văn hiện đại, trẻ trung, đời thường, trôi chảy tự nhiên.
+- ** Quy tắc xưng hô **: Linh hoạt theo bối cảnh xã hội hiện đại(Tôi - Cậu, Anh - Em, Ta - Ngươi khi thù địch / khiêu khích, Hắn, Nàng, Gã).Tránh hành văn cổ phong quá đà.`;
     } else if (genreKeys.some(k => ["ngontinh", "dammi"].includes(k))) {
         genreGuidelines = `
-- **Đặc trưng Thể loại (Ngôn tình/Đam mỹ)**: Văn phong giàu cảm xúc, lãng mạn, mượt mà quyến rũ, tập trung sâu mô tả nội tâm và đường nét cử chỉ.
-- **Quy tắc xưng hô**: Phải sâu lắng và tình cảm (Ta - Chàng/Thiếp nếu cổ đại; Anh - Em, Tôi - Em nếu hiện đại, hoặc các thể loại tự xưng thân mật). Ngăn chặn tình trạng xưng hô lạnh lùng, cứng nhắc.`;
+        - ** Đặc trưng Thể loại(Ngôn tình / Đam mỹ) **: Văn phong giàu cảm xúc, lãng mạn, mượt mà quyến rũ, tập trung sâu mô tả nội tâm và đường nét cử chỉ.
+- ** Quy tắc xưng hô **: Phải sâu lắng và tình cảm(Ta - Chàng / Thiếp nếu cổ đại; Anh - Em, Tôi - Em nếu hiện đại, hoặc các thể loại tự xưng thân mật). Ngăn chặn tình trạng xưng hô lạnh lùng, cứng nhắc.`;
     } else {
         genreGuidelines = `
-- **Đặc trưng Thể loại**: Xưng hô linh hoạt, tôn trọng văn cảnh và nhịp điệu của thể loại nguyên bản.`;
+        - ** Đặc trưng Thể loại **: Xưng hô linh hoạt, tôn trọng văn cảnh và nhịp điệu của thể loại nguyên bản.`;
     }
 
-    const queue = [...chapterIds];
+    const chapterIdSet = new Set(chapterIds);
+
+    store.initJob(novelId);
+    store.start(novelId, chapterIds, undefined, undefined);
+
+    let processedIds = new Set<string>();
+    let pollingAttempts = 0;
+    let currentTranslateIdx = 0;
+    const scannedChapterIds = new Set<string>();
+    let targetChapterIds: string[] = [];
+
+    // background dictionary scanner worker (AI 2)
+    const runDictWorker = async () => {
+        let scanIdx = 0;
+        while (true) {
+            if (signal?.aborted) break;
+
+            // Pause loop
+            while (store.jobs[novelId]?.isPaused) {
+                await new Promise((r) => setTimeout(r, 500));
+                if (signal?.aborted) break;
+            }
+            if (signal?.aborted) break;
+
+            // Dynamically fetch target chapters to handle additions
+            const allChapters = await db.chapters.where("novelId").equals(novelId).sortBy("order");
+            let currentQueue: string[] = [];
+            if (continuousMode) {
+                const startIndex = allChapters.findIndex(c => chapterIdSet.has(c.id));
+                const startIdx = startIndex >= 0 ? startIndex : 0;
+                currentQueue = allChapters.slice(startIdx).map(c => c.id);
+            } else {
+                currentQueue = allChapters.filter(c => chapterIdSet.has(c.id)).map(c => c.id);
+            }
+            targetChapterIds = currentQueue;
+
+            if (scanIdx >= currentQueue.length) {
+                await new Promise((r) => setTimeout(r, 1000));
+                continue;
+            }
+
+            // Block if AI 2 gets > 2 chapters ahead of AI 1
+            while (scanIdx >= currentTranslateIdx + 2) {
+                await new Promise((r) => setTimeout(r, 100));
+                if (signal?.aborted) break;
+            }
+            if (signal?.aborted) break;
+
+            const chapId = currentQueue[scanIdx];
+            if (scannedChapterIds.has(chapId)) {
+                scanIdx++;
+                continue;
+            }
+
+            const chapter = await db.chapters.get(chapId);
+            if (!chapter) {
+                scannedChapterIds.add(chapId);
+                scanIdx++;
+                continue;
+            }
+
+            // Find scenes
+            const chapterScenes = await db.scenes
+                .where("chapterId")
+                .equals(chapId)
+                .toArray();
+            chapterScenes.sort((a, b) => a.order - b.order);
+
+            // Check skipTranslated
+            if (skipTranslated && chapterScenes.length > 0 && chapterScenes.every(isSceneTranslated)) {
+                scannedChapterIds.add(chapId);
+                scanIdx++;
+                continue;
+            }
+
+            if (!extractDict) {
+                scannedChapterIds.add(chapId);
+                scanIdx++;
+                continue;
+            }
+
+            // Perform Model 2 scan
+            store.setChapterStatus(novelId, chapId, "scanning");
+            try {
+                console.log(`[3-Model Concurrent Pipeline] AI 2 Quét từ điển trước cho chương: ${chapter.title}`);
+                const existingDictEntries = await getMergedNameDict(novelId);
+                const existingDictMap = new Map(existingDictEntries.map(e => [e.chinese, e.vietnamese]));
+
+                // Load original scene contents
+                const originalContents = await Promise.all(chapterScenes.map((s) => getOriginalContent(s.id)));
+                const cleanedContent = cleanGarbageLines(originalContents.join(SCENE_BREAK));
+
+                const newlyScannedNames = await scanNewNames({
+                    model: dictModel || model,
+                    sourceText: cleanedContent,
+                    novelId,
+                    existingDict: existingDictMap,
+                    signal,
+                });
+
+                if (newlyScannedNames.length > 0) {
+                    const addedCount = await autoAddNames(novelId, newlyScannedNames);
+                    console.log(`[3-Model Concurrent Pipeline] AI 2 hoàn thành: Đã tự động thêm ${addedCount} từ mới.`);
+                }
+            } catch (scanErr) {
+                console.warn(`[3-Model Concurrent Pipeline] Lỗi quét từ điển tại AI 2:`, scanErr);
+            }
+
+            store.setChapterStatus(novelId, chapId, "scanned");
+            scannedChapterIds.add(chapId);
+            scanIdx++;
+        }
+    };
+
+    // Start background dictionary scanner worker
+    runDictWorker();
 
     const runWorker = async () => {
-        while (queue.length > 0 && !signal?.aborted) {
-            const chapterId = queue.shift();
-            if (!chapterId) break;
+        while (true) {
+            if (signal?.aborted) break;
 
-            const chapter = await db.chapters.get(chapterId);
-            if (!chapter) continue;
+            // Pause loop
+            while (store.jobs[novelId]?.isPaused) {
+                await new Promise((r) => setTimeout(r, 1000));
+                if (signal?.aborted) break;
+            }
+            if (signal?.aborted) break;
+
+            // Fetch chapters dynamically
+            const allChapters = await db.chapters.where("novelId").equals(novelId).sortBy("order");
+            let currentQueue: string[] = [];
+            if (continuousMode) {
+                const startIndex = allChapters.findIndex(c => chapterIdSet.has(c.id));
+                const startIdx = startIndex >= 0 ? startIndex : 0;
+                currentQueue = allChapters.slice(startIdx).map(c => c.id);
+            } else {
+                currentQueue = allChapters.filter(c => chapterIdSet.has(c.id)).map(c => c.id);
+            }
+            targetChapterIds = currentQueue;
+
+            let chapterToProcess = null;
+            let chapterScenes: any[] = [];
+            let currentTranslateIdxVal = 0;
+
+            for (let i = 0; i < currentQueue.length; i++) {
+                const cid = currentQueue[i];
+                if (processedIds.has(cid)) continue;
+
+                const cScenes = await db.scenes
+                    .where("chapterId")
+                    .equals(cid)
+                    .toArray();
+                cScenes.sort((a, b) => a.order - b.order);
+                if (cScenes.length === 0) continue;
+
+                if (skipTranslated && cScenes.every(isSceneTranslated)) {
+                    processedIds.add(cid);
+                    store.setChapterStatus(novelId, cid, "done");
+                    store.incrementCompleted(novelId);
+                    continue;
+                }
+
+                chapterToProcess = await db.chapters.get(cid);
+                chapterScenes = cScenes;
+                currentTranslateIdxVal = i;
+                break;
+            }
+
+            // Update store dynamic total in continuous mode
+            if (continuousMode) {
+                store.updateTotalChapters(novelId, allChapters.length);
+            }
+
+            if (!chapterToProcess) {
+                if (continuousMode && pollingAttempts < 15) {
+                    pollingAttempts++;
+                    await new Promise((r) => setTimeout(r, 3000));
+                    continue;
+                }
+                break; // No more chapters
+            }
+
+            pollingAttempts = 0;
+            currentTranslateIdx = currentTranslateIdxVal;
+
+            // Wait until AI 2 completes scanning for this chapter
+            const activeChapterId = chapterToProcess.id;
+            while (!scannedChapterIds.has(activeChapterId)) {
+                await new Promise((r) => setTimeout(r, 100));
+                if (signal?.aborted) break;
+            }
+            if (signal?.aborted) break;
+
+            // Double check pause after waiting
+            while (store.jobs[novelId]?.isPaused) {
+                await new Promise((r) => setTimeout(r, 500));
+                if (signal?.aborted) break;
+            }
+            if (signal?.aborted) break;
+
+            processedIds.add(activeChapterId);
+            const chapter = chapterToProcess;
 
             onChapterStart(chapter.id, chapter.title);
             store.setChapterStatus(novelId, chapter.id, "translating");
 
             try {
-                // Find scenes
-                const scenes = await db.scenes
-                    .where("[novelId+isActive]")
-                    .equals([novelId, 1])
-                    .toArray();
-
-                const chapterScenes = scenes
-                    .filter((s) => s.chapterId === chapter.id)
-                    .sort((a, b) => a.order - b.order);
-
-                if (chapterScenes.length === 0) {
-                    throw new Error("Không tìm thấy phân cảnh nào của chương này.");
-                }
-
-                // Check skip
-                if (skipTranslated) {
-                    let allTranslated = true;
-                    for (const s of chapterScenes) {
-                        if (!isSceneTranslated(s)) {
-                            allTranslated = false;
-                            break;
-                        }
-                    }
-                    if (allTranslated) {
-                        onChapterComplete({
-                            chapterId: chapter.id,
-                            chapterTitle: chapter.title,
-                            originalTitle: chapter.title,
-                            newTitle: chapter.title,
-                            scenes: chapterScenes.map((s) => ({ sceneId: s.id, content: s.content })),
-                            extractedNamesCount: 0,
-                        });
-                        store.setChapterStatus(novelId, chapter.id, "done");
-                        store.incrementCompleted(novelId);
-                        continue;
-                    }
+                const isVip = await checkIsVipStandalone();
+                if (!checkAndIncrementUsage("translate", 1, isVip)) {
+                    store.pause(novelId);
+                    onChapterError({
+                        chapterId: chapter.id,
+                        chapterTitle: chapter.title,
+                        message: "Hôm nay bạn đã dùng hết giới hạn 100 lượt dịch chương miễn phí. Hãy nâng cấp VIP để dùng không giới hạn!",
+                    });
+                    store.setChapterStatus(novelId, chapter.id, "error");
+                    store.incrementCompleted(novelId);
+                    break;
                 }
 
                 // Delay if needed
@@ -373,9 +551,9 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                     ).sort((a, b) => b.chinese.length - a.chinese.length);
 
                     if (relevantNames.length > 0) {
-                        relevantNamesPrompt = `\n\n# Bảng tên riêng bắt buộc dùng đúng:\n`;
+                        relevantNamesPrompt = `\n\n# Bảng tên riêng bắt buộc dùng đúng: \n`;
                         for (const n of relevantNames.slice(0, 150)) {
-                            relevantNamesPrompt += `${n.chinese} → ${n.vietnamese}\n`;
+                            relevantNamesPrompt += `${n.chinese} → ${n.vietnamese} \n`;
                         }
                     }
 
@@ -409,7 +587,7 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
 
                             // Streaming fallback
                             if (!text.trim()) {
-                                console.warn(`[AI Draft] Stream returned empty. Retrying with generateText...`);
+                                console.warn(`[AI Draft] Stream returned empty.Retrying with generateText...`);
                                 const { generateText } = await import("ai");
                                 const directRes = await generateText({
                                     model,
@@ -431,7 +609,7 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                     }
 
                     if (!draftSuccess || !rawDraftOutput.trim()) {
-                        throw lastDraftError || new Error(`Không dịch được bản nháp tại đoạn ${chunkIdx + 1}`);
+                        throw lastDraftError || new Error(`Không dịch được bản nháp tại đoạn ${chunkIdx + 1} `);
                     }
 
                     // Parse draft
@@ -455,7 +633,7 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                     }
 
                     if (!parsedDraft.content?.trim()) {
-                        throw new Error(`AI dịch nháp trả về nội dung trống ở đoạn ${chunkIdx + 1}`);
+                        throw new Error(`AI dịch nháp trả về nội dung trống ở đoạn ${chunkIdx + 1} `);
                     }
                     let finalChunkContent = parsedDraft.content;
 
@@ -498,7 +676,7 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
 
                                 // Streaming fallback
                                 if (!text.trim()) {
-                                    console.warn(`[AI Editor] Stream returned empty. Retrying with generateText...`);
+                                    console.warn(`[AI Editor] Stream returned empty.Retrying with generateText...`);
                                     const { generateText } = await import("ai");
                                     const directRes = await generateText({
                                         model,
@@ -520,14 +698,73 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                         }
 
                         if (!editSuccess || !rawEditOutput.trim()) {
-                            throw lastEditError || new Error(`Không dịch được bản biên tập tại đoạn ${chunkIdx + 1}`);
+                            throw lastEditError || new Error(`Không dịch được bản biên tập tại đoạn ${chunkIdx + 1} `);
                         }
 
                         const parsedEdit = parseIntermediateResult(rawEditOutput);
                         if (!parsedEdit.content?.trim()) {
-                            throw new Error(`AI biên tập trả về nội dung trống ở đoạn ${chunkIdx + 1}`);
+                            throw new Error(`AI biên tập trả về nội dung trống ở đoạn ${chunkIdx + 1} `);
                         }
                         finalChunkContent = parsedEdit.content;
+                    }
+
+                    // ═══════════════════════════════════════════
+                    // PHASE 2c: Model 3 QA Bot (Audit & Refine)
+                    // ═══════════════════════════════════════════
+                    if (qaEnabled && qaModel) {
+                        onPhase(chapter.id, "model3");
+                        console.log(`[3-Model Pipeline] Đang chạy QA Bot tối ưu hóa đoạn ${chunkIdx + 1}/${chunks.length}...`);
+                        const qaSystemPrompt = qaPrompt?.trim() || `# Vai trò
+Bạn là Giám sát Chất lượng Dịch thuật (QA Bot) chuyên nghiệp. Nhiệm vụ của bạn là đọc và tinh chỉnh bản dịch tiếng Việt của tiểu thuyết Trung-Việt để nâng cao chất lượng và độ tự nhiên.
+
+# Nhiệm vụ
+So sánh Bản Dịch Thô, Bản Dịch AI và Văn Bản Gốc để phát hiện và sửa đổi các lỗi:
+1. Sót câu, sót đoạn, hoặc thiếu câu văn/đối thoại.
+2. Từ ngữ thô cứng, lặp từ, hành văn Hán Việt quá đà hoặc sai cấu trúc ngữ pháp tiếng Việt.
+3. Không nhất quán hoặc không phù hợp đại từ xưng hô theo thể loại cốt truyện.
+4. Còn sót các từ tiếng Trung chưa được dịch (hoặc dịch bừa không sát nghĩa).
+
+Hãy trả về phiên bản dịch tiếng Việt CUỐI CÙNG đã được sửa đổi và làm mượt tối đa.
+CẤM giải thích gì thêm, KHÔNG chèn bất kỳ thẻ hay định dạng Markdown nào khác (như in đậm **, tiêu đề ###).`;
+
+                        const qaUserPrompt = `[VĂN BẢN GỐC TIẾNG TRUNG]
+${chunk}
+
+[BẢN DỊCH THÔ DIỄN GIẢI]
+${chunkDictTranslated}
+
+[BẢN DỊCH CHƯA TINH CHỈNH]
+${finalChunkContent}
+
+Hãy trả về bản dịch tiếng Việt hoàn thiện nhất (chỉ trả về text dịch, không giải thích gì thêm):`;
+
+                        let qaResult = "";
+                        let qaError: unknown = null;
+                        for (let qaAttempt = 0; qaAttempt < 2; qaAttempt++) {
+                            try {
+                                const { generateText } = await import("ai");
+                                const res = await generateText({
+                                    model: qaModel,
+                                    system: qaSystemPrompt,
+                                    prompt: qaUserPrompt,
+                                    abortSignal: signal,
+                                });
+                                qaResult = res.text ?? "";
+                                if (qaResult.trim()) break;
+                            } catch (err) {
+                                qaError = err;
+                                await new Promise((r) => setTimeout(r, 1000));
+                            }
+                        }
+                        if (qaResult.trim()) {
+                            let cleanedQa = qaResult.trim();
+                            cleanedQa = cleanedQa.replace(/<content>([\s\S]*?)<\/content>/i, "$1").trim();
+                            cleanedQa = cleanedQa.replace(/^```[\s\S]*?\n/g, "").replace(/```$/g, "").trim();
+                            cleanedQa = cleanedQa.replace(/\*\*/g, "").replace(/^###\s+/gm, "").trim();
+                            finalChunkContent = cleanedQa;
+                        } else {
+                            console.warn(`[3-Model Pipeline] QA Bot chunk ${chunkIdx + 1} trả về kết quả rỗng hoặc lỗi:`, qaError);
+                        }
                     }
 
                     finalAccumulatedContent += (finalAccumulatedContent ? "\n\n" : "") + finalChunkContent;
@@ -603,7 +840,7 @@ export async function runComprehensiveTranslate(opts: ComprehensiveTranslateOpti
                 });
                 store.incrementCompleted(novelId);
 
-                if (opts.errorAction === "skip") {
+                if (errorAction === "skip") {
                     // Bỏ qua chương lỗi, tiếp tục dịch chương tiếp theo
                     continue;
                 } else {

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type ChapterTranslateStatus = "pending" | "translating" | "done" | "error";
+export type ChapterTranslateStatus = "pending" | "scanning" | "scanned" | "translating" | "done" | "error";
 
 export interface TranslateChapterResult {
   chapterId: string;

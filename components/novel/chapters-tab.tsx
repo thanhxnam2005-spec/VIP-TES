@@ -579,6 +579,8 @@ export function ChaptersTab({
                   let TlBadge = null;
                   if (showTranslateStatus && tlStatus) {
                     if (tlStatus === "pending") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-muted text-muted-foreground whitespace-nowrap">Chờ dịch</span>;
+                    else if (tlStatus === "scanning") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-purple-500/10 text-purple-600 whitespace-nowrap flex items-center gap-1"><LoaderIcon className="size-3 animate-spin" />Quét từ điển</span>;
+                    else if (tlStatus === "scanned") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-indigo-500/10 text-indigo-600 whitespace-nowrap">Đã quét (Chờ AI 1)</span>;
                     else if (tlStatus === "translating") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-blue-500/10 text-blue-600 whitespace-nowrap flex items-center gap-1"><LoaderIcon className="size-3 animate-spin" />Đang dịch</span>;
                     else if (tlStatus === "done") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-emerald-500/10 text-emerald-600 whitespace-nowrap">Đã dịch</span>;
                     else if (tlStatus === "error") TlBadge = <span className="ml-2 rounded px-1.5 py-0.5 text-[10px] bg-red-500/10 text-red-600 whitespace-nowrap">Lỗi</span>;

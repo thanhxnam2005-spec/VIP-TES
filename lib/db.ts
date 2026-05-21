@@ -49,6 +49,15 @@ export interface Novel {
   customTranslateProviderId?: string;
   customTranslateModelId?: string;
   customTranslateMode?: string;
+  // 3-Model Configuration Store
+  customModel1ProviderId?: string;
+  customModel1ModelId?: string;
+  customModel2ProviderId?: string;
+  customModel2ModelId?: string;
+  customModel3Enabled?: boolean;
+  customModel3ProviderId?: string;
+  customModel3ModelId?: string;
+  customModel3Prompt?: string;
   /** Active genre dictionaries specifically selected for this novel */
   activeDictSources?: string[];
   /** Timestamp of last style scan. */
@@ -620,22 +629,22 @@ const DEFAULT_PROVIDERS: Array<{
   name: string;
   baseUrl: string;
 }> = [
-  {
-    id: "preset-bactinh",
-    name: "Bắc Cực Tinh",
-    baseUrl: "https://ag.beijixingxing.com/v1",
-  },
-  {
-    id: "preset-catiecli",
-    name: "CatieCLI",
-    baseUrl: "https://catiecli.sukaka.top/v1",
-  },
-  {
-    id: "preset-ggchan",
-    name: "GGChan",
-    baseUrl: "https://gcli.ggchan.dev",
-  },
-];
+    {
+      id: "preset-bactinh",
+      name: "Bắc Cực Tinh",
+      baseUrl: "https://ag.beijixingxing.com/v1",
+    },
+    {
+      id: "preset-catiecli",
+      name: "CatieCLI",
+      baseUrl: "https://catiecli.sukaka.top/v1",
+    },
+    {
+      id: "preset-ggchan",
+      name: "GGChan",
+      baseUrl: "https://gcli.ggchan.dev",
+    },
+  ];
 
 db.on("ready", async () => {
   const existingCount = await db.aiProviders.count();

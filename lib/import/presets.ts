@@ -4,6 +4,14 @@ export interface ChapterPreset {
 }
 
 export const CHAPTER_PRESETS: Record<string, ChapterPreset> = {
+  vietnamese_flex: {
+    label: "(^|\\n)\\s*(Chương\\s+\\d+).*",
+    pattern: /(^|\n)\s*(Chương\s+\d+).*/gi,
+  },
+  chinese_flex: {
+    label: "(^|\\n)\\s*(第xx章).*",
+    pattern: /(^|\n)\s*(第[\d一二三四五六七八九十百千万]+章).*/g,
+  },
   vietnamese: {
     label: "Chương xx: ...",
     pattern: /^[ \t]*Chương\s+\d+(?:.*)?$/gim,
